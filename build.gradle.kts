@@ -81,14 +81,12 @@ tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
     enabled = false
 }
 
-val artifactName = "${rootProject.name}-${project.name}"
-
 publishing {
     publications {
         create<MavenPublication>("maven") {
             from(components["java"])
             // artifactId 지정
-            artifactId = artifactName
+            artifactId = project.name
             versionMapping {
                 allVariants {
                     fromResolutionResult()
