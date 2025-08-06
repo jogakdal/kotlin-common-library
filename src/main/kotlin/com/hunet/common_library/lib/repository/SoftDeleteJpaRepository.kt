@@ -232,6 +232,8 @@ interface SoftDeleteJpaRepository<E, ID: Serializable> : JpaRepository<E, ID> {
     fun softDeleteByFields(fields: Map<String, Any>): Int
     fun softDeleteByCondition(condition: String): Int
 
+    fun refresh(entity: E): E
+
     fun selectAll(pageable: Pageable? = null): Page<E> = findAllByCondition("", pageable)
     fun selectAll(fieldName: String, fieldValue: Any, pageable: Pageable? = null): Page<E> =
         findAllByField(fieldName, fieldValue, pageable)
@@ -801,6 +803,11 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
         val base = if (condition.isNotEmpty()) condition else "TRUE"
         applyPessimisticLock(base) { }
         return block()
+    }
+
+    override fun refresh(entity: E): E {
+        entityManager.refresh(entity)
+        return entity
     }
 }
 
