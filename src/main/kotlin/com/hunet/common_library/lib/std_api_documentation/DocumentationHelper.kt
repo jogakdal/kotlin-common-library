@@ -152,16 +152,15 @@ fun buildDescriptors(instance: Any, parentPath: String = ""): List<FieldDescript
             if (optional || prop.returnType.isMarkedNullable) fd.optional() else fd
         }.type(determineJsonFieldTypeByValue(value)).let { fd ->
             listOf(fd) +
-                    (value as? List<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
-                    (value as? Array<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
-                    (value as? Map<*, *>)?.values?.filterNotNull()?.flatMap {
-                        buildDescriptors(it, "$path.*")
-                    }.orEmpty() +
-                    (value as? Set<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
-                    (value.takeIf {
-                        it != null &&
-                            (it::class.isExistAnnotation<SwaggerDescribable>() || it::class.isExistAnnotation<Schema>())
-                    }?.let { buildDescriptors(it, path) }.orEmpty())
+                (value as? List<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
+                (value as? Array<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
+                (value as? Map<*, *>)?.values?.filterNotNull()?.flatMap { buildDescriptors(it, "$path.*") }
+                    .orEmpty() +
+                (value as? Set<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
+                (value.takeIf {
+                    it != null &&
+                        (it::class.isExistAnnotation<SwaggerDescribable>() || it::class.isExistAnnotation<Schema>())
+                }?.let { buildDescriptors(it, path) }.orEmpty())
         }
     }
 }
