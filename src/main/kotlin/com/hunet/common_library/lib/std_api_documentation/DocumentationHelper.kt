@@ -68,30 +68,30 @@ fun buildDocument(
     requestObject: Any? = null,
     responseObject: Any? = null
 ): RestDocumentationResultHandler = MockMvcRestDocumentationWrapper.document(
-        identifier = identifier,
-        Preprocessors.preprocessRequest(Preprocessors.prettyPrint()),
-        Preprocessors.preprocessResponse(Preprocessors.prettyPrint()),
-        ResourceDocumentation.resource(
-            ResourceSnippetParameters.builder().apply {
-                tag(tag)
-                summary(summary)
-                description(description)
-                if (pathParameters.isNotEmpty()) pathParameters(*pathParameters.toTypedArray())
-                if (queryParameters.isNotEmpty()) queryParameters(*queryParameters.toTypedArray())
-                if (formParameters.isNotEmpty()) formParameters(*formParameters.toTypedArray())
-                if (requestObject != null) requestFields(
-                    buildDescriptors(requestObject, "").mapIndexed { idx, fd ->
-                        fd.apply { attributes(Attributes.key("order").value(idx)) }
-                    }
-                )
-                if (responseObject != null) responseFields(
-                    buildDescriptors(responseObject, parentPath = "").mapIndexed { idx, fd ->
-                        fd.apply { attributes(Attributes.key("order").value(idx)) }
-                    }
-                )
-            }.build()
-        )
+    identifier = identifier,
+    Preprocessors.preprocessRequest(Preprocessors.prettyPrint()),
+    Preprocessors.preprocessResponse(Preprocessors.prettyPrint()),
+    ResourceDocumentation.resource(
+        ResourceSnippetParameters.builder().apply {
+            tag(tag)
+            summary(summary)
+            description(description)
+            if (pathParameters.isNotEmpty()) pathParameters(*pathParameters.toTypedArray())
+            if (queryParameters.isNotEmpty()) queryParameters(*queryParameters.toTypedArray())
+            if (formParameters.isNotEmpty()) formParameters(*formParameters.toTypedArray())
+            if (requestObject != null) requestFields(
+                buildDescriptors(requestObject, "").mapIndexed { idx, fd ->
+                    fd.apply { attributes(Attributes.key("order").value(idx)) }
+                }
+            )
+            if (responseObject != null) responseFields(
+                buildDescriptors(responseObject, parentPath = "").mapIndexed { idx, fd ->
+                    fd.apply { attributes(Attributes.key("order").value(idx)) }
+                }
+            )
+        }.build()
     )
+)
 
 /**
  * @SwaggerDescribable, @Schema 어노테이션이 붙은 인스턴스에서
@@ -127,6 +127,7 @@ fun buildDescriptors(instance: Any, parentPath: String = ""): List<FieldDescript
                 (value as? List<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
                 (value as? Array<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
                 (value as? Map<*, *>)?.values?.filterNotNull()?.flatMap { buildDescriptors(it, "$path.*") }.orEmpty() +
+                (value as? Set<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path.*") }.orEmpty() +
                 (value.takeIf {
                     it != null &&
                             (it::class.isExistAnnotation<SwaggerDescribable>() || it::class.isExistAnnotation<Schema>())
@@ -149,6 +150,7 @@ private fun determineJsonFieldTypeByValue(value: Any?): JsonFieldType = when (va
     is Duration -> JsonFieldType.STRING
     is Boolean -> JsonFieldType.BOOLEAN
     is List<*>, is Array<*> -> JsonFieldType.ARRAY
+    is Set<*> -> JsonFieldType.ARRAY
     else -> JsonFieldType.OBJECT
 }
 
