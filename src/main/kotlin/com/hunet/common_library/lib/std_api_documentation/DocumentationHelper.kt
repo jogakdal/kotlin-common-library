@@ -127,7 +127,7 @@ fun buildDescriptors(instance: Any, parentPath: String = ""): List<FieldDescript
                 (value as? List<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
                 (value as? Array<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
                 (value as? Map<*, *>)?.values?.filterNotNull()?.flatMap { buildDescriptors(it, "$path.*") }.orEmpty() +
-                (value as? Set<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path.*") }.orEmpty() +
+                (value as? Set<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
                 (value.takeIf {
                     it != null &&
                             (it::class.isExistAnnotation<SwaggerDescribable>() || it::class.isExistAnnotation<Schema>())
