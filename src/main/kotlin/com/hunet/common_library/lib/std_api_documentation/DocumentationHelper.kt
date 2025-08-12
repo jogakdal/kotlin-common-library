@@ -12,6 +12,7 @@ import org.springframework.restdocs.payload.JsonFieldType
 import org.springframework.restdocs.payload.PayloadDocumentation.fieldWithPath
 import org.springframework.restdocs.payload.PayloadDocumentation.subsectionWithPath
 import org.springframework.restdocs.snippet.Attributes
+import java.lang.reflect.AnnotatedElement
 import java.time.*
 import java.util.*
 import kotlin.reflect.KAnnotatedElement
@@ -102,38 +103,66 @@ fun buildDocument(
  * @param parentPath 현재 탐색 중인 JSON 경로(최상위에서는 빈 문자열)
  * @return           생성된 FieldDescriptor 목록
  */
-fun buildDescriptors(instance: Any, parentPath: String = ""): List<FieldDescriptor> = instance::class.takeIf {
-    it.isExistAnnotation<SwaggerDescribable>() || it.isExistAnnotation<Schema>()
-}?.memberProperties.orEmpty().mapNotNull { prop ->
-    prop.getAnnotation<Schema>()?.let { schemaAnn ->
-        Triple(prop, schemaAnn.description, !schemaAnn.required)
-    } ?: prop.getAnnotation<SwaggerDescription>()?.let { rd ->
-        Triple(prop, rd.description, rd.optional)
-    }
-}.sortedBy { (prop, _, _) ->
-    prop.getAnnotation<Sequence>()?.value ?: Int.MAX_VALUE
-}.flatMap { (prop, description, optional) ->
-    val value = prop.getter.call(instance)
-    val path = if (parentPath.isEmpty()) prop.name else "$parentPath.${prop.name}"
+fun buildDescriptors(instance: Any, parentPath: String = ""): List<FieldDescriptor> {
+    if (instance is DescriptiveEnum) {
+        val constants: List<DescriptiveEnum> =
+            (instance::class.java.enumConstants?.filterIsInstance<DescriptiveEnum>() ?: emptyList()).filter {
+                it.describable
+            }.sortedBy { constant ->
+                try {
+                    val enumConst = constant as Enum<*>
+                    val enumClass: Class<*> =
+                        enumConst.javaClass.enclosingClass?.takeIf { it.isEnum }
+                            ?: enumConst.javaClass.superclass?.takeIf { it.isEnum }
+                            ?: enumConst.javaClass
+                    enumClass.getField(enumConst.name).getAnnotation<Sequence>()?.value ?: Int.MAX_VALUE
+                } catch (_: Exception) {
+                    Int.MAX_VALUE
+                }
+            }
 
-    (if (parentPath.isEmpty()) fieldWithPath(path) else subsectionWithPath(path)).description(
-        (value as? DescriptiveEnum)?.let {
-            DescriptiveEnum.replaceDescription(description, it::class)
-        } ?: description
-    ).let { fd ->
-        if (optional || prop.returnType.isMarkedNullable) fd.optional() else fd
-    }.type(determineJsonFieldTypeByValue(value)).let { fd ->
-        listOf(fd) +
-                (value as? List<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
-                (value as? Array<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
-                (value as? Map<*, *>)?.values?.filterNotNull()?.flatMap { buildDescriptors(it, "$path.*") }.orEmpty() +
-                (value as? Set<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
-                (value.takeIf {
-                    it != null &&
+        return constants.map { constant ->
+            val enumName = (constant as Enum<*>).name
+            val path = if (parentPath.isEmpty()) enumName else "$parentPath.$enumName"
+            (if (parentPath.isEmpty()) fieldWithPath(path) else subsectionWithPath(path)).description(
+                constant.toDescription()
+            ).type(determineJsonFieldTypeByValue(instance.value)).optional()
+        }
+    }
+
+    return instance::class.takeIf {
+        it.isExistAnnotation<SwaggerDescribable>() || it.isExistAnnotation<Schema>()
+    }?.memberProperties.orEmpty().mapNotNull { prop ->
+        prop.getAnnotation<Schema>()?.let { schemaAnn ->
+            Triple(prop, schemaAnn.description, !schemaAnn.required)
+        } ?: prop.getAnnotation<SwaggerDescription>()?.let { rd ->
+            Triple(prop, rd.description, rd.optional)
+        }
+    }.sortedBy { (prop, _, _) ->
+        prop.getAnnotation<Sequence>()?.value ?: Int.MAX_VALUE
+    }.flatMap { (prop, description, optional) ->
+        val value = prop.getter.call(instance)
+        val path = if (parentPath.isEmpty()) prop.name else "$parentPath.${prop.name}"
+
+        (if (parentPath.isEmpty()) fieldWithPath(path) else subsectionWithPath(path)).description(
+            (value as? DescriptiveEnum)?.let {
+                DescriptiveEnum.replaceDescription(description, it::class)
+            } ?: description
+        ).let { fd ->
+            if (optional || prop.returnType.isMarkedNullable) fd.optional() else fd
+        }.type(determineJsonFieldTypeByValue(value)).let { fd ->
+            listOf(fd) +
+                    (value as? List<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
+                    (value as? Array<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
+                    (value as? Map<*, *>)?.values?.filterNotNull()?.flatMap {
+                        buildDescriptors(it, "$path.*")
+                    }.orEmpty() +
+                    (value as? Set<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
+                    (value.takeIf {
+                        it != null &&
                             (it::class.isExistAnnotation<SwaggerDescribable>() || it::class.isExistAnnotation<Schema>())
-                }?.let {
-                    buildDescriptors(it, path)
-                }.orEmpty())
+                    }?.let { buildDescriptors(it, path) }.orEmpty())
+        }
     }
 }
 
@@ -172,6 +201,9 @@ inline fun <reified A : Annotation> KAnnotatedElement.getAnnotation(): A? {
     }
     return null
 }
+
+inline fun <reified A : Annotation> AnnotatedElement.getAnnotation(): A? =
+    this.getAnnotation(A::class.java)
 
 inline fun <reified A : Annotation> KAnnotatedElement.isExistAnnotation(): Boolean =
     this.getAnnotation<A>() != null
