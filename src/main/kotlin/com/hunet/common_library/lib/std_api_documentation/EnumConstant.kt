@@ -1,5 +1,13 @@
 package com.hunet.common_library.lib.std_api_documentation
 
+import com.fasterxml.jackson.core.JsonGenerator
+import com.fasterxml.jackson.core.JsonParser
+import com.fasterxml.jackson.core.JsonToken
+import com.fasterxml.jackson.databind.*
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize
+import com.fasterxml.jackson.databind.annotation.JsonSerialize
+import com.fasterxml.jackson.databind.deser.ContextualDeserializer
+import com.fasterxml.jackson.databind.exc.InvalidFormatException
 import jakarta.annotation.PostConstruct
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider
@@ -107,6 +115,53 @@ fun <T : Annotation> collectConstantsAsClass(clazz: Class<T>, basePackage: Strin
 @Retention(AnnotationRetention.RUNTIME)
 annotation class EnumConstant
 
+class DescriptiveEnumSerializer : JsonSerializer<DescriptiveEnum>() {
+    override fun serialize(value: DescriptiveEnum, gen: JsonGenerator, serializers: SerializerProvider) {
+        gen.writeString(value.value) // ← name이 아니라 value로 출력
+    }
+}
+
+class DescriptiveEnumDeserializer(private val targetType: JavaType? = null)
+    : JsonDeserializer<Any>(), ContextualDeserializer {
+    private fun defaultEnum(raw: Class<*>): Any? {
+        runCatching {
+            return raw.getMethod("fromValue", String::class.java).invoke(null, "")
+        }
+
+        return raw.enumConstants?.firstOrNull { (it as DescriptiveEnum).value.isEmpty() }
+    }
+
+    override fun createContextual(ctxt: DeserializationContext, property: BeanProperty?): JsonDeserializer<*> =
+        DescriptiveEnumDeserializer(property?.type ?: ctxt.contextualType)
+
+    override fun deserialize(p: JsonParser, ctxt: DeserializationContext): Any {
+        val text: String? = if (p.currentToken == JsonToken.VALUE_NULL) null else p.valueAsString
+        val javaType = targetType ?: ctxt.contextualType
+            ?: throw InvalidFormatException(p, "대상 enum 타입 결정 불가.", text, Any::class.java)
+        val raw = javaType.rawClass
+        if (!raw.isEnum) throw InvalidFormatException(p, "대상 ${raw.name}: enum 타입 아님.", text, raw)
+
+        if (text.isNullOrBlank()) defaultEnum(raw)?.let { return it }
+
+        runCatching {
+            val m = raw.getMethod("fromValue", String::class.java)
+            return m.invoke(null, text)
+        }
+
+        return raw.enumConstants?.firstOrNull {
+            (it as DescriptiveEnum).value.equals(text, ignoreCase = true) ||
+                    (it as Enum<*>).name.equals(text, ignoreCase = true)
+        } ?: throw InvalidFormatException(p, "유효하지 않은 ${raw.simpleName} 값: '$text'", text, raw)
+    }
+
+    override fun getNullValue(ctxt: DeserializationContext): Any? =
+        (targetType ?: ctxt.contextualType)?.rawClass?.let { defaultEnum(it) }
+
+    override fun getAbsentValue(ctxt: DeserializationContext): Any? = getNullValue(ctxt)
+}
+
+@JsonSerialize(using = DescriptiveEnumSerializer::class)
+@JsonDeserialize(using = DescriptiveEnumDeserializer::class)
 interface DescriptiveEnum {
     val value: String
     val description: String
