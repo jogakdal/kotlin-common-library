@@ -1,21 +1,36 @@
 package com.hunet.common_library.lib.standard_api_response
 
+import com.fasterxml.jackson.databind.DeserializationFeature
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
+import com.fasterxml.jackson.module.kotlin.KotlinModule
+import com.fasterxml.jackson.module.kotlin.readValue
 import io.swagger.v3.oas.annotations.media.Schema
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.decodeFromJsonElement
 import org.springframework.data.domain.Page
 
 interface BasePayload {
     companion object {
         inline fun <reified P : BasePayload> JsonObject.deserializePayload(): P =
-            this["payload"]?.let {
-                JsonConfig.json.decodeFromJsonElement<P>(it)
+            this["payload"]?.let { elem ->
+                Jackson.json.readValue<P>(elem.toString())
             } ?: throw Exception("Payload is null")
     }
 }
 
+@PublishedApi
+internal object Jackson {
+    val json: ObjectMapper = ObjectMapper()
+        .registerModule(KotlinModule.Builder().build())
+        .registerModule(JavaTimeModule())
+        .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+        .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+}
+
+@Serializable
 open class BasePayloadImpl : BasePayload
 
 @Schema
@@ -44,15 +59,11 @@ open class ErrorPayload(
     )
 
     fun addError(code: String, message: String) {
-        errors.toMutableList().apply {
-            add(ErrorDetail(code = code, message = message))
-        }
+        errors.add(ErrorDetail(code = code, message = message))
     }
 
     fun addAppendix(key: String, value: @Contextual Any) {
-        appendix?.toMutableMap()?.apply {
-            this[key] = value
-        }
+        appendix[key] = value
     }
 }
 
