@@ -24,8 +24,8 @@ enum class StandardStatus(
     override val describable: Boolean = true
 ) : DescriptiveEnum {
     NONE("", "없음"),
-    SUCCESS("success", "성공"),
-    FAILURE("failure", "실패");
+    SUCCESS("SUCCESS", "성공"),
+    FAILURE("FAILURE", "실패");
     companion object {
         const val DESCRIPTION = "표준 응답 상태($DESCRIPTION_MARKER)"
 

@@ -93,7 +93,7 @@ publishing {
             from(components["java"])
             groupId = "com.hunet.common_library"
             artifactId = "kotlin-common-lib"
-            version = "0.0.3-SNAPSHOT"
+            version = "0.0.4-SNAPSHOT"
         }
     }
     repositories {
