@@ -325,7 +325,8 @@ data class StandardResponse<T : BasePayload> (
             payload: T? = null,
             callback: (() -> StandardCallbackResult)? = null,
             status: StandardStatus = StandardStatus.SUCCESS,
-            version: String = "1.0"
+            version: String = "1.0",
+            duration: Long? = null
         ): StandardResponse<T> = run {
             val startTime = Instant.now()
             val callbackResult =
@@ -338,7 +339,7 @@ data class StandardResponse<T : BasePayload> (
                 status = callbackResult.status ?: status,
                 version = callbackResult.version ?: version,
                 datetime = endTime,
-                duration = Duration.between(startTime, endTime).toMillis(),
+                duration = duration ?: Duration.between(startTime, endTime).toMillis(),
                 payload = callbackResult.payload as T
             )
         }
