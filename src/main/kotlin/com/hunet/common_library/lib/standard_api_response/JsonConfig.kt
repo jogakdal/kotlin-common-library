@@ -47,7 +47,7 @@ object InstantSerializer : KSerializer<Instant> {
 }
 
 object AnyValueSerializer : JsonContentPolymorphicSerializer<Any>(Any::class) {
-    override fun selectDeserializer(element: JsonElement): DeserializationStrategy<out Any> =
+    override fun selectDeserializer(element: JsonElement): DeserializationStrategy<Any> =
         when {
             element is JsonPrimitive && element.isString -> String.serializer()
             element is JsonPrimitive && element.booleanOrNull != null -> Boolean.serializer()
