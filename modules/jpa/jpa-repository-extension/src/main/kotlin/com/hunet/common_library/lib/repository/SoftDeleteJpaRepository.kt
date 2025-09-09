@@ -305,7 +305,7 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
                     prop.isExistAnnotation<CreatedDate>() -> {}
                     prop.isExistAnnotation<LastModifiedDate>() -> { prop.setter.call(existing, LocalDateTime.now()) }
                     else -> {
-                        val newValue = prop.getter.call(entity);
+                        val newValue = prop.getter.call(entity)
                         if (newValue != null) prop.setter.call(existing, newValue)
                     }
                 }
@@ -361,7 +361,8 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
         entities.forEachIndexed { idx, entity ->
             result += upsert(entity)
             if (idx > 0 && idx % flushInterval == 0) {
-                entityManager.flush(); entityManager.clear()
+                entityManager.flush()
+                entityManager.clear()
             }
         }
         return result
@@ -389,7 +390,10 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
                     DeleteMarkValue.NOT_NULL -> curr != null
                     else -> curr == info.deleteMarkValue
                 }
-                if (isDeleted) { entityManager.persist(entity); return entity }
+                if (isDeleted) {
+                    entityManager.persist(entity)
+                    return entity
+                }
             }
             existing?.let { return copyAndMerge(entity, it) }
         }
@@ -407,7 +411,8 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
     @Transactional
     override fun updateByField(fieldName: String, fieldValue: Any, copyFunc: (E) -> Unit): List<E> =
         findAllByField(fieldName, fieldValue).content.map { entity ->
-            applyUpdateEntity(entity, copyFunc); entityManager.merge(entity)
+            applyUpdateEntity(entity, copyFunc)
+            entityManager.merge(entity)
         }
 
     @Transactional
@@ -663,7 +668,10 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
         return block()
     }
 
-    override fun refresh(entity: E): E { entityManager.refresh(entity); return entity }
+    override fun refresh(entity: E): E {
+        entityManager.refresh(entity)
+        return entity
+    }
 }
 
 @Configuration
