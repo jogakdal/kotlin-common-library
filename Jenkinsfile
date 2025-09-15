@@ -8,6 +8,9 @@ def RUN_TESTS = (env.RUN_TESTS ?: 'false').toBoolean() // 필요시 true 로 설
 
 pipeline {
   agent any
+  environment {
+    GRADLE_USER_HOME = "${WORKSPACE}/.gradle-home"
+  }
   stages {
     stage('validation') {
       steps { script {
@@ -27,10 +30,12 @@ pipeline {
     stage('prepare') {
       steps {
         dir('kotlin-common-lib') { script {
-          // 선택적 캐시 삭제 (Gradle 변형 캐시 문제 대응)
           if (CLEAR_CACHE) {
-            sh 'rm -rf ~/.gradle/caches/*/transforms ~/.gradle/caches/modules-2 ~/.gradle/caches/jars-* || true'
+            echo "[INFO] CLEAR_CACHE enabled. Removing ${env.WORKSPACE}/.gradle-home and buildSrc/build"
+            sh 'rm -rf ../.gradle-home buildSrc/build || true'
           }
+          // Ensure gradle home exists
+          sh 'mkdir -p ../.gradle-home'
         }}
       }
     }
@@ -41,7 +46,8 @@ pipeline {
           credentialsId: 'NEXUS_CRED',
           usernameVariable: 'nexusId',
           passwordVariable: 'nexusPassword') ]) {
-          withDockerContainer(args: '-u root:root', image: BUILD_DOCKER_IMAGE) {
+          // 기본 gradle 이미지 사용자(gradle) 유지 -> /home/gradle 권한 이슈 회피
+          withDockerContainer(image: BUILD_DOCKER_IMAGE) {
             dir('kotlin-common-lib') { script {
               def runTestsFlag = RUN_TESTS ? 'true' : 'false'
               def profileValue = (env.PROFILE && env.PROFILE.trim()) ? env.PROFILE.trim() : 'default'
@@ -56,14 +62,28 @@ chmod +x gradlew
 echo '[INFO] Gradle Wrapper Version:'
 ./gradlew --no-daemon --version
 
-echo '[INFO] Build buildSrc first (clean)'
-./gradlew --no-daemon --no-configuration-cache --no-build-cache --refresh-dependencies :buildSrc:clean :buildSrc:build
+ls -al .. | sed 's/^/[WS]/'
 
-echo '[INFO] Verify plugin class presence'
-if ! jar tf buildSrc/build/libs/buildSrc-*.jar | grep -q 'ConventionPublishingPlugin.class'; then
-  echo '[ERROR] Plugin class missing in buildSrc JAR'
-  exit 1
+echo '[INFO] Effective GRADLE_USER_HOME:'
+python3 - <<'PY'
+import os
+print('[INFO] GRADLE_USER_HOME=', os.environ.get('GRADLE_USER_HOME'))
+PY
+
+echo '[INFO] Build buildSrc first (clean)'
+./gradlew --no-daemon --no-configuration-cache --refresh-dependencies :buildSrc:clean :buildSrc:build
+
+BUILD_SRC_JAR=$(ls buildSrc/build/libs/buildSrc-*.jar | tail -n1)
+echo "[INFO] buildSrc jar: $BUILD_SRC_JAR"
+
+if ! jar tf "$BUILD_SRC_JAR" | grep -q 'com/hunet/commonlibrary/build/ConventionPublishingPlugin.class'; then
+  echo '[ERROR] Plugin class not found inside buildSrc jar (expected com/hunet/commonlibrary/build/ConventionPublishingPlugin.class)'
+  jar tf "$BUILD_SRC_JAR" | sed 's/^/[JAR]/'
+  exit 2
 fi
+
+echo '[INFO] Descriptor content:'
+unzip -p "$BUILD_SRC_JAR" META-INF/gradle-plugins/com.hunet.common-library.convention.properties || true
 
 echo "[INFO] Start project build (tests=\${RUN_TESTS_FLAG})"
 if [[ "\${RUN_TESTS_FLAG}" == 'true' ]]; then

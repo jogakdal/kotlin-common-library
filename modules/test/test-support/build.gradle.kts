@@ -1,5 +1,5 @@
 plugins {
-    id("com.hunet.common-library.convention")
+    id("com.hunet.commonlib.convention")
 }
 
 // 퍼블리시 스킵 (컨벤션 플러그인 afterEvaluate 시점에서 읽음)

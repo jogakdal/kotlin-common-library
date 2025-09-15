@@ -1,5 +1,5 @@
 plugins {
-    id("com.hunet.common-library.convention")
+    id("com.hunet.commonlib.convention")
     kotlin("plugin.jpa")
     id("org.jetbrains.kotlin.plugin.spring")
 }
