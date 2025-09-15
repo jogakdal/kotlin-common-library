@@ -1,0 +1,90 @@
+language: 'ko-KR'
+early_access: false
+enable_free_tier: true
+
+reviews:
+  profile: 'chill'  # 리뷰 톤: 부드럽고 친절하게
+  request_changes_workflow: true  # 리뷰 종료 시 자동 승인
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches: ['feature/*', 'release/*', 'dev' , 'qa', '!main']
+
+  path_instructions:
+    - path: "**/*.kt"
+      instructions: |
+        아래 기준에 따라 Kotlin 및 Spring Boot 코드를 리뷰해주세요.
+
+        **프로젝트 구조 및 모듈화:**
+        - Gradle 멀티모듈 구성 방식 (예: :core, :api, :domain, :batch 등)
+        - 패키지 네이밍 및 도메인 계층 분리 (controller/service/domain 등)
+        - 공통 모듈 및 의존성 공유 방식 검토
+
+        **Spring Boot Best Practices:**
+        - Controller, Service, Repository 역할 구분
+        - Configuration 클래스의 명확한 분리 및 빈 관리
+        - @Transactional 사용 위치와 readOnly 설정 여부
+        - Exception Handling: @ControllerAdvice 및 커스텀 예외 처리
+        - Logging 전략 (Slf4j, structured logging)
+
+        **Kotlin 문법 및 스타일:**
+        - `val`/`var` 사용 적절성
+        - nullable 처리 (`?.`, `?:`, `!!` 등) 주의
+        - data class 및 sealed class 활용
+        - extension function 및 DSL 문법 적절성
+        - object/class/interface/enum 정의 기준
+
+        **Persistence Layer (JPA/Hibernate):**
+        - Entity 간 연관 관계 및 cascade 설정
+        - FetchType 및 N+1 문제 예방
+        - Querydsl, JPQL, Native Query 활용 적절성
+        - Auditing 및 Soft Delete 구현 방식 검토
+
+        **API 및 인증/보안:**
+        - RESTful API 설계 준수 여부
+        - Spring Security 설정 및 역할 기반 접근 제어
+        - JWT/OAuth2 인증 구조
+        - 비밀번호 암호화 및 개인정보 보호
+
+        **Validation 및 예외 처리:**
+        - javax.validation 또는 jakarta.validation 사용 여부
+        - Global Exception Handling 일관성
+        - 요청 객체(DTO)에 대한 명확한 validation 적용 여부
+
+        **Test 코드 품질:**
+        - 단위 테스트, 통합 테스트 구분
+        - 테스트 커버리지 및 목 객체 사용
+        - Spring Boot Test 구성 적절성
+        - REST Docs 또는 Swagger 연동 여부
+
+        **코드 품질 및 유지보수성:**
+        - 함수 길이, SRP 원칙
+        - 적절한 추상화/모듈화
+        - 중복 제거 및 Kotlin idiom 활용
+        - 주석 및 문서화 기준
+        - Ktlint 또는 Detekt 규칙 준수 여부
+
+        **운영 및 배포 고려사항:**
+        - 환경변수 설정 (application-{profile}.yml)
+        - Docker, Kubernetes 설정 파일
+        - Gradle 빌드 최적화 및 의존성 관리
+        - 프로파일 설정 및 외부 연동 구성
+
+  path_filters:
+    - '!**/*.png'
+    - '!**/*.jpg'
+    - '!**/*.svg'
+    - '!**/*.md'
+    - '!**/*.lock'
+    - '!**/*.yml'
+    - '!**/*.yaml'
+    - '!**/build/**'
+    - '!**/out/**'
+
+chat:
+  auto_reply: true
