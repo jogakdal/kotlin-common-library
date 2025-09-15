@@ -1,10 +1,11 @@
-def BUILD_DOCKER_IMAGE = 'gradle:8.13.0-jdk21' // wrapper(8.13)와 동일 버전 이미지 (gradle wrapper 강제 사용 시 JDK만 맞춰도 무방)
+def BUILD_DOCKER_IMAGE = 'gradle:8.13.0-jdk21'
 
-def targetBranch = "${TARGET_BRANCH}" // 환경변수 기반 (필요시 parameters 로 전환 가능)
+def targetBranch = "${TARGET_BRANCH}"
 
-def CLEAR_CACHE = (env.CLEAR_CACHE ?: 'false').toBoolean()
+def CLEAR_CACHE = CLEAR_CACHE_BEFORE_BUILD ?: false
 
-def RUN_TESTS = (env.RUN_TESTS ?: 'false').toBoolean() // 필요시 true 로 설정
+def runTests = RUN_TEST_CODES ?: false
+echo "CLEAR_CACHE = ${CLEAR_CACHE}, runTests = ${runTests}"
 
 pipeline {
   agent any
@@ -67,7 +68,7 @@ fi
           passwordVariable: 'nexusPassword') ]) {
           withDockerContainer(image: BUILD_DOCKER_IMAGE) {
             dir('kotlin-common-lib') { script {
-              def runTestsFlag = RUN_TESTS ? 'true' : 'false'
+              def runTestsFlag = runTests ? 'true' : 'false'
               def profileValue = (env.PROFILE && env.PROFILE.trim()) ? env.PROFILE.trim() : 'default'
 
               withEnv([

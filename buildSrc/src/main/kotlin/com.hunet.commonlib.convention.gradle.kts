@@ -1,9 +1,10 @@
-import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.publish.PublishingExtension
+import org.gradle.api.publish.maven.MavenPublication
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 
 plugins {
+    java
     kotlin("jvm")
     id("maven-publish")
 }
@@ -23,20 +24,25 @@ fun resolveModuleVersion(): String {
 version = resolveModuleVersion()
 
 java {
-    toolchain { languageVersion.set(JavaLanguageVersion.of(21)) }
-    withSourcesJar(); withJavadocJar()
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    }
+    withSourcesJar()
+    withJavadocJar()
 }
 
-tasks.withType<KotlinCompile>().configureEach { compilerOptions.freeCompilerArgs.addAll("-Xjsr305=strict") }
+tasks.withType<KotlinCompile>().configureEach {
+    compilerOptions.freeCompilerArgs.addAll("-Xjsr305=strict")
+}
 
-tasks.withType<Test>().configureEach { useJUnitPlatform() }
+tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
+}
 
-val skipPublish: Boolean = run {
-    when (val raw = findProperty("publish.skip")) {
-        is Boolean -> raw
-        is String -> raw.toBooleanStrictOrNull() == true
-        else -> false
-    }
+val skipPublish: Boolean = when (val raw = findProperty("publish.skip")) {
+    is Boolean -> raw
+    is String -> raw.toBooleanStrictOrNull() == true
+    else -> false
 }
 
 afterEvaluate {
@@ -51,7 +57,8 @@ afterEvaluate {
                     version = project.version.toString()
                 }
             } else withType(MavenPublication::class.java).configureEach {
-                groupId = project.group.toString(); version = project.version.toString()
+                groupId = project.group.toString()
+                version = project.version.toString()
             }
         }
         if (repositories.none { it.name == "nexus" }) {
@@ -61,7 +68,9 @@ afterEvaluate {
                 repositories {
                     maven {
                         name = "nexus"
-                        url = uri(if (version.toString().endsWith("-SNAPSHOT")) snapshotUrl!! else releaseUrl!!)
+                        url = uri(
+                            if (version.toString().endsWith("-SNAPSHOT")) snapshotUrl else releaseUrl
+                        )
                         credentials {
                             username = (findProperty("nexus.id") as String?) ?: System.getenv("NEXUS_ID")
                             password = (findProperty("nexus.password") as String?) ?: System.getenv("NEXUS_PASSWORD")
@@ -72,4 +81,3 @@ afterEvaluate {
         }
     }
 }
-
