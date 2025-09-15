@@ -1,15 +1,9 @@
 plugins {
-    kotlin("jvm")
-    id("maven-publish")
+    id("com.hunet.common-library.convention")
 }
 
-group = "com.hunet.common_library"
-version = "1.0.0-SNAPSHOT"
-
-java {
-    toolchain { languageVersion = JavaLanguageVersion.of(21) }
-    withSourcesJar(); withJavadocJar()
-}
+// 퍼블리시 스킵 (컨벤션 플러그인 afterEvaluate 시점에서 읽음)
+extra["publish.skip"] = true
 
 repositories { mavenCentral() }
 
@@ -26,13 +20,4 @@ dependencies {
     implementation(project(":common-core"))
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("maven") {
-            from(components["java"])
-            groupId = project.group.toString()
-            artifactId = "test-support"
-            version = project.version.toString()
-        }
-    }
-}
+// 기존 group/version/java/publishing 제거 (Convention 처리)

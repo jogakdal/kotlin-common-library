@@ -1,17 +1,7 @@
 plugins {
-    kotlin("jvm")
+    id("com.hunet.common-library.convention")
     kotlin("plugin.serialization")
     id("org.jetbrains.kotlin.plugin.spring")
-    id("maven-publish")
-}
-
-group = "com.hunet.common_library"
-version = "1.0.0-SNAPSHOT"
-
-java {
-    toolchain { languageVersion = JavaLanguageVersion.of(21) }
-    withSourcesJar()
-    withJavadocJar()
 }
 
 repositories { mavenCentral() }
@@ -37,26 +27,3 @@ dependencies {
 }
 
 kotlin { compilerOptions { freeCompilerArgs.addAll("-Xjsr305=strict") } }
-
-publishing {
-    publications {
-        create<MavenPublication>("maven") {
-            from(components["java"])
-            groupId = project.group.toString()
-            artifactId = "standard-api-response"
-            version = project.version.toString()
-        }
-    }
-    repositories {
-        maven {
-            name = "nexus"
-            val releaseUrl = project.findProperty("repository.release.url") as String
-            val snapshotUrl = project.findProperty("repository.snapshot.url") as String
-            url = uri(if (version.toString().endsWith("-SNAPSHOT")) snapshotUrl else releaseUrl)
-            credentials {
-                username = (project.findProperty("nexus.id") as String?) ?: System.getenv("NEXUS_ID")
-                password = (project.findProperty("nexus.password") as String?) ?: System.getenv("NEXUS_PASSWORD")
-            }
-        }
-    }
-}
