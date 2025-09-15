@@ -27,6 +27,25 @@ pipeline {
       }
     }
 
+    stage('fix-perms') {
+      steps {
+        // 루트 컨테이너로 권한 정리 (workspace 소유자를 gradle 사용자로 변경)
+        withDockerContainer(image: BUILD_DOCKER_IMAGE, args: '-u root:root') {
+          dir('kotlin-common-lib') {
+            sh '''#!/usr/bin/env bash
+set -e
+echo '[INFO] Fix ownership to gradle:gradle'
+chown -R gradle:gradle . || true
+# 필요 시 이전 .gradle 제거 (루트 권한일 때만)
+if [ -d .gradle ]; then
+  rm -rf .gradle || true
+fi
+'''
+          }
+        }
+      }
+    }
+
     stage('prepare') {
       steps {
         dir('kotlin-common-lib') { script {
@@ -46,55 +65,50 @@ pipeline {
           credentialsId: 'NEXUS_CRED',
           usernameVariable: 'nexusId',
           passwordVariable: 'nexusPassword') ]) {
-          // 기본 gradle 이미지 사용자(gradle) 유지 -> /home/gradle 권한 이슈 회피
           withDockerContainer(image: BUILD_DOCKER_IMAGE) {
             dir('kotlin-common-lib') { script {
               def runTestsFlag = RUN_TESTS ? 'true' : 'false'
               def profileValue = (env.PROFILE && env.PROFILE.trim()) ? env.PROFILE.trim() : 'default'
-              sh """#!/usr/bin/env bash
-set -euo pipefail
 
-RUN_TESTS_FLAG='${runTestsFlag}'
-PROFILE_VALUE='${profileValue}'
+              withEnv([
+                "RUN_TESTS_FLAG=${runTestsFlag}",
+                "PROFILE_VALUE=${profileValue}",
+                "NEXUS_ID=${nexusId}",
+                "NEXUS_PASSWORD=${nexusPassword}",
+                "CLEAR_CACHE=${CLEAR_CACHE}" ]) {
+                sh '''#!/usr/bin/env bash
+set -euo pipefail
 
 chmod +x gradlew
 
-echo '[INFO] Gradle Wrapper Version:'
-./gradlew --no-daemon --version
-
-ls -al .. | sed 's/^/[WS]/'
-
-echo '[INFO] Effective GRADLE_USER_HOME:'
-python3 - <<'PY'
-import os
-print('[INFO] GRADLE_USER_HOME=', os.environ.get('GRADLE_USER_HOME'))
-PY
-
-echo '[INFO] Build buildSrc first (clean)'
-./gradlew --no-daemon --no-configuration-cache --refresh-dependencies :buildSrc:clean :buildSrc:build
-
-BUILD_SRC_JAR=$(ls buildSrc/build/libs/buildSrc-*.jar | tail -n1)
-echo "[INFO] buildSrc jar: $BUILD_SRC_JAR"
-
-if ! jar tf "$BUILD_SRC_JAR" | grep -q 'com/hunet/commonlibrary/build/ConventionPublishingPlugin.class'; then
-  echo '[ERROR] Plugin class not found inside buildSrc jar (expected com/hunet/commonlibrary/build/ConventionPublishingPlugin.class)'
-  jar tf "$BUILD_SRC_JAR" | sed 's/^/[JAR]/'
-  exit 2
+if [ "${CLEAR_CACHE}" = "true" ]; then
+  echo '[INFO] CLEAR_CACHE=true: removing project .gradle and GRADLE_USER_HOME'
+  rm -rf .gradle || true
+  rm -rf ../.gradle-home || true
 fi
 
-echo '[INFO] Descriptor content:'
-unzip -p "$BUILD_SRC_JAR" META-INF/gradle-plugins/com.hunet.common-library.convention.properties || true
+if [ -d .gradle ] && [ ! -w .gradle ]; then
+  echo '[WARN] .gradle not writable; attempting removal'
+  rm -rf .gradle || true
+fi
+mkdir -p .gradle
 
-echo "[INFO] Start project build (tests=\${RUN_TESTS_FLAG})"
-if [[ "\${RUN_TESTS_FLAG}" == 'true' ]]; then
-  ./gradlew --no-daemon clean build -Pnexus.id=${nexusId} -Pnexus.password=${nexusPassword} -Pprofile='${profileValue}'
+echo '[INFO] Gradle Wrapper Version:'
+./gradlew --no-daemon --version || true
+
+echo "[INFO] Effective GRADLE_USER_HOME=$GRADLE_USER_HOME"
+
+echo '[INFO] First build (no-parallel) to avoid buildSrc scheduling deadlock'
+if [ "$RUN_TESTS_FLAG" = 'true' ]; then
+  ./gradlew --no-daemon --no-parallel clean build -Pnexus.id=$NEXUS_ID -Pnexus.password=$NEXUS_PASSWORD -Pprofile=$PROFILE_VALUE
 else
-  ./gradlew --no-daemon clean build -x test -Pnexus.id=${nexusId} -Pnexus.password=${nexusPassword} -Pprofile='${profileValue}'
+  ./gradlew --no-daemon --no-parallel clean build -x test -Pnexus.id=$NEXUS_ID -Pnexus.password=$NEXUS_PASSWORD -Pprofile=$PROFILE_VALUE
 fi
 
 echo '[INFO] Publish to Nexus'
-./gradlew --no-daemon publish -Pnexus.id=${nexusId} -Pnexus.password=${nexusPassword} -Pprofile='${profileValue}'
-"""
+./gradlew --no-daemon --no-parallel publish -Pnexus.id=$NEXUS_ID -Pnexus.password=$NEXUS_PASSWORD -Pprofile=$PROFILE_VALUE
+'''
+              }
             }}
           }
         }
