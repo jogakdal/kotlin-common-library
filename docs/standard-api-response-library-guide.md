@@ -68,18 +68,43 @@
 - **Gradle (Kotlin DSL)**:
 ```groovy
 dependencies {
-    implementation("com.hunet.common_library:standard-api-response:<version>")
+    implementation("com.hunet.common_library:common-core:<version>") // 공통 코어 모듈
+    implementation("com.hunet.common_library:std-api-annotation:<version>") // @InjectDuration 등 어노테이션 모듈
+    implementation("com.hunet.common_library:standard-api-response:<version>") // 표준 응답 모듈
 }
 ```
 - **Maven**:
 ```xml
-<dependency>
-  <groupId>com.hunet.common_library</groupId>
-  <artifactId>standard-api-response</artifactId>
-  <version>버전</version>
-</dependency>
+<dependencies>
+    <!-- 공통 코어 모듈 -->
+    <dependency>
+        <groupId>com.hunet.common_library</groupId>
+        <artifactId>common-core</artifactId>
+        <version>버전</version>
+    </dependency>
+
+    <!-- @InjectDuration 등 어노테이션 모듈 -->
+    <dependency>
+        <groupId>com.hunet.common_library</groupId>
+        <artifactId>std-api-annotation</artifactId>
+        <version>버전</version>
+    </dependency>
+
+    <!-- 표준 응답 모듈 -->
+    <dependency>
+        <groupId>com.hunet.common_library</groupId>
+        <artifactId>standard-api-response</artifactId>
+        <version>버전</version>
+    </dependency>
+</dependencies>
 ```
 - 사내 Nexus 등 프라이빗 저장소를 사용할 경우, `settings.xml` 또는 Gradle `repositories` 블록에 해당 Maven 저장소 주소를 추가해야 합니다.
+- 2025년 9월 25일 기준 최신 버전은 다음과 같습니다.
+```plaintext
+  common-core: 1.0.1-SNAPSHOT
+  std-api-annotation: 1.0.0-SNAPSHOT
+  standard-api-response: 1.1.0-SNAPSHOT
+```
 
 ---
 ## **기본 사용법 – StandardResponse 빌드**

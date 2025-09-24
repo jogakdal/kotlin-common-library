@@ -29,6 +29,10 @@ Kotlin/Java 공통 로거 래퍼.
 ### 기타 유틸리티
 
 ---
+
+## standard-api-annotation
+이 라이브러리에서 정의한 어노테이션 모음
+
 ## standard-api-response
 REST API 표준 응답 포맷 직렬화/역직렬화 및 키 변환 지원 라이브러리
 - [사용자 가이드](./docs/standard-api-response-library-guide.md)
@@ -38,7 +42,9 @@ REST API 표준 응답 포맷 직렬화/역직렬화 및 키 변환 지원 라�
 ### 의존성 (예: Gradle Kotlin DSL)
 ```kotlin
 dependencies {
-    implementation("com.hunet.common_library:standard-api-response:<version>-SNAPSHOT")
+    implementation("com.hunet.common_library:common-core:<version>") // 공통 코어 모듈
+    implementation("com.hunet.common_library:std-api-annotation:<version>") // @InjectDuration 등 어노테이션 모듈
+    implementation("com.hunet.common_library:standard-api-response:<version>") // 표준 응답 모듈
 }
 ```
 ---
