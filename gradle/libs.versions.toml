@@ -6,7 +6,7 @@ kotlinxDatetime = "0.6.0"
 springRestdocs = "3.0.3"
 epagesRestdocs = "0.19.4"
 jackson = "2.18.2"
-swaggerAnnotations = "2.2.22"
+swaggerAnnotations = "2.2.30"
 jakartaAnnotation = "2.1.1"
 jakartaPersistence = "3.1.0"
 slf4j = "2.0.17"
@@ -31,7 +31,7 @@ epagesRestdocsApiSpecMockmvc = { module = "com.epages:restdocs-api-spec-mockmvc"
 jacksonModuleKotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin", version.ref = "jackson" }
 jacksonDatatypeJsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310", version.ref = "jackson" }
 # Swagger
-swaggerAnnotations = { module = "io.swagger.core.v3:swagger-annotations", version.ref = "swaggerAnnotations" }
+swaggerAnnotations = { module = "io.swagger.core.v3:swagger-annotations-jakarta", version.ref = "swaggerAnnotations" }
 # Jakarta
 jakartaAnnotationApi = { module = "jakarta.annotation:jakarta.annotation-api", version.ref = "jakartaAnnotation" }
 jakartaPersistenceApi = { module = "jakarta.persistence:jakarta.persistence-api", version.ref = "jakartaPersistence" }
