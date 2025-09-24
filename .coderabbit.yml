@@ -13,7 +13,7 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
-    base_branches: ['refactoring/*', 'feature/*', 'release/*', 'dev' , 'qa', '!main']
+    base_branches: ['refactoring/*', 'feature/*', 'release/*', 'dev' , 'qa', '!main', 'master']
 
   path_instructions:
     - path: "**/*.kt"
