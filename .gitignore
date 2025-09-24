@@ -13,5 +13,6 @@
 *.log
 *.class
 /out/
+/temp/
 
 .local-temp
