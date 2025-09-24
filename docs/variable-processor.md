@@ -9,7 +9,7 @@
 - 파라미터 전달: vararg Pair<String, Any?> 또는 Map<String, Any?> (Map 오버로드) 지원
 - 캐싱: Delimiters 별 Regex 캐시 (ConcurrentHashMap)
 
-## Options (안정화됨)
+## Options
 `VariableProcessor.Options` 로 모든 동작 제어:
 
 | 필드 | 기본             | 설명                                      |

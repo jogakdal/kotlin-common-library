@@ -10,7 +10,6 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.restdocs.AutoConfigureRestDocs
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.context.annotation.Import
 import org.springframework.restdocs.RestDocumentationExtension
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.junit.jupiter.SpringExtension
@@ -21,14 +20,13 @@ import com.hunet.common_library.support.DataFeed
 
 @ActiveProfiles("local")
 @SpringBootTest
-@Import(DataFeed::class)
 @ExtendWith(RestDocumentationExtension::class, SpringExtension::class)
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 @AutoConfigureMockMvc(addFilters = true)
 @AutoConfigureRestDocs
 abstract class AbstractControllerTest {
     @Autowired lateinit var mockMvc: MockMvc
-    @Autowired lateinit var dataFeed: DataFeed
+    @Autowired(required = false) var dataFeed: DataFeed? = null
 
     val objectMapper = jacksonObjectMapper().enable(SerializationFeature.INDENT_OUTPUT)
     val prettyPrinter = objectMapper.writerWithDefaultPrettyPrinter()

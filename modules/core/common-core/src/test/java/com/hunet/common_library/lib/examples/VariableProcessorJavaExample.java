@@ -7,7 +7,8 @@ import com.hunet.common_library.lib.VariableResolverRegistry;
 import java.util.List;
 import java.util.Map;
 
-/** Java Quick Start 예제 (컴파일 검증용) */
+// snippet:vp-java-quickstart:start
+/** Java Quick Start 예제 */
 public class VariableProcessorJavaExample {
 
     public static void main(String[] args) {
@@ -55,3 +56,4 @@ public class VariableProcessorJavaExample {
         System.out.println(out3); // Hi=Hello, Hwang Yongho
     }
 }
+// snippet:vp-java-quickstart:end

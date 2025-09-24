@@ -24,38 +24,68 @@ subprojects {
     tasks.withType<Test>().configureEach { useJUnitPlatform() }
 }
 
-// --- Snippet Sync (내부 common-core 예제 기반) ---
+// --- Snippet Sync (VariableProcessor 예제 기반) ---
 val snippetSource = file("modules/core/common-core/src/test/kotlin/com/hunet/common_library/lib/examples/VariableProcessorQuickStartExample.kt")
+val javaSnippetSource = file("modules/core/common-core/src/test/java/com/hunet/common_library/lib/examples/VariableProcessorJavaExample.java")
 val rootReadme = file("README.md")
 val coreReadme = file("modules/core/common-core/README.md")
+val variableProcessExampleFile = file("docs/variable-processor-examples.md")
 
 val syncSnippets by tasks.registering {
     group = "documentation"
     description = "root & common-core README 스니펫 동기화"
-    inputs.file(snippetSource)
-    outputs.files(rootReadme, coreReadme)
+    inputs.files(snippetSource, javaSnippetSource)
+    outputs.files(variableProcessExampleFile)
     doLast {
-        val text = snippetSource.readText()
-        val snippetRegex = Regex("// snippet:vp-quickstart:start(.*?)// snippet:vp-quickstart:end", RegexOption.DOT_MATCHES_ALL)
-        val match = snippetRegex.find(text) ?: error("스니펫 범위를 찾을 수 없습니다 (vp-quickstart)")
-        val raw = match.groupValues[1].trimStart('\n','\r')
-        val codeBlock = raw.trim().lines().joinToString("\n")
-        val replacement = buildString {
-            append("<!-- snippet:vp-quickstart:start -->\n")
+        // --- Kotlin snippet (vp-kotlin-quickstart) ---
+        val kText = snippetSource.readText()
+        val kRegex = Regex("// snippet:vp-kotlin-quickstart:start(.*?)// snippet:vp-kotlin-quickstart:end", RegexOption.DOT_MATCHES_ALL)
+        val kMatch = kRegex.find(kText) ?: error("스니펫 범위를 찾을 수 없습니다 (vp-kotlin-quickstart)")
+        val kRaw = kMatch.groupValues[1].trimStart('\n','\r')
+        val kCodeBlock = kRaw.trim().lines().joinToString("\n")
+        val kReplacement = buildString {
+            append("<!-- snippet:vp-kotlin-quickstart:start -->\n")
             append("```kotlin\n")
-            append(codeBlock)
+            append(kCodeBlock)
             append("\n```\n")
-            append("<!-- snippet:vp-quickstart:end -->")
+            append("<!-- snippet:vp-kotlin-quickstart:end -->")
         }
-        val pattern = Regex("<!-- snippet:vp-quickstart:start -->(.*?)<!-- snippet:vp-quickstart:end -->", RegexOption.DOT_MATCHES_ALL)
-        listOf(rootReadme, coreReadme).forEach { f ->
-            val original = f.readText()
-            val updated = pattern.replace(original) { replacement }
-            if (original != updated) {
-                f.writeText(updated)
-                println("[syncSnippets] updated ${'$'}{f.path}")
-            } else println("[syncSnippets] no changes for ${'$'}{f.path}")
+        val kPattern = Regex("<!-- snippet:vp-kotlin-quickstart:start -->(.*?)<!-- snippet:vp-kotlin-quickstart:end -->", RegexOption.DOT_MATCHES_ALL)
+
+        // --- Java snippet (vp-java-quickstart) ---
+        val jText = javaSnippetSource.readText()
+        val jRegex = Regex("// snippet:vp-java-quickstart:start(.*?)// snippet:vp-java-quickstart:end", RegexOption.DOT_MATCHES_ALL)
+        val jMatch = jRegex.find(jText) ?: error("스니펫 범위를 찾을 수 없습니다 (vp-java-quickstart)")
+        val jRaw = jMatch.groupValues[1].trimStart('\n','\r')
+        val jCodeBlock = jRaw.trim().lines().joinToString("\n")
+        val jReplacement = buildString {
+            append("<!-- snippet:vp-java-quickstart:start -->\n")
+            append("```java\n")
+            append(jCodeBlock)
+            append("\n```\n")
+            append("<!-- snippet:vp-java-quickstart:end -->")
         }
+        val jPattern = Regex("<!-- snippet:vp-java-quickstart:start -->(.*?)<!-- snippet:vp-java-quickstart:end -->", RegexOption.DOT_MATCHES_ALL)
+
+        // --- Upsert into docs file ---
+        var doc = variableProcessExampleFile.readText()
+
+        // Kotlin block: replace if exists, otherwise append with a heading
+        val docAfterK = kPattern.replace(doc) { kReplacement }
+        doc = if (docAfterK == doc) {
+            doc + "\n\n### Kotlin Quick Start\n" + kReplacement + "\n"
+        } else docAfterK
+
+        // Java block: replace if exists, otherwise append with a heading
+        val docAfterJ = jPattern.replace(doc) { jReplacement }
+        val finalDoc = if (docAfterJ == doc) {
+            doc + "\n\n### Java Quick Start\n" + jReplacement + "\n"
+        } else docAfterJ
+
+        if (variableProcessExampleFile.readText() != finalDoc) {
+            variableProcessExampleFile.writeText(finalDoc)
+            println("[syncSnippets] updated ${variableProcessExampleFile.path}")
+        } else println("[syncSnippets] no changes for ${variableProcessExampleFile.path}")
     }
 }
 
