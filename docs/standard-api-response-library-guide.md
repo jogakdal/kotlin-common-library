@@ -305,9 +305,9 @@ val pageResp = StandardResponse.deserialize<PageListPayload<MyItemPayload>>(
 )
 assertTrue(pageResp.payload.pageable.items.list.isNotEmpty())
 ```
-위에서는 응답 JSON을 `StandardResponse<PageListPayload<MyItemPayload>>` 형태로 파싱하여, `payload.pageable.items.list`에 DTO들이 담겨 있음을 확인했습니다.
+위에서는 응답 JSON을 `StandardResponse<PageListPayload<MyItemPayload>>` 형태로 파싱하여, `payload.pageable.items.list`에 DTO들이 담겨 있음을 확인할 수 있습니다.
 
-**Incremental (커서 기반) 응답**도 마찬가지로 역직렬화 가능하며, 특히 Kotlin에서는 제네릭 타입까지 포함하여 파싱할 수 있습니다:
+**Incremental (커서 기반) 응답**도 마찬가지로 역직렬화가 가능하며, 특히 Kotlin에서는 제네릭 타입까지 포함하여 파싱할 수 있습니다:
 ```kotlin
 @Test
 fun incremental_deserialize() {
@@ -334,7 +334,7 @@ fun incremental_deserialize() {
     assertTrue(resp.payload.cursor?.expandable == true)
 }
 ```
-위 Kotlin 테스트에서는 `IncrementalList<LogEntryPayload, Long>` 타입으로 JSON을 파싱하여, 커서 정보와 리스트 아이템(`LogEntryPayload`)들을 제대로 매핑하는지 검증했습니다. (expandable == true인 것도 확인)
+위 Kotlin 테스트에서는 `IncrementalList<LogEntryPayload, Long>` 타입으로 JSON을 파싱하여, 커서 정보와 리스트 아이템(`LogEntryPayload`)들을 제대로 매핑하는지 검증합니다. (expandable == true인 것도 확인)
 
 Java에서는 제네릭 타입 인자를 runtime에 직접 전달하기 어렵기 때문에, `StandardResponse.deserialize(json, IncrementalList.class)`처럼 raw 타입으로 파싱해야 합니다.<br>
 이 경우 payload의 내부 리스트 타입 정보가 소실되므로, 아이템 접근 시 캐스팅이나 별도 처리 과정이 필요합니다 (예를 들어 Jackson의 JsonNode로 한번 더 파싱하거나, `StandardResponse<YourPayload>` 형태로 받도록 설계를 달리해야 합니다):
@@ -463,7 +463,7 @@ standard-api-response:
 
 ---
 ## **Alias 및 Canonical 역직렬화 (다양한 입력 키 매핑)**
-표준 API Response 라이브러리는 **다양한 형태의 입력 JSON 키를 단일 객체 프로퍼티에 매핑**할 수 있는 강력한 역직렬화 기능을 제공합니다. 즉, 클라이언트가 ₩snake_case₩, ₩camelCase₩, ₩kebab-case₩ 등 어떤 형태로 키를 보내와도, 미리 정의된 하나의 프로퍼티로 안정적으로 매핑될 수 있습니다. 또한 여러 별칭(alias)을 지정해도 대소문자나 구분자 차이를 무시하고 매핑합니다.
+표준 API Response 라이브러리는 **다양한 형태의 입력 JSON 키를 단일 객체 프로퍼티에 매핑**할 수 있는 강력한 역직렬화 기능을 제공합니다. 즉, 클라이언트가 `snake_case`, `camelCase`, `kebab-case` 등 어떤 형태로 키를 보내와도, 미리 정의된 하나의 프로퍼티로 안정적으로 매핑될 수 있습니다. 또한 여러 별칭(alias)을 지정해도 대소문자나 구분자 차이를 무시하고 매핑합니다.
 
 ### **Alias 선언 및 매핑 규칙**
 우선 DTO 클래스에 **Jackson의 `@JsonProperty`와 `@JsonAlias`** 를 활용하여 키의 여러 형태를 선언해둘 수 있습니다:
