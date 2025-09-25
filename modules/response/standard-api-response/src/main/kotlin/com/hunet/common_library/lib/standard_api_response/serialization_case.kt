@@ -45,10 +45,6 @@ private fun splitTokens(original: String): List<String> =
         .map { it.value.lowercase() }
         .toList()
 
-//    val cleaned = original.replace('-', ' ').replace('_', ' ')
-//    val regex = Regex("[A-Z]+(?=[A-Z][a-z0-9])|[A-Z]?[a-z0-9]+|[A-Z]+|[0-9]+")
-//    return Regex("[A-Z]+(?=[A-Z][a-z0-9])|[A-Z]?[a-z0-9]+|[A-Z]+|[0-9]+").findAll(original.replace('-', ' ').replace('_', ' ')).map { it.value.lowercase() }.toList()
-
 private fun convertKey(key: String, case: CaseConvention): String =
     CaseKeyCache.get(case, key) {
         when (case) {
