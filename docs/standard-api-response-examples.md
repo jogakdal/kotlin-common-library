@@ -25,18 +25,30 @@
 
 ---
 ## 0. 공통 준비
-Gradle(Kotlin DSL)
-```kotlin
-dependencies { implementation("com.hunet.common_library:standard-api-response:<version>") }
+### Gradle(Kotlin DSL)
+```groovy
+dependencies {
+    implementation("com.hunet.common_library:common-core:<version>") // 공통 코어 모듈
+    implementation("com.hunet.common_library:std-api-annotation:<version>") // @InjectDuration 등 어노테이션 모듈
+    implementation("com.hunet.common_library:standard-api-response:<version>") // 표준 응답 모듈
+}
 ```
-(Java 프로젝트도 동일한 좌표 사용)
+(Java 프로젝트도 동일)
 
-application.yml (선택: duration 자동 주입)
+
+### application.yml (선택)
+duration 자동 주입:
 ```yaml
 standard-api-response:
   auto-duration-calculation:
     active: true
 ```
+Serialize 시 기본 CaseConvention 설정: 
+```yaml
+standard-api-response:
+  default-case-convention: SNAKE_CASE
+```
+설정이 없으면 DTO 필드명(의 케이스 컨벤션)을 그대로 사용.
 
 ---
 ## 1. 리스트가 없는 기본 페이로드
@@ -703,7 +715,7 @@ val input = """
   "payload":{
     "USER-ID":10,
     "FIRST-NAME":"용호",
-    "email-address":"x@y.com"
+    "email-address":"jogakdal@gmail.com"
   }
 }
 """.trimIndent()
