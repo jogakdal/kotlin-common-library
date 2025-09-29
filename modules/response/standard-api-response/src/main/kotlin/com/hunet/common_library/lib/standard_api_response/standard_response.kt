@@ -86,7 +86,7 @@ class OrderInfo(
     )
 }
 
-@SwaggerDescribable
+@Schema
 @Serializable
 class PageInfo(
     @SwaggerDescription(description = "페이지 사이즈")
@@ -110,7 +110,7 @@ class PageInfo(
     }
 }
 
-@SwaggerDescribable
+@Schema
 @Serializable
 data class Items<T>(
     @SwaggerDescription(description = "총 아이템 수")

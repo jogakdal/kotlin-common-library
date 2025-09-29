@@ -4,13 +4,13 @@
 > 본 문서는 스펙/가이드에 정의된 규칙을 실제 코드 형태로 빠르게 찾아 붙여 넣을 수 있도록 하는 '카탈로그' 역할을 합니다.
 >
 > ### 관련 문서 (Cross References)
-> | 문서                                                                               | 목적 / 차이점 |
-> |----------------------------------------------------------------------------------|----------|
-> | [standard-api-response-library-guide.md](standard-api-response-library-guide.md) | 라이브러리 **사용자 가이드**: spec 을 준수하여 응답 생성/역직렬화 하는 헬퍼 API 설명. |
+> | 문서                                                                               | 목적 / 차이점                                                       |
+> |----------------------------------------------------------------------------------|----------------------------------------------------------------|
+> | [standard-api-response-library-guide.md](standard-api-response-library-guide.md) | 라이브러리 **사용자 가이드**: spec 을 준수하여 응답 생성/역직렬화 하는 헬퍼 API 설명.        |
 > | [standard-api-specification.md](standard-api-specification.md)                   | 표준 API 규격: request 규칙, response의 필드 정의, 상태/에러 규칙, 리스트 처리 방식 정의 |
-> | [README.md](../README.md)                                                        | 루트 개요 & 지원 CaseConvention 요약 표. |
+> | [standard-api-response-reference.md](standard-api-response-reference.md) | 레퍼런스 가이드: 모듈에 대한 상세 설명 제공                                      |
 >
-> 아래 예제들은 세(spec) 준수 상태를 가정하며, 불일치 시 spec 문서를 우선합니다.
+> 아래 예제들은 명세(spec) 준수 상태를 가정하며, 불일치 시 spec 문서를 우선합니다.
 
 이 문서는 `standard-api-response` 라이브러리에 대한 활용 가능한 예제를 제공합니다.
 
@@ -29,7 +29,7 @@
 ```groovy
 dependencies {
     implementation("com.hunet.common_library:common-core:<version>") // 공통 코어 모듈
-    implementation("com.hunet.common_library:std-api-annotation:<version>") // @InjectDuration 등 어노테이션 모듈
+    implementation("com.hunet.common_library:std-api-annotations:<version>") // @InjectDuration 등 어노테이션 모듈 
     implementation("com.hunet.common_library:standard-api-response:<version>") // 표준 응답 모듈
 }
 ```
@@ -37,18 +37,21 @@ dependencies {
 
 
 ### application.yml (선택)
-duration 자동 주입:
+Duration 자동 주입:
 ```yaml
 standard-api-response:
   auto-duration-calculation:
     active: true
 ```
-Serialize 시 기본 CaseConvention 설정: 
+Serialize 시 기본 CaseConvention 설정:
 ```yaml
 standard-api-response:
-  default-case-convention: SNAKE_CASE
+  case:
+    default: SNAKE_CASE
 ```
-설정이 없으면 DTO 필드명(의 케이스 컨벤션)을 그대로 사용.
+추가로 케이스 오버라이드 관련 전체 옵션 예시는 가이드 문서 참고.
+
+설정이 없으면 DTO 필드명(원본 케이스)을 그대로 사용.
 
 ---
 ## 1. 리스트가 없는 기본 페이로드
@@ -704,8 +707,8 @@ val overrideJson = StandardResponse.build(
 ### 8.1 단일 Payload 예
 ```kotlin
 data class AliasUser(
-  @JsonProperty("user_id") @JsonAlias("USER-ID","UserId") val userId: Long,
-  @JsonProperty("first_name") @JsonAlias("FIRST-NAME","firstName") val firstName: String,
+  @JsonProperty("user_id") @JsonAlias("USER-ID", "UserId") val userId: Long,
+  @JsonProperty("first_name") @JsonAlias("FIRST-NAME", "firstName") val firstName: String,
   val emailAddress: String
 ): BasePayload
 
@@ -740,8 +743,8 @@ wrapper.payload.items["a"]!!.childName // "황용호"
 ### 8.3 List<Map<String, Payload>> (복합)
 ```kotlin
 data class NestedChild(
-  @JsonProperty("child_id") @JsonAlias("CHILD-ID","childId") val childId: Long,
-  @JsonProperty("label_text") @JsonAlias("label-text","labelText") val label: String
+  @JsonProperty("child_id") @JsonAlias("CHILD-ID", "childId") val childId: Long,
+  @JsonProperty("label_text") @JsonAlias("label-text", "labelText") val label: String
 ) : BasePayload
 
 data class Complex(@JsonProperty("entries") val entries: List<Map<String, NestedChild>>): BasePayload
@@ -812,7 +815,7 @@ val out = parsed.toJson() // kebab-case 출력, api_key 그대로 유지
 
 ---
 ## 12. Callback 빌더 확장 예제
-> 성능 측정, 동적 status/version, 예외 매핑 등을 한 번에 처리할 수 있는 실전 패턴 모음입니다. (가이드 문서 13.x 심화 예와 중복 최소화, 복사-붙여넣기 용)
+> 성능 측정, 동적 status/version, 예외 매핑 등을 한 번에 처리할 수 있는 실전 패턴 모음입니다.
 
 ### 12.1 Kotlin 패턴
 #### (1) 기본 측정 + 동적 status
@@ -867,9 +870,9 @@ fun batch(items: List<String>): StandardResponse<ErrorPayload> = StandardRespons
   val ep = ErrorPayload("OK","모두 성공")
   items.forEach { v ->
     runCatching { insert(v) }.onFailure {
-      if (ep.errors.isEmpty()) { 
-        ep.code = "PART_FAIL" 
-        ep.message = "일부 실패" 
+      if (ep.errors.isEmpty()) {
+        ep.code = "PART_FAIL"
+        ep.message = "일부 실패"
       }
       ep.addError("ROW_FAIL", it.message ?: v)
     }
@@ -943,5 +946,3 @@ public StandardResponse<ErrorPayload> batch(List<String> rows) {
   });
 }
 ```
-
-> 핵심: 측정하고 싶은 연산은 모두 callback 람다 내부에 배치. 외부에서 선 호출하면 duration 범위 제외.

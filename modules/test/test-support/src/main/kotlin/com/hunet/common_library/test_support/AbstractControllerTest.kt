@@ -17,6 +17,9 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers
 import com.hunet.common_library.support.DataFeed
+import org.springframework.util.LinkedMultiValueMap
+import org.springframework.util.MultiValueMap
+import kotlin.reflect.full.memberProperties
 
 @ActiveProfiles("local")
 @SpringBootTest
@@ -49,7 +52,19 @@ abstract class AbstractControllerTest {
         println(prettyPrinter.writeValueAsString(objectMapper.readTree(json)))
     }
 
-    fun dtoToParam(value: Any) = objectMapper.writeValueAsString(value)
+    open fun dtoToParam(value: Any) = objectMapper.writeValueAsString(value)
+    open fun dtoToQueryParams(obj: Any): MultiValueMap<String, String> {
+        val map = LinkedMultiValueMap<String, String>()
+        obj::class.memberProperties.forEach { p ->
+            val v = p.getter.call(obj) ?: return@forEach
+            when (v) {
+                is Iterable<*> -> v.filterNotNull().forEach { map.add(p.name, it.toString()) }
+                is Array<*> -> v.filterNotNull().forEach { map.add(p.name, it.toString()) }
+                else -> map.add(p.name, v.toString())
+            }
+        }
+        return map
+    }
 
     val ResultActions.respJson: String
         get() = this.andReturn().response.contentAsString
