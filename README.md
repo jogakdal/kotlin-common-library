@@ -33,6 +33,7 @@ Kotlin/Java 공통 로거 래퍼.
 ## standard-api-annotation
 이 라이브러리에서 정의한 어노테이션 모음
 
+---
 ## standard-api-response
 REST API 표준 응답 포맷 직렬화/역직렬화 및 키 변환 지원 라이브러리
 - [사용자 가이드](./docs/standard-api-response-library-guide.md)
