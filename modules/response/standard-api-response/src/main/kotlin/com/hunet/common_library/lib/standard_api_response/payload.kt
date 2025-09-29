@@ -1,33 +1,77 @@
 package com.hunet.common_library.lib.standard_api_response
 
 import com.fasterxml.jackson.databind.DeserializationFeature
+import com.fasterxml.jackson.databind.MapperFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.readValue
+import com.hunet.common_library.lib.standard_api_response.KeyNormalizationUtil.canonical
 import io.swagger.v3.oas.annotations.media.Schema
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 import org.springframework.data.domain.Page
+import kotlin.reflect.KClass
 
 interface BasePayload {
     companion object {
+        @PublishedApi
+        internal fun applyAliasesRecursively(json: JsonElement, root: KClass<*>): JsonElement {
+            val global = collectGlobalAliasMaps(root)
+            val serializationMap = global.serializationMap
+
+            val canonicalToFinal = mutableMapOf<String, String>()
+            fun mapKey(original: String) = canonicalToFinal[original.canonical()] ?: original
+
+            fun recurse(elem: JsonElement): JsonElement = when (elem) {
+                is JsonObject -> buildJsonObject {
+                    elem.forEach { (k,v) -> put(mapKey(k), recurse(v)) }
+                }
+                is JsonArray -> JsonArray(elem.map { recurse(it) })
+                else -> elem
+            }
+
+            global.canonicalAliasToProp.forEach { (canon, prop) ->
+                val finalKey = serializationMap[prop] ?: prop
+                canonicalToFinal.putIfAbsent(canon, finalKey)
+            }
+
+            serializationMap.values.forEach { alias ->
+                canonicalToFinal.putIfAbsent(alias.canonical(), alias)
+            }
+
+            return recurse(json)
+        }
+
         inline fun <reified P : BasePayload> JsonObject.deserializePayload(): P =
-            this["payload"]?.let { elem ->
-                Jackson.json.readValue<P>(elem.toString())
+            this.getByCanonicalKey("payload")?.let { elem ->
+                Jackson.json.readValue<P>(applyAliasesRecursively(elem, P::class).toString())
+            } ?: throw Exception("Payload is null")
+
+        @JvmStatic
+        fun <P : BasePayload> deserializePayload(jsonObject: JsonObject, type: Class<P>): P =
+            jsonObject.getByCanonicalKey("payload")?.let { elem ->
+                Jackson.json.readValue(applyAliasesRecursively(elem, type.kotlin).toString(), type)
             } ?: throw Exception("Payload is null")
     }
 }
 
 @PublishedApi
 internal object Jackson {
-    val json: ObjectMapper = ObjectMapper()
-        .registerModule(KotlinModule.Builder().build())
-        .registerModule(JavaTimeModule())
+    val json: ObjectMapper = JsonMapper.builder()
+        .addModule(KotlinModule.Builder().build())
+        .addModule(JavaTimeModule())
         .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
         .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+        .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES)
+        .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
+        .build()
 }
 
 @Serializable

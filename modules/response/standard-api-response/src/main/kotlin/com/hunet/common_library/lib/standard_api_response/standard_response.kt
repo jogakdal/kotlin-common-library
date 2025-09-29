@@ -7,6 +7,7 @@ import com.hunet.common_library.lib.std_api_documentation.DescriptiveEnum.Compan
 import io.swagger.v3.oas.annotations.media.Schema
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -16,6 +17,9 @@ import org.springframework.data.domain.Sort
 import java.time.Duration
 import java.time.Instant
 import kotlin.math.min
+import java.util.function.Function
+import java.util.function.Supplier
+import java.util.function.BiFunction
 
 @EnumConstant
 enum class StandardStatus(
@@ -29,6 +33,7 @@ enum class StandardStatus(
     companion object {
         const val DESCRIPTION = "표준 응답 상태($DESCRIPTION_MARKER)"
 
+        @JvmStatic
         fun fromString(text: String): StandardStatus =
             entries.firstOrNull { it.value.equals(text, ignoreCase = true) } ?: SUCCESS
         fun toDescription() = entries.joinToString(", ") { it.toDescription() }
@@ -41,12 +46,13 @@ enum class OrderDirection(
     override val description: String,
     override val describable: Boolean = true
 ) : DescriptiveEnum {
-    ASC("asc", "내림차순"),
-    DESC("desc", "오름차순");
+    ASC("asc", "오름차순"),
+    DESC("desc", "내림차순");
 
     companion object {
         const val DESCRIPTION = "정렬 방향($DESCRIPTION_MARKER)"
 
+        @JvmStatic
         fun fromString(text: String): OrderDirection =
             entries.firstOrNull { it.value.equals(text, ignoreCase = true) } ?: ASC
         fun toDescription() = entries.joinToString(", ") { it.toDescription() }
@@ -171,6 +177,17 @@ open class PageableList<T>(
                 items = page.content.map(mapper)
             )
         )
+
+        @JvmStatic
+        fun <P : BasePayload, E> fromPageJava(page: Page<E>, mapper: Function<E, P>): PageableList<P> =
+            PageableList(
+                page = PageInfo(page),
+                order = OrderInfo(page.sort),
+                items = Items.build(
+                    totalItems = page.totalElements,
+                    items = page.content.map { mapper.apply(it) }
+                )
+            )
     }
 
     @JsonIgnore
@@ -224,6 +241,32 @@ class CursorInfo<P>(
                 expandable = safeStart + safeHowMany < totalItems
             )
         }
+
+        @JvmStatic
+        fun <P> buildFromTotalGeneric(
+            startIndex: Long,
+            howMany: Long,
+            totalItems: Long,
+            field: String,
+            convertIndex: ((String, Long) -> P?)? = null
+        ): CursorInfo<P> {
+            val safeStart = if (startIndex >= 0) startIndex else 0L
+            val safeHowMany = if (howMany >= 1) howMany else 1L
+            return if (totalItems <= 0L || safeStart >= totalItems) CursorInfo(
+                field = field,
+                start = convertIndex?.invoke(field, totalItems),
+                end = convertIndex?.invoke(field, totalItems),
+                expandable = false
+            ) else CursorInfo(
+                field = field,
+                start = convertIndex?.invoke(field, safeStart),
+                end = convertIndex?.invoke(
+                    field,
+                    safeStart + (min(safeHowMany, totalItems - safeStart).takeIf { it > 0 }?.minus(1) ?: 0L)
+                ),
+                expandable = safeStart + safeHowMany < totalItems
+            )
+        }
     }
 }
 
@@ -236,6 +279,7 @@ class CursorInfo<P>(
 class IncrementalList<T, P>(
     @Schema(description = "커서 정보")
     val cursor: CursorInfo<P>? = null,
+
     @Schema(description = "정렬 정보")
     val order: OrderInfo? = null,
 
@@ -281,6 +325,27 @@ class IncrementalList<T, P>(
             order = orderInfo,
             items = Items.build(totalItems, items)
         )
+
+        @JvmStatic
+        fun <T, P> buildFromTotalJava(
+            items: List<T>,
+            startIndex: Long,
+            howMany: Long,
+            totalItems: Long,
+            cursorField: String,
+            orderInfo: OrderInfo?,
+            convertIndex: BiFunction<String, Long, P>?
+        ): IncrementalList<T, P> = IncrementalList(
+            cursor = CursorInfo.buildFromTotalGeneric(
+                startIndex = startIndex,
+                howMany = howMany,
+                totalItems = totalItems,
+                field = cursorField,
+                convertIndex = if (convertIndex != null) { f, idx -> convertIndex.apply(f, idx) } else null
+            ),
+            order = orderInfo,
+            items = Items.build(totalItems, items)
+        )
     }
 
     @JsonIgnore
@@ -320,6 +385,9 @@ data class StandardResponse<T : BasePayload> (
     inline fun <reified T: BasePayload> getRealPayload(): T? = payload as? T
 
     companion object {
+        @PublishedApi
+        internal fun JsonObject.getCanonical(key: String) = getByCanonicalKey(key)
+
         // callback 함수는 payload, status, version 정보를 StandardCallbackResult 객체로 묶어서 반환해야 한다.
         @Suppress("UNCHECKED_CAST")
         fun <T : BasePayload> build(
@@ -345,19 +413,51 @@ data class StandardResponse<T : BasePayload> (
             )
         }
 
+        @JvmStatic
+        fun <T: BasePayload> build(payload: T) =
+            build(payload = payload, callback = null, status = StandardStatus.SUCCESS, version = "1.0", duration = null)
+
+        @JvmStatic
+        fun <T: BasePayload> build(payload: T, status: StandardStatus, version: String) =
+            build(payload = payload, callback = null, status = status, version = version, duration = null)
+
+        @JvmStatic
+        fun <T: BasePayload> build(payload: T, status: StandardStatus, version: String, duration: Long?) =
+            build(payload = payload, callback = null, status = status, version = version, duration = duration)
+
+        @JvmStatic
+        fun <T: BasePayload> buildWithCallback(callback: Supplier<StandardCallbackResult>) =
+            build(
+                payload = null,
+                callback = { callback.get() },
+                status = StandardStatus.SUCCESS,
+                version = "1.0",
+                duration = null
+            )
+
+        @JvmStatic
+        fun <T: BasePayload> buildWithCallback(
+            callback: Supplier<StandardCallbackResult>,
+            status: StandardStatus,
+            version: String,
+            duration: Long?
+        ) = build(
+            payload = null, callback = { callback.get() }, status = status, version = version, duration = duration
+        )
+
         inline fun <reified T: BasePayload> deserialize(jsonString: String): StandardResponse<T> = try {
             JsonConfig.json.parseToJsonElement(jsonString).jsonObject.let { json ->
                 StandardResponse(
-                    status = json.get("status")?.jsonPrimitive?.content?.let {
+                    status = json.getCanonical("status")?.jsonPrimitive?.content?.let {
                         StandardStatus.fromString(it)
                     } ?: StandardStatus.SUCCESS,
-                    version = json["version"]?.jsonPrimitive?.content ?: "1.0",
-                    datetime = when (val dt = json["datetime"]) {
+                    version = json.getCanonical("version")?.jsonPrimitive?.content ?: "1.0",
+                    datetime = when (val dt = json.getCanonical("datetime")) {
                         null -> Instant.now()
                         is JsonPrimitive -> if (dt.isString) Instant.parse(dt.content) else Instant.now()
                         else -> Instant.now()
                     },
-                    duration = json["duration"]?.jsonPrimitive?.long ?: 0L,
+                    duration = json.getCanonical("duration")?.jsonPrimitive?.long ?: 0L,
                     payload = json.deserializePayload() as T
                 )
             }
@@ -367,7 +467,45 @@ data class StandardResponse<T : BasePayload> (
                 version = "1.0",
                 datetime = Instant.now(),
                 duration = 0L,
-                payload = BasePayloadImpl() as T
+                payload = ErrorPayload(
+                    code = "E_DESERIALIZE_FAIL",
+                    message = e.message ?: "Deserialization failed"
+                ) as T
+            )
+        }
+
+        @JvmStatic
+        fun <T: BasePayload> deserialize(jsonString: String, payloadClass: Class<T>): StandardResponse<T> = try {
+            val json = JsonConfig.json.parseToJsonElement(jsonString).jsonObject
+            val status = json.getCanonical("status")?.jsonPrimitive?.content?.let {
+                StandardStatus.fromString(it)
+            } ?: StandardStatus.SUCCESS
+            val version = json.getCanonical("version")?.jsonPrimitive?.content ?: "1.0"
+            val datetime = when (val dt = json.getCanonical("datetime")) {
+                null -> Instant.now()
+                is JsonPrimitive -> if (dt.isString) Instant.parse(dt.content) else Instant.now()
+                else -> Instant.now()
+            }
+            val duration = json.getCanonical("duration")?.jsonPrimitive?.long ?: 0L
+            val payload = deserializePayload(json, payloadClass)
+            StandardResponse(
+                status = status,
+                version = version,
+                datetime = datetime,
+                duration = duration,
+                payload = payload
+            )
+        } catch (e: Exception) {
+            @Suppress("UNCHECKED_CAST")
+            StandardResponse(
+                status = StandardStatus.FAILURE,
+                version = "1.0",
+                datetime = Instant.now(),
+                duration = 0L,
+                payload = ErrorPayload(
+                    code = "E_DESERIALIZE_FAIL",
+                    message = e.message ?: "Deserialization failed"
+                ) as T
             )
         }
     }

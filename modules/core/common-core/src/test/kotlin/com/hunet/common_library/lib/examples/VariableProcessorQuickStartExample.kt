@@ -3,8 +3,8 @@ package com.hunet.common_library.lib.examples
 import com.hunet.common_library.lib.VariableProcessor
 import com.hunet.common_library.lib.VariableResolverRegistry
 
-// snippet:vp-quickstart:start
-/** VariableProcessor Quick Start 예제 (모듈 내부) */
+// snippet:vp-kotlin-quickstart:start
+/** VariableProcessor Quick Start 예제 */
 class BasicVariableRegistry : VariableResolverRegistry {
     override val resolvers = mapOf(
         "appName" to { _: List<Any?> -> "MyService" },
@@ -53,4 +53,4 @@ fun main() {
     )
     println(r3) // Hi=Hello, Hwang Yongho
 }
-// snippet:vp-quickstart:end
+// snippet:vp-kotlin-quickstart:end
