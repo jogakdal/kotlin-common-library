@@ -4,6 +4,7 @@ import com.epages.restdocs.apispec.MockMvcRestDocumentationWrapper
 import com.epages.restdocs.apispec.ParameterDescriptorWithType
 import com.epages.restdocs.apispec.ResourceDocumentation
 import com.epages.restdocs.apispec.ResourceSnippetParameters
+import com.epages.restdocs.apispec.SimpleType
 import io.swagger.v3.oas.annotations.media.Schema
 import org.springframework.restdocs.mockmvc.RestDocumentationResultHandler
 import org.springframework.restdocs.operation.preprocess.Preprocessors
@@ -66,6 +67,7 @@ fun buildDocument(
     pathParameters: List<ParameterDescriptorWithType> = emptyList(),
     queryParameters: List<ParameterDescriptorWithType> = emptyList(),
     formParameters: List<ParameterDescriptorWithType> = emptyList(),
+    queryObject: Any? = null,
     requestObject: Any? = null,
     responseObject: Any? = null
 ): RestDocumentationResultHandler = MockMvcRestDocumentationWrapper.document(
@@ -78,7 +80,24 @@ fun buildDocument(
             summary(summary)
             description(description)
             if (pathParameters.isNotEmpty()) pathParameters(*pathParameters.toTypedArray())
-            if (queryParameters.isNotEmpty()) queryParameters(*queryParameters.toTypedArray())
+            run {
+                val inferred: List<ParameterDescriptorWithType> =
+                    queryObject?.let {
+                        buildDescriptors(it, "").map { fd ->
+                            ParameterDescriptorWithType(fd.path).type(jsonTypeToParamType(fd.type)).also { d ->
+                                val desc: String? = try {
+                                    val m = fd::class.java.methods.firstOrNull {
+                                        it.name == "getDescription" && it.parameterCount == 0
+                                    }
+                                    (m?.invoke(fd) as? String)
+                                } catch (_: Exception) { null }
+                                if (!desc.isNullOrBlank()) d.description(desc)
+                            }
+                        }
+                    } ?: emptyList()
+                val merged = (queryParameters + inferred)
+                if (merged.isNotEmpty()) queryParameters(*merged.toTypedArray())
+            }
             if (formParameters.isNotEmpty()) formParameters(*formParameters.toTypedArray())
             if (requestObject != null) requestFields(
                 buildDescriptors(requestObject, "").mapIndexed { idx, fd ->
@@ -206,3 +225,12 @@ inline fun <reified A : Annotation> AnnotatedElement.getAnnotation(): A? =
 
 inline fun <reified A : Annotation> KAnnotatedElement.isExistAnnotation(): Boolean =
     this.getAnnotation<A>() != null
+
+private fun jsonTypeToParamType(type: Any?): SimpleType = when (type) {
+    is JsonFieldType -> when (type) {
+        JsonFieldType.NUMBER -> SimpleType.NUMBER
+        JsonFieldType.BOOLEAN -> SimpleType.BOOLEAN
+        else -> SimpleType.STRING
+    }
+    else -> SimpleType.STRING
+}

@@ -25,7 +25,9 @@ class DescriptiveEnumDeserializer(
     private val targetType: JavaType? = null
 ) : JsonDeserializer<Any>(), ContextualDeserializer {
     private fun defaultEnum(raw: Class<*>): Any? {
-        runCatching { return raw.getMethod("fromValue", String::class.java).invoke(null, "") }
+        runCatching {
+            return raw.getMethod("fromValue", String::class.java).invoke(null, "")
+        }
         return raw.enumConstants?.firstOrNull { (it as DescriptiveEnum).value.isEmpty() }
     }
 
@@ -34,7 +36,7 @@ class DescriptiveEnumDeserializer(
         val target: JavaType? = when {
             t == null -> null
             EnumSet::class.java.isAssignableFrom(t.rawClass) ->
-                t.contentType ?: property?.type?.contentType ?: ctxt.contextualType?.contentType
+                t.contentType?:property?.type?.contentType?:ctxt.contextualType?.contentType
             t.isArrayType -> t.contentType
             t.isCollectionLikeType -> t.contentType
             t.isMapLikeType -> t.contentType

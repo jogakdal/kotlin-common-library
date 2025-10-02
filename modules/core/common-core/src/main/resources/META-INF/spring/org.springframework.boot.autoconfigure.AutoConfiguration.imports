@@ -1,0 +1,2 @@
+# META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports
+com.hunet.common_library.autoconfigure.CommonCoreAutoConfiguration

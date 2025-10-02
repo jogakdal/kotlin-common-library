@@ -13,4 +13,11 @@ dependencies {
     implementation(commonLibs.swaggerAnnotations)
     implementation(commonLibs.jakartaAnnotationApi)
     implementation(commonLibs.springContext)
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
+
+    testImplementation(kotlin("test"))
+    testImplementation("org.springframework:spring-test")
+    testImplementation(commonLibs.springBootStarterTest)
+    testImplementation("org.mockito:mockito-core:5.14.1")
+    testImplementation(project(":test-support"))
 }
