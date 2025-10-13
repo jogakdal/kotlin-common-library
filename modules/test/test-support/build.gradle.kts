@@ -18,6 +18,8 @@ dependencies {
     implementation(commonLibs.epagesRestdocsApiSpecMockmvc)
     implementation(commonLibs.jacksonModuleKotlin)
     implementation(project(":common-core"))
+    // 테스트 전용 임베디드 DB
+    testImplementation("com.h2database:h2:2.2.224")
 }
 
 // 기존 group/version/java/publishing 제거 (Convention 처리)

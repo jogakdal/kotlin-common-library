@@ -3,11 +3,12 @@
 > 본 문서는 `:standard-api-response` 모듈을 적용(사용)하는 서비스/애플리케이션 **개발자** 관점에서의 활용 방법을 설명합니다.
 >
 > ### 관련 문서 (Cross References)
-> | 문서 | 목적 / 차이점 |
-> |----|----------|
-> | [standard-api-specification.md](standard-api-specification.md) | 표준 API 규격: request 규칙, response의 필드 정의, 상태/에러 규칙, 리스트 처리 방식 정의 |
-> | [standard-api-response-examples.md](standard-api-response-examples.md) | 다양한 실전 예시 모음: 케이스 변환, 페이지/커서, Alias/Canonical, @NoCaseTransform 예. |
-> | [README.md](../README.md) | 루트 개요 및 지원 CaseConvention 요약 표. |
+> | 문서                                                                               | 목적 / 차이점                                                           |
+> |----------------------------------------------------------------------------------|--------------------------------------------------------------------|
+> | [standard-api-specification.md](standard-api-specification.md)                   | 표준 API 규격: request 규칙, response의 필드 정의, 상태/에러 규칙, 리스트 처리 방식 정의     |
+> | [standard-api-response-reference.md](standard-api-response-reference.md) | 레퍼런스 가이드. 모듈에 대한 상세 설명 제공 |
+> | [standard-api-response-examples.md](standard-api-response-examples.md)           | 다양한 실전 예시 모음: 케이스 변환, 페이지/커서, Alias/Canonical, @NoCaseTransform 예. |
+> | [README.md](../README.md)                                                        | 루트 개요 및 지원 CaseConvention 요약 표.                                    |
 >
 > 참고: 아래 내용은 실무 활용 가이드이며, 구현상의 세부 사항이나 필수 준수 규격은 standard-api-specification 문서를 우선하여 따릅니다.
 
@@ -69,7 +70,7 @@
 ```groovy
 dependencies {
     implementation("com.hunet.common_library:common-core:<version>") // 공통 코어 모듈
-    implementation("com.hunet.common_library:std-api-annotation:<version>") // @InjectDuration 등 어노테이션 모듈
+    implementation("com.hunet.common_library:std-api-annotations:<version>") // @InjectDuration 등 어노테이션 모듈
     implementation("com.hunet.common_library:standard-api-response:<version>") // 표준 응답 모듈
 }
 ```
@@ -86,7 +87,7 @@ dependencies {
     <!-- @InjectDuration 등 어노테이션 모듈 -->
     <dependency>
         <groupId>com.hunet.common_library</groupId>
-        <artifactId>std-api-annotation</artifactId>
+        <artifactId>std-api-annotations</artifactId> 
         <version>버전</version>
     </dependency>
 
@@ -99,10 +100,10 @@ dependencies {
 </dependencies>
 ```
 - 사내 Nexus 등 프라이빗 저장소를 사용할 경우, `settings.xml` 또는 Gradle `repositories` 블록에 해당 Maven 저장소 주소를 추가해야 합니다.
-- 2025년 9월 25일 기준 최신 버전은 다음과 같습니다.
+- 2025년 10월 1일 기준 최신 버전은 다음과 같습니다.
 ```plaintext
-  common-core: 1.0.1-SNAPSHOT
-  std-api-annotation: 1.0.0-SNAPSHOT
+  common-core: 1.0.3-SNAPSHOT
+  std-api-annotations: 1.0.1-SNAPSHOT
   standard-api-response: 1.1.0-SNAPSHOT
 ```
 
@@ -172,6 +173,8 @@ data class ApiResult(
 ): BasePayload
 ```
 - 컨트롤러에서 `ApiResult`를 반환하면, 응답 직전에 라이브러리가 `duration` 값을 계산하여 해당 필드에 자동으로 채워줍니다. 개발자는 수동으로 시간을 계산하지 않아도 되므로 편리합니다.
+
+> 주의: 빌더에서 명시적으로 duration 값을 지정한 경우(파라미터 전달) 해당 값이 유지되지만, 필터/Advice 흐름에서 @InjectDuration 이 붙은 mutable 필드가 있다면 실제 요청 경과시간으로 덮어써질 수 있습니다. 부분 구간 측정이 필요하면 별도 필드를 두고 직접 측정 값을 세팅하세요.
 
 ---
 ## **오류 응답 처리 패턴**
@@ -428,14 +431,14 @@ val json2 = StandardResponse.build(UserPayload(1, "용호", "jogakdal@gmail.com"
 - 케이스 변환 **우선순위**: `toJson(case=...)` **메서드 인자 지정** > DTO 클래스의 `@ResponseCase` 어노테이션 > 글로벌 기본값 (IDENTITY 기본 설정).<br>(즉, 코드에서 명시적으로 case를 지정하면 그 값이 최우선으로 적용되고, 없으면 DTO에 개별 설정이 있나 확인, 그래도 없으면 전역 설정값을 따릅니다.)
 - 케이스 컨벤션으로 설정 가능한 값(`enum CaseConvention`):
 
-| **값** | **설명** | **변환 예시 (**userId **필드)** |
-| --- | --- | --- |
-| IDENTITY | 변경 없이 그대로 | userId (원본 유지) |
-| SNAKE_CASE | 소문자 스네이크 | user_id |
-| SCREAMING_SNAKE_CASE | 대문자 스네이크 | USER_ID |
-| KEBAB_CASE | 케밥(case) | user-id |
+| **값** | **설명** | **변환 예시** (userId필드)     |
+| --- | --- |--------------------------|
+| IDENTITY | 변경 없이 그대로 | userId (원본 유지)           |
+| SNAKE_CASE | 소문자 스네이크 | user_id                  |
+| SCREAMING_SNAKE_CASE | 대문자 스네이크 | USER_ID                  |
+| KEBAB_CASE | 케밥(case) | user-id                  |
 | CAMEL_CASE | lowerCamel (기본) | userId (이미 camel이면 변화 없음) |
-| PASCAL_CASE | UpperCamel | UserId |
+| PASCAL_CASE | UpperCamel | UserId                   |
 - 이외에 약어(Acronym) 및 숫자 처리 규칙으로, 연속된 대문자는 하나의 토큰으로 인식하거나 대소문자 경계를 구분합니다. 예를 들어 `APIURLVersion2`라는 필드는 snake로 변환 시 `api_url_version2` 처럼 `API`를 한 단어로 보고 구분하며, 숫자 `2`는 토큰으로 유지합니다.
 - **특정 필드 변환 제외**: 만약 일부 필드는 케이스 변환의 영향을 받지 않도록 하고 싶다면, 그 필드에 `@NoCaseTransform` 어노테이션을 붙이면 됩니다. 이 어노테이션이 있는 필드는 alias 치환 및 underscore↔dash 교차 변환에서 **예외(skip)** 처리됩니다.
 
@@ -484,7 +487,7 @@ standard-api-response:
 ```
 위처럼 `enabled: false`로 설정하면 **케이스 변환 기능을 전역으로 끄는** 것이고, 비록 기본 케이스를 `SNAKE_CASE`로 적어 두었더라도 응답 키는 변환되지 않습니다. (활성화 여부가 최우선 조건)
 
-> 주의: `application.yml`의 케이스 설정은 **직렬화된 응답(JSON 출력)의 키 변환** 에만 영향을 주며, JSON **역직렬화(입력 처리)** 에는 영향을 미치지 않습니다. (역직렬화 alias 처리에 대해서는 아래를 참고하십시오.)
+> 주의: `application.yml`의 케이스 설정은 **직렬화된 응답(JSON 출력)의 키 변환** 에만 영향을 주며, JSON **역직렬화(입력 처리) 시에는 영향을 미치지 않습니다.** (역직렬화 alias 처리에 대해서는 아래를 참고하십시오.)
 
 ---
 ## **Alias 및 Canonical 역직렬화 (다양한 입력 키 매핑)**
@@ -499,6 +502,19 @@ data class AliasSample(
     @JsonProperty("surname") @JsonAlias("familyName", "lastName") val lastName: String,
     val emailAddress: String
 ): BasePayload
+
+// 사용 예시
+val json = """{
+  "user_id": 10,
+  "given_name": "용호",
+  "surname": "황",
+  "emailAddress": "jogakdal@gmail.com"
+}"""
+
+val resp = StandardResponse.deserialize<AliasSample>(json)
+println(resp.payload.userId)       // 10
+println(resp.payload.firstName)    // "용호"
+println(resp.payload.lastName)     // "황"
 ```
 
 위 `AliasSample` DTO를 보면:
@@ -512,7 +528,7 @@ data class AliasSample(
 
 ### **Canonical 키 계산 방식**
 
-내부적으로 입력 JSON의 키를 처리할 때는, 키 문자열에서 **영문자와 숫자만 추출해 소문자화한 문자열**을 *canonical form*으로 삼습니다.
+내부적으로 입력 JSON의 키를 처리할 때는, **영문자와 숫자만 추출해 소문자화한 문자열**을 *canonical form*으로 삼습니다.
 
 예를 들어:
 - `"First_Name"` -> 추출 => `"firstname"`
@@ -610,9 +626,9 @@ Alias/Canonical 매핑 기능을 사용할 때 발생할 수 있는 흔한 혼�
 서버에서는 이를 역직렬화하여 `StandardResponse<AliasSample>` 객체로 변환할 수 있습니다:
 ```kotlin
 val parsed = StandardResponse.deserialize<AliasSample>(jsonString)
-println(parsed.payload.userId)       // 출력: 10
-println(parsed.payload.firstName)    // 출력: "용호"
-println(parsed.payload.emailAddress) // 출력: "jogakdal@gmail.com"
+println(parsed.payload.userId)       // 10
+println(parsed.payload.firstName)    // "용호"
+println(parsed.payload.emailAddress) // "jogakdal@gmail.com"
 ```
 
 대문자 `USER-ID`, `FIRST-NAME`과 소문자 케밥 `email-address` 등의 입력 키는 모두 올바르게 `userId`, `firstName`, `emailAddress` 프로퍼티로 매핑됩니다.
@@ -636,16 +652,16 @@ println(outputJson)
 아래는 **직접 빌드**와 **콜백 빌드**의 간단한 코드 비교입니다:
 - **Kotlin:**
 ```kotlin
-val direct = StandardResponse.build(ErrorPayload("OK", "done"))
+val direct = StandardResponse.build(ErrorPayload("OK", "완료"))
 val viaCallback = StandardResponse.build<ErrorPayload>(payload = null) {
-    StandardCallbackResult(ErrorPayload("OK", "done"), StandardStatus.SUCCESS, "1.0")
+    StandardCallbackResult(ErrorPayload("OK", "완료"), StandardStatus.SUCCESS, "2.2")
 }
 ```
 - **Java:**
 ```java
 StandardResponse<ErrorPayload> via = StandardResponse.buildWithCallback(
-    () -> new StandardCallbackResult(new ErrorPayload("OK", "done", null),
-                                     StandardStatus.SUCCESS, "1.0")
+    () -> new StandardCallbackResult(new ErrorPayload("OK", "완료", null),
+                                     StandardStatus.SUCCESS, "2.2")
 );
 ```
 위 `viaCallback`/`via` 변수들은 **동일한 payload를 반환하지만**, 콜백을 사용함으로써 `duration` 필드에 build 호출부터 결과 생성까지 걸린 시간이 자동 측정되어 포함됩니다.
@@ -782,8 +798,7 @@ fun batchInsert(records: List<String>): StandardResponse<ErrorPayload> =
 #### (6) duration 직접 주입(수동 측정)
 대부분의 경우 콜백 빌더의 자동 측정을 활용하면 되지만, 필요에 따라 개발자가 직접 측정한 시간을 사용해 `duration`에 넣을 수도 있습니다.
 
-`StandardResponse.build()` 함수에 `duration` 인자를 직접 넘기면 내부 자동 측정값 대신 그 값을 사용합니다:
-
+`StandardResponse.build()` 호출 시 `duration` 파라미터에 직접 값을 넘기면, 내부 자동 측정값 대신 그 값이 사용됩니다:
 ```kotlin
 fun manualTimedResponse(): StandardResponse<ErrorPayload> {
     val t0 = System.nanoTime()
@@ -793,12 +808,11 @@ fun manualTimedResponse(): StandardResponse<ErrorPayload> {
         payload = null,
         duration = elapsed
     ) {
-        StandardCallbackResult(ErrorPayload("OK", "측정 외부 계산"), StandardStatus.SUCCESS, "1.0")
+        StandardCallbackResult(ErrorPayload("OK", "수동"), StandardStatus.SUCCESS, "1.0")
     }
 }
 ```
-
-이렇게 하면 manualTimedResponse() 결과의 duration 필드는 elapsed 변수로 계산한 값으로 채워지고, 라이브러리의 자동 측정치는 무시됩니다. (특정 구간만 측정하거나 커스텀 타이밍이 필요한 경우에 활용)
+이렇게 하면 `manualTimedResponse()` 결과의 `duration` 필드는 `elapsed` 변수로 계산한 값으로 채워지고, 라이브러리의 자동 측정치는 무시됩니다. (특정 구간만 측정하거나 커스텀 타이밍이 필요한 경우에 활용)
 
 ### **Java 고급 패턴 예시**
 Java 환경에서도 Kotlin과 유사한 패턴을 적용할 수 있습니다. Java는 람다 문법 제약 등으로 표현이 다소 장황할 수 있으나, 몇 가지 예시를 보면:
@@ -813,7 +827,7 @@ StandardResponse<ErrorPayload> overridden = StandardResponse.buildWithCallback(
     null                    // duration=null -> 자동 측정 사용
 );
 ```
-위 예에서 `buildWithCallback()` 함수의 두 번째 인자로 FAILURE를 주었지만, 콜백 내부에서 `SUCCESS`를 반환했으므로 최종 응답의 `status`는 `SUCCESS`가 됩니다. (초기값은 무시됨)<br>
+위 예에서 `buildWithCallback()` 함수의 두 번째 인자로 `FAILURE`를 주었지만, 콜백 내부에서 `SUCCESS`를 반환했으므로 최종 응답의 `status`는 `SUCCESS`가 됩니다. (초기값은 무시됨)<br>
 이처럼 Java에서도 콜백 내 반환이 우선시됩니다.
 <br><br>
 
@@ -1049,7 +1063,7 @@ fun ping(): StandardResponse<ErrorPayload> =
 - **Boolean 값**: 문자열 `"Y"`, `"N"` 또는 숫자 `0`, `1` 등으로 주고받던 불리언 값을 **JSON boolean** 타입인 `true`/`false`로 변경합니다.
 - **숫자 값**: 숫자를 따옴표로 감싼 `"100"`과 같은 형태로 주던 것을 **숫자 타입** `100`으로 바꿉니다. (JSON에서는 숫자 타입으로 넣으면 됩니다)
 - **빈 컬렉션**: 빈 리스트나 맵 등을 나타낼 때 `null` 대신 `[]` 혹은 `{}` 같은 빈 컬렉션 표기로 통일합니다. (`null` 남발을 줄이고 클라이언트 파싱 편의 향상)
-- **키 이름 케이스**: 서비스 정책에 따라 `snake_case`, `camelCase` 등을 결정하여, 표준 응답 생성 시 해당 컨벤션에 맞춰 일괄 변환합니다. (`@ResponseCase` 어노테이션 사용 또는 `toJson(case=...)` 파라미터 활용)
+- **키 이름 케이스**: 서비스 정책에 따라 `snake_case`, `camelCase` 등을 결정하여, 표준 응답 생성 시 해당 컨벤션에 맞춰 일괄 변환합니다. (예: `@ResponseCase` 어노테이션 사용 또는 `toJson(case=...)` 파라미터 활용)
   <br><br>
 
 ### **5) HTTP 상태 코드 매핑 권장**

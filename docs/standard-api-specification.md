@@ -1,11 +1,12 @@
 # Standard API 사양 (Specification)
 
 > ### 관련 문서 (Cross References)
-> | 문서                                                                               | 역할 / 초점 | 이 문서와의 관계 |
-> |----------------------------------------------------------------------------------|---------|------------------|
-> | [standard-api-response-library-guide.md](standard-api-response-library-guide.md) | 라이브러리 **사용자 가이드**: spec 을 준수하여 응답 생성/역직렬화 하는 헬퍼 API 설명. | spec 규칙을 실무 적용 형태로 해설. 규범 변경 시 여기 반영 필요. |
-> | [standard-api-response-examples.md](standard-api-response-examples.md)           | **예제 카탈로그**: 대표/복합/경계 케이스 코드 스니펫 모음. | 사용 패턴을 구체화, 규칙 자체 변형 없음. 최신 spec 기준 유지 필요. |
-> | [README.md](../README.md)                                                        | **라이브러리 내부 개발/기여 가이드**: 구조, 수정 시 참고, CaseConvention 요약. | 라이브러리 진화 시 spec 영향 여부 점검 필요. |
+> | 문서                                                                               | 역할 / 초점                                                 | 이 문서와의 관계                                  |
+> |----------------------------------------------------------------------------------|---------------------------------------------------------|--------------------------------------------|
+> | [standard-api-response-library-guide.md](standard-api-response-library-guide.md) | 라이브러리 **사용자 가이드**: spec 을 준수하여 응답 생성/역직렬화 하는 헬퍼 API 설명. | spec 규칙을 실무 적용 형태로 해설. 규범 변경 시 여기 반영 필요.   |
+> | [standard-api-response-examples.md](standard-api-response-examples.md)           | **예제 카탈로그**: 대표/복합/경계 케이스 코드 스니펫 모음.                    | 사용 패턴을 구체화, 규칙 자체 변형 없음. 최신 spec 기준 유지 필요. |
+> | [standard-api-response-reference.md](standard-api-response-reference.md) | 레퍼런스 가이드: 모듈에 대한 상세 설명 제공                               |
+> | [README.md](../README.md)                                                        | **라이브러리 내부 개발/기여 가이드**: 구조, 수정 시 참고.                    | 라이브러리 업그레이드 시 spec 영향 여부 점검 필요.          |
 >
 > 우선순위 충돌 시: **spec > 사용자 가이드 > 예제**. README 는 구현 레벨 참고 문서.
 
@@ -87,24 +88,19 @@
 ##### 숫자 포맷
 
 - **정수형(Integer)**: JSON `number` 타입으로 전달합니다. 예:
-
 ```json
 {"age": 25, "count": 100}
 ```
 
 - 잘못된 예: `{"age": "25", "count": "100"}` (문자열 사용 금지)
-
 - **실수형(Float / Double)**: JSON `number` 타입으로 소수점을 포함하여 전달합니다. 예:
-
 ```json
 {"price": 99.99, "rate": 3.14159}
 ```
 
 - 잘못된 예: `{"price": "99.99", "rate": "3.14159"}`
-
 - **통화 표현(Currency)**: 최소 단위로 정수형 또는 실수형으로 표현합니다. 예:
-
-```json
+```json5
 {"amount": 1500}   // 1,500원 (단위: 원)
 {"amount": 19.99}  // $19.99 (단위: 달러)
 ```
@@ -114,11 +110,9 @@
 ##### Boolean 포맷
 
 - JSON `Boolean` 타입(`true`/`false`)을 사용합니다. 예:
-
 ```json
 {"isActive": true, "deleted": false}
 ```
-
 - 잘못된 예: `{ "isActive": "Y", "deleted": "N" }`, `{ "isActive": 1, "deleted": 0 }`
 - 데이터베이스에서 Y/N 또는 1/0으로 저장되더라도, API 응답에서는 Boolean 타입으로 변환해 제공해야 합니다.
 
@@ -131,16 +125,14 @@
 ```
 
 - 잘못된 예: `{"users": null}`
-
 - **null vs {} vs [] 구분**:
-
     - `null` : 속성이 아예 없거나 미설정 상태
     - `{}` : 객체 구조는 존재하나 속성이 없음
     - `[]` : 배열 구조는 존재하나 요소가 없음
 
 - **예시**:
 
-```json
+```json5
 {
   ...
   
@@ -190,19 +182,19 @@
 
 #### 기본 응답 형식
 
-```
-{
-  "status": <optional: payload의 상태>,
-  "version": <버전 정보>,
-  "datetime": <응답 일시>,
-  "duration": <처리 시간 (ms, optional)>,
-  "payload": {
-    <키_1>: <값_1>,
-    <키_2>: <값_2>,
-    ...
-  }
-}
-```
+>```
+>{
+>  "status": <optional: payload의 상태>,
+>  "version": <버전 정보>,
+>  "datetime": <응답 일시>,
+>  "duration": <처리 시간(ms)>,
+>  "payload": {
+>    <키_1>: <값_1>,
+>    <키_2>: <값_2>,
+>    ...
+>  }
+>}
+>```
 
 #### 기본 응답 예시
 
@@ -222,31 +214,29 @@
 #### 오류(실패) 응답 형식
 
 StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `status="FAILURE"` 로 표준화합니다.
+>```
+>{
+>  "status": "FAILURE",
+>  "version": <버전 정보>,
+>  "datetime": <응답 일시>,
+>  "duration": <처리 시간>,
+>  "payload": {
+>    "errors": [    // 다중 오류 표현을 위해 배열 사용
+>      {
+>        "code": <오류 코드>,
+>        "message": <오류 내용>
+>      },
+>      ...
+>    ],
+>    "appendix": { // 추가 상세 정보 (optional)
+>      <추가 정보 키>: <추가 정보 값>,
+>      ...
+>    }
+>  }
+>}
+>```
 
-```
-{
-  "status": "FAILURE",
-  "version": <버전 정보>,
-  "datetime": <응답 일시>,
-  "duration": <처리 시간>,
-  "payload": {
-    "errors": [    // 다중 오류 표현을 위해 배열 사용
-      {
-        "code": <오류 코드>,
-        "message": <오류 내용>
-      },
-      ...
-    ],
-    "appendix": { // 추가 상세 정보 (optional)
-      <추가 정보 키>: <추가 정보 값>,
-      ...
-    }
-  }
-}
-```
-
-#### 실패 응답 예시
-
+#### 실패 응답 예시:
 ```json
 {
   "status": "FAILURE",
@@ -273,8 +263,7 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
 }
 ```
 
-#### 다중 오류(실패) 응답 예시
-
+#### 다중 오류(실패) 응답 예시:
 ```json
 {
   "status": "FAILURE",
@@ -300,42 +289,40 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
 #### 페이지네이션 리스트
 
 페이지네이션 형식의 리스트를 포함할 때는 `pageable` 구조를 사용합니다.
-
 - `page`: 페이지 정보 (`size`, `total`, `current`)
 - `order`: 정렬 정보 (`sorted`, `by`) – optional
 - `items`: 실제 데이터 목록과 총/현재 갯수 (`total`, `current`, `list`)
 
-```
-{
-  "status": <payload의 상태>,
-  "version": <버전 정보>,
-  "datetime": <응답 일시>,
-  "duration": <처리 시간>,
-  "payload": {
-    <키_1>: <값_1>,
-    ...,
-    "pageable": {
-      "page": {
-        "size": <페이지 크기>,
-        "total": <총 페이지 수>,
-        "current": <현재 페이지>
-      },
-      "order": {
-        "sorted": <정렬 여부>,
-        "by": [ { "field": <필드명>, "direction": <"asc" | "desc"> }, ... ]
-      },
-      "items": {
-        "total": <총 아이템 수>,
-        "current": <현재 리턴하는 아이템 수>,
-        "list": [ { <키>: <값>, ... }, ... ]
-      }
-    }
-  }
-}
-```
+>```
+>{
+>  "status": <payload의 상태>,
+>  "version": <버전 정보>,
+>  "datetime": <응답 일시>,
+>  "duration": <처리 시간>,
+>  "payload": {
+>    <키_1>: <값_1>,
+>    ...,
+>    "pageable": {
+>      "page": {
+>        "size": <페이지 크기>,
+>        "total": <총 페이지 수>,
+>        "current": <현재 페이지>
+>      },
+>      "order": {
+>        "sorted": <정렬 여부>,
+>        "by": [ { "field": <필드명>, "direction": <"asc" | "desc"> }, ... ]
+>      },
+>      "items": {
+>        "total": <총 아이템 수>,
+>        "current": <현재 리턴하는 아이템 수>,
+>        "list": [ { <키>: <값>, ... }, ... ]
+>      }
+>    }
+>  }
+>}
+>```
 
-##### 페이지네이션 리스트 예시
-
+##### 페이지네이션 리스트 예시:
 ```json
 {
   "status": "SUCCESS",
@@ -374,43 +361,41 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
 #### 더보기 리스트 (cursor 기반)
 
 커서 기반(더보기) 리스트를 사용할 때는 `incremental` 구조를 사용합니다.
-
 - `cursor`: 커서 정보 (`field`, `start`, `end`, `expandable`) – 필드에 기준이 되는 필드명을 지정할 수 있으며, `expandable`은 이후 추가 데이터 존재 여부를 표시합니다.
 - `order`: 정렬 정보 – optional
 - `items`: 리스트와 아이템 수 정보
 
-```
-{
-  "status": <payload의 상태>,
-  "version": <버전 정보>,
-  "datetime": <응답 일시>,
-  "duration": <처리 시간>,
-  "payload": {
-    <키_1>: <값_1>,
-    ...,
-    "incremental": {
-      "cursor": {
-        "field": <기준 필드 (optional)>,
-        "start": <현 응답 리스트의 시작 인덱스>,
-        "end": <현 응답 리스트의 끝 인덱스>,
-        "expandable": <추가 데이터 존재 여부>
-      },
-      "order": {
-        "sorted": <정렬 여부>,
-        "by": [ { "field": <필드명>, "direction": <"asc" | "desc"> }, ... ]
-      },
-      "items": {
-        "total": <총 아이템 수>,
-        "current": <현재 리턴하는 아이템 수>,
-        "list": [ { <키>: <값>, ... }, ... ]
-      }
-    }
-  }
-}
-```
+>```
+>{
+>  "status": <payload의 상태>,
+>  "version": <버전 정보>,
+>  "datetime": <응답 일시>,
+>  "duration": <처리 시간>,
+>  "payload": {
+>    <키_1>: <값_1>,
+>    ...,
+>    "incremental": {
+>      "cursor": {
+>        "field": <기준 필드 (optional)>,
+>        "start": <현 응답 리스트의 시작 인덱스>,
+>        "end": <현 응답 리스트의 끝 인덱스>,
+>        "expandable": <추가 데이터 존재 여부>
+>      },
+>      "order": {
+>        "sorted": <정렬 여부>,
+>        "by": [ { "field": <필드명>, "direction": <"asc" | "desc"> }, ... ]
+>      },
+>      "items": {
+>        "total": <총 아이템 수>,
+>        "current": <현재 리턴하는 아이템 수>,
+>        "list": [ { <키>: <값>, ... }, ... ]
+>      }
+>    }
+>  }
+>}
+>```
 
-##### 더보기 리스트 예시
-
+##### 더보기 리스트 예시:
 ```json
 {
   "status": "SUCCESS",
@@ -448,11 +433,9 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
 ```
 
 #### 페이지네이션 없는 전체 리스트 응답
-
 전체 리스트를 페이지네이션 없이 응답할 경우에도 페이지 정보를 넣어 `pageable` 구조를 사용합니다. `page.size`를 `items.total`과 동일하게 지정하고 `page.total`과 `page.current`는 1로 지정합니다.
 
-##### 전체 리스트 응답 예 (페이지네이션 형식)
-
+##### 전체 리스트 응답 예 (페이지네이션 형식):
 ```json
 {
   "status": "SUCCESS",
@@ -488,8 +471,7 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
 }
 ```
 
-##### 전체 리스트 응답 예 (더보기 형식)
-
+##### 전체 리스트 응답 예 (더보기 형식):
 ```json
 {
   "status": "SUCCESS",
@@ -527,11 +509,9 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
 ```
 
 #### 페이지네이션 또는 더보기 리스트로만 구성된 응답
-
 리스트만으로 구성된 응답은 `pageable` 또는 `incremental` 구조를 직접 `payload`로 사용해도 됩니다. 이 경우에도 해당 구조를 준수해야 하며, `payload`라는 필드명은 유지합니다.
 
-##### pageable로만 구성된 응답 예
-
+##### pageable로만 구성된 응답 예:
 ```json
 {
   "status": "SUCCESS",
@@ -564,10 +544,9 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
 ```
 
 #### 빈 리스트 응답
-
 리스트가 비어 있는 경우 `list` 필드의 값은 `null` 대신 **빈 배열(`[]`)**로 지정합니다. `pageable` 또는 `incremental` 구조는 동일하게 준수합니다.
 
-##### 빈 리스트 응답 예 (pageable 형식)
+##### 빈 리스트 응답 예(pageable 형식):
 
 ```json
 {
@@ -599,11 +578,9 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
 ```
 
 #### 두 개 이상의 리스트를 포함한 응답
-
 여러 리스트를 포함할 때 각각의 리스트는 `pageable` 또는 `incremental` 구조를 준수합니다. 동일한 이름의 필드가 겹칠 수 있으므로 **각 리스트의 의미에 맞는 필드명**을 지정해 줍니다.
 
-##### 2개의 리스트 응답 예
-
+##### 2개의 리스트 응답 예:
 ```json
 {
   "status": "SUCCESS",
