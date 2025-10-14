@@ -138,7 +138,7 @@ typealias DefaultResponse = StandardResponse<BasePayload>
    4) 설정 기본값 `standard-api-response.case.default`
    5) Fallback: `IDENTITY`
 3. 변환 제외 키: `@NoCaseTransform` 붙은 필드(및 그 별칭 alias) + alias variant(언더스코어/하이픈 상호 치환)
-4. 지원 값: `IDENTITY / SNAKE_CASE / SCREAMING_SNAKE_CASE / KEBAB_CASE / CAMEL_CASE / PASCAL_CASE`
+4. 지원 값: `IDENTITY` / `SNAKE_CASE` / `SCREAMING_SNAKE_CASE` / `KEBAB_CASE` / `CAMEL_CASE` / `PASCAL_CASE`
 5. 내부 구현: 정규화된 토큰 분해 → 캐시(`ConcurrentHashMap`) → 재조합 (성능 최적화)
 
 ---
@@ -167,15 +167,13 @@ typealias DefaultResponse = StandardResponse<BasePayload>
 
 ---
 ## 5. Duration 자동 주입
-| 구성 | 설명 |
-|------|------|
-| 필터 | `RequestTimingFilter` – `System.nanoTime()` 시작 값을 Request Attribute 저장 |
-| Advice | `StandardApiResponseAdvice` – body 가 `StandardResponse` 이고, 필드(혹은 data class copy) 중 `@InjectDuration` 발견 시 경과시간 주입 |
-| 변환 단위 | `@InjectDuration(unit=TimeUnit.X)` – Long/Int/Double/String/`java.time.Duration`/`kotlin.time.Duration` 지원 |
-| 활성화 | (필터 등록) `standard-api-response.auto-duration-calculation.active=true` + AutoConfiguration 조건 만족 시 |
-| 필터 순서 | `standard-api-response.auto-duration-calculation.filter-order` (기본 `Int.MIN_VALUE`) |
-
-주의: `StandardResponse` 의 `duration` 필드는 기본 `@InjectDuration` 이며, 별도 사용자 Payload 의 필드도 동일 어노테이션 부여 가능 (mutable 이거나 data class copy 경로 필요).
+| 구성 | 설명                                                                                                               |
+|------|------------------------------------------------------------------------------------------------------------------|
+| 필터 | `RequestTimingFilter` – `System.nanoTime()` 시작 값을 Request Attribute 저장                                           |
+| Advice | `StandardApiResponseAdvice` – body가 `StandardResponse` 이고, 필드 중 `@InjectDuration` 발견 시 경과시간 주입                   |
+| 변환 단위 | `@InjectDuration(unit=TimeUnit.X)` – Long / Int / Double / String / java.time.Duration / kotlin.time.Duration 지원 |
+| 활성화 | (필터 등록) `standard-api-response.auto-duration-calculation.active=true` + AutoConfiguration 조건 만족 시                |
+| 필터 순서 | `standard-api-response.auto-duration-calculation.filter-order` (기본 `Int.MIN_VALUE`)                              |
 
 ---
 ## 6. 표준 빌더 & 팩토리 패턴
@@ -307,8 +305,6 @@ GlobalAliasMaps 구성 요소:
 | [standard-api-response-library-guide.md](./standard-api-response-library-guide.md) | 실사용 가이드 (설정, 빌더 활용 흐름) |
 | [standard-api-response-examples.md](./standard-api-response-examples.md) | 다형/목록/케이스/alias 예제 카탈로그 |
 | [standard-api-specification.md](./standard-api-specification.md) | 표준 응답 & 요청 규격 정의 |
-| [abstract-controller-test-user-guide.md](./abstract-controller-test-user-guide.md) | 컨트롤러 테스트 User Guide (표준 응답 검증 헬퍼) |
-| [abstract-controller-test-reference.md](./abstract-controller-test-reference.md) | 테스트 베이스 클래스 상세 Reference |
 
 ---
 ## 18. 요약

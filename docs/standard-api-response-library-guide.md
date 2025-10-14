@@ -1,16 +1,14 @@
 # **Standard API Response 라이브러리 사용 가이드**
 
-> 본 문서는 `:standard-api-response` 모듈을 적용(사용)하는 서비스/애플리케이션 **개발자** 관점에서의 활용 방법을 설명합니다.
->
-> ### 관련 문서 (Cross References)
-> | 문서                                                                               | 목적 / 차이점                                                           |
-> |----------------------------------------------------------------------------------|--------------------------------------------------------------------|
-> | [standard-api-specification.md](standard-api-specification.md)                   | 표준 API 규격: request 규칙, response의 필드 정의, 상태/에러 규칙, 리스트 처리 방식 정의     |
-> | [standard-api-response-reference.md](standard-api-response-reference.md) | 레퍼런스 가이드. 모듈에 대한 상세 설명 제공 |
-> | [standard-api-response-examples.md](standard-api-response-examples.md)           | 다양한 실전 예시 모음: 케이스 변환, 페이지/커서, Alias/Canonical, @NoCaseTransform 예. |
-> | [README.md](../README.md)                                                        | 루트 개요 및 지원 CaseConvention 요약 표.                                    |
->
-> 참고: 아래 내용은 실무 활용 가이드이며, 구현상의 세부 사항이나 필수 준수 규격은 standard-api-specification 문서를 우선하여 따릅니다.
+본 문서는 **standard-api-response** 모듈을 적용(사용)하는 서비스/애플리케이션 **개발자** 관점에서의 활용 방법을 설명합니다.
+### 관련 문서 (Cross References)
+| 문서                                                                               | 목적 / 차이점                                                                           |
+|----------------------------------------------------------------------------------|------------------------------------------------------------------------------------|
+| [standard-api-specification.md](standard-api-specification.md)                   | 표준 API 규격: request 규칙, response의 필드 정의, 상태/에러 규칙, 리스트 처리 방식 정의                     |
+| [standard-api-response-reference.md](standard-api-response-reference.md) | 레퍼런스 가이드. 모듈에 대한 상세 설명 제공                                                          |
+| [standard-api-response-examples.md](standard-api-response-examples.md)           | 다양한 실전 예시 모음: payload 구성, 케이스 변환, 페이지/커서 처리, Alias/Canonical, `@NoCaseTransform` 예 등 |
+
+> 참고: 아래 내용은 실무 활용 가이드이며, 구현상의 세부 사항이나 필수 준수 규격은 standard-api-specification.md 문서를 우선하여 따릅니다.
 
 ---
 ## **목적 및 주요 특징 (Overview)**
@@ -128,7 +126,7 @@ val timedResponse = StandardResponse.build<ErrorPayload>(payload = null) {
 - 위 코드는 **성공 응답**과 **오류 응답**을 생성하는 기본 패턴을 보여줍니다. `StandardResponse.build(payload)`에 `BasePayload`를 구현한 객체를 넘기면 해당 payload를 포함한 표준 응답 객체가 만들어 집니다.
     - 첫 번째 줄에서는 `ErrorPayload("OK", "정상")`을 `payload`로 감싸 성공 응답을 생성했습니다. (status는 명시하지 않으면 기본 `SUCCESS`)
     - 두 번째 예에서는 `status = FAILURE`로 지정하여 실패 응답을 만들고, 버전도 `"1.1"`로 오버라이드했습니다. payload는 `ErrorPayload`에 오류 코드 `"E400"`과 메시지 `"잘못된 요청"`을 담아 사용했습니다.
-- 세 번째 `timedResponse`예시는 **콜백 빌더(callback build)**를 사용한 패턴입니다. `StandardResponse.build<T>(payload = null) { ... }` 형태로 람다 블록을 제공하면, 라이브러리가 해당 블록 실행 **전후로 시간을 측정**하여 `duration` 필드를 자동 채워줍니다. 콜백 내부에서는 `StandardCallbackResult(payload, status, version)`을 반환해야 하며, 예시에서는 `"OK"` 코드의 `ErrorPayload`를 성공 상태로 반환했습니다. (이 방식은 수행 시간이 중요한 로직을 람다 내부에 작성하면 자동으로 걸린 시간이 계산된다는 점이 특징입니다.)
+- 세 번째 `timedResponse`예시는 **콜백 빌더(callback build)** 를 사용한 패턴입니다. `StandardResponse.build<T>(payload = null) { ... }` 형태로 람다 블록을 제공하면, 라이브러리가 해당 블록 실행 **전후로 시간을 측정**하여 `duration` 필드를 자동 채워줍니다. 콜백 내부에서는 `StandardCallbackResult(payload, status, version)`을 반환해야 하며, 예시에서는 `"OK"` 코드의 `ErrorPayload`를 성공 상태로 반환했습니다. (이 방식은 수행 시간이 중요한 로직을 람다 내부에 작성하면 자동으로 걸린 시간이 계산된다는 점이 특징입니다.)
 
 > Note: 위 예시에는 편의상 `ErrorPayload`를 payload로 사용하였지만, 실제 API에서는 도메인에 맞는 별도의 Payload DTO를 정의하여 `StandardResponse<YourPayload>` 형태로 사용하는 것이 일반적입니다. (`ErrorPayload`는 주로 오류 응답이나 단순 메시지 응답용으로 사용됩니다.)
 
@@ -174,7 +172,7 @@ data class ApiResult(
 ```
 - 컨트롤러에서 `ApiResult`를 반환하면, 응답 직전에 라이브러리가 `duration` 값을 계산하여 해당 필드에 자동으로 채워줍니다. 개발자는 수동으로 시간을 계산하지 않아도 되므로 편리합니다.
 
-> 주의: 빌더에서 명시적으로 duration 값을 지정한 경우(파라미터 전달) 해당 값이 유지되지만, 필터/Advice 흐름에서 @InjectDuration 이 붙은 mutable 필드가 있다면 실제 요청 경과시간으로 덮어써질 수 있습니다. 부분 구간 측정이 필요하면 별도 필드를 두고 직접 측정 값을 세팅하세요.
+> 주의: 빌더에서 명시적으로 duration 값을 지정한 경우(파라미터 전달) 해당 값이 유지되지만, 필터/Advice 흐름에서 `@InjectDuration`이 붙은 mutable 필드가 있다면 실제 요청 경과시간으로 덮어써질 수 있습니다. 부분 구간 측정이 필요하면 별도 필드를 두고 직접 측정 값을 세팅하세요.
 
 ---
 ## **오류 응답 처리 패턴**
@@ -401,9 +399,9 @@ Standard API Response 라이브러리는 **케이스 컨벤션(case convention)*
 
 ### **케이스 변환 기능 개요**
 응답 객체를 JSON으로 직렬화할 때, 키 변환은 다음 **3단계 순서**로 이루어 집니다:
-1. **Jackson 기본 직렬화** – 객체의 프로퍼티 이름(propertyName) 또는 해당 필드의 `@JsonProperty`로 지정된 alias를 사용하여 1차적으로 JSON 마샬링을 수행합니다.
-2. **Alias 치환 (선택)** – 만약 DTO 클래스에 `@JsonProperty`로 별도 키가 명시되어 있다면, 원본 프로퍼티 이름을 정의된 alias 값으로 치환합니다. (예: `userId` 필드에 `@JsonProperty("user_id")`가 있으면 일단 `user_id`로 키 설정)
-3. **전역 CaseConvention 적용** – 최종으로, 설정된 케이스 컨벤션(e.g. `SNAKE_CASE`, `KEBAB_CASE` 등)을 전역적으로 적용하여 키 문자열을 변환합니다. (예: `camelCase` -> `snake_case`로 변환 등)
+1. **Jackson 기본 직렬화**: 객체의 프로퍼티 이름(propertyName) 또는 해당 필드의 `@JsonProperty`로 지정된 alias를 사용하여 1차적으로 JSON 마샬링을 수행합니다.
+2. **Alias 치환 (선택)**: 만약 DTO 클래스에 `@JsonProperty`로 별도 키가 명시되어 있다면, 원본 프로퍼티 이름을 정의된 alias 값으로 치환합니다. (예: `userId` 필드에 `@JsonProperty("user_id")`가 있으면 일단 `user_id`로 키 설정)
+3. **전역 CaseConvention 적용**: 최종으로, 설정된 케이스 컨벤션(e.g. `SNAKE_CASE`, `KEBAB_CASE` 등)을 전역적으로 적용하여 키 문자열을 변환합니다. (예: `camelCase` -> `snake_case`로 변환 등)
 
 이 과정을 통해, DTO에 정의된 alias 및 전역 컨벤션이 모두 반영된 최종 JSON 키 출력이 만들어집니다.
 
@@ -473,10 +471,10 @@ standard-api-response:
 - `query-param`, `header-name`: 각각 쿼리 파라미터 이름과 헤더 이름을 설정합니다. (위 예시는 `?case=snake_case` 또는 `X-Response-Case: snake_case` 헤더로 클라이언트가 요청 시 `snake_case` 응답을 받을 수 있음을 의미)
 
 **전역 설정값 적용 우선순위:**
-1. **쿼리 파라미터** – `query-override`: `true`인 경우, 들어온 HTTP 요청 URL의 쿼리스트링에서 `case` 파라미터 값을 읽어 해당 케이스를 적용합니다. (예: `GET /api/example?case=CAMEL_CASE`)
-2. **헤더 값** – `header-override`: `true`인 경우, 요청 헤더 `X-Response-Case` 값을 확인해 케이스 방식을 결정합니다.
-3. **DTO의 `@ResponseCase` 어노테이션** – 위 두 가지가 지정되지 않은 경우, 개별 DTO 클래스에 지정된 `@ResponseCase` 설정이 있으면 그 값을 사용합니다.
-4. **기본 설정값** – 아무 것도 지정되지 않은 경우 default에 명시된 전역 기본 케이스를 적용합니다.
+1. **쿼리 파라미터**: `query-override`: `true`인 경우, 들어온 HTTP 요청 URL의 쿼리스트링에서 `case` 파라미터 값을 읽어 해당 케이스를 적용합니다. (예: `GET /api/example?case=CAMEL_CASE`)
+2. **헤더 값**: `header-override`: `true`인 경우, 요청 헤더 `X-Response-Case` 값을 확인해 케이스 방식을 결정합니다.
+3. **DTO의 `@ResponseCase` 어노테이션**: 위 두 가지가 지정되지 않은 경우, 개별 DTO 클래스에 지정된 `@ResponseCase` 설정이 있으면 그 값을 사용합니다.
+4. **기본 설정값**: 아무 것도 지정되지 않은 경우 default에 명시된 전역 기본 케이스를 적용합니다.
 
 예를 들어, 전역 설정을 다음과 같이 할 수 있습니다:
 ```yaml

@@ -1,20 +1,17 @@
 # Standard API Response 활용 예제
 
-> 다양한 페이로드/목록/케이스/alias 시나리오를 빠르게 참고하기 위한 **예제 중심** 문서입니다.
-> 본 문서는 스펙/가이드에 정의된 규칙을 실제 코드 형태로 빠르게 찾아 붙여 넣을 수 있도록 하는 '카탈로그' 역할을 합니다.
->
-> ### 관련 문서 (Cross References)
-> | 문서                                                                               | 목적 / 차이점                                                       |
-> |----------------------------------------------------------------------------------|----------------------------------------------------------------|
-> | [standard-api-response-library-guide.md](standard-api-response-library-guide.md) | 라이브러리 **사용자 가이드**: spec 을 준수하여 응답 생성/역직렬화 하는 헬퍼 API 설명.        |
-> | [standard-api-specification.md](standard-api-specification.md)                   | 표준 API 규격: request 규칙, response의 필드 정의, 상태/에러 규칙, 리스트 처리 방식 정의 |
-> | [standard-api-response-reference.md](standard-api-response-reference.md) | 레퍼런스 가이드: 모듈에 대한 상세 설명 제공                                      |
->
+이 문서는 standard-api-response 라이브러리에 대해 다양한 페이로드/목록/케이스/alias 시나리오를 빠르게 참고하기 위한 예제 중심 문서입니다.<br>
+스펙/가이드에 정의된 규칙을 실제 코드 형태로 빠르게 찾아 붙여 넣을 수 있도록 하는 카탈로그 역할을 합니다.
+
+### 관련 문서 (Cross References)
+| 문서                                                                               | 목적 / 차이점                                                       |
+|----------------------------------------------------------------------------------|----------------------------------------------------------------|
+| [standard-api-response-library-guide.md](standard-api-response-library-guide.md) | 라이브러리 **사용자 가이드**: spec 을 준수하여 응답 생성/역직렬화 하는 헬퍼 API 설명.        |
+| [standard-api-specification.md](standard-api-specification.md)                   | 표준 API 규격: request 규칙, response의 필드 정의, 상태/에러 규칙, 리스트 처리 방식 정의 |
+| [standard-api-response-reference.md](standard-api-response-reference.md) | 레퍼런스 가이드: 모듈에 대한 상세 설명 제공                                      |
 > 아래 예제들은 명세(spec) 준수 상태를 가정하며, 불일치 시 spec 문서를 우선합니다.
 
-이 문서는 `standard-api-response` 라이브러리에 대한 활용 가능한 예제를 제공합니다.
-
-포함되는 케이스 분류:
+### 포함되는 케이스 분류:
 1. 리스트가 없는 기본 페이로드 (Basic Scalar Payload)
 2. 단일 리스트를 `pageable` 또는 `incremental` 필드로 포함하는 페이로드
 3. 리스트 자체가 곧 페이로드 (`PageableList` / `IncrementalList` 직접 응답)
