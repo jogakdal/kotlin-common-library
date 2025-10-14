@@ -1,7 +1,12 @@
 # Standard API Response Reference Manual
 
-`standard-api-response` 모듈이 제공하는 모든 핵심 타입, 어노테이션, 빌더/헬퍼, 구성 속성(property) 및 동작 규칙을 체계적으로 정리한 레퍼런스 문서입니다. <br>
-사용 시나리오는 사용자 가이드(`standard-api-response-library-guide.md`)와 예제 카탈로그(`standard-api-response-examples.md`), 전체 규격은 `standard-api-specification.md` 를 참고하세요.
+`standard-api-response` 모듈이 제공하는 모든 핵심 타입, 어노테이션, 빌더/헬퍼, 구성 속성(property) 및 동작 규칙을 체계적으로 정리한 레퍼런스 문서입니다.
+### 관련 문서 (Cross References)
+| 문서                                                                               | 목적 / 차이점                                                                           |
+|----------------------------------------------------------------------------------|------------------------------------------------------------------------------------|
+| [standard-api-specification.md](standard-api-specification.md)                   | 표준 API 규격: request 규칙, response의 필드 정의, 상태/에러 규칙, 리스트 처리 방식 정의                     |
+| [standard-api-response-library-guide.md](standard-api-response-library-guide.md) | 라이브러리 **사용자 가이드**: spec 을 준수하여 응답 생성/역직렬화 하는 헬퍼 API 설명.        |
+| [standard-api-response-examples.md](standard-api-response-examples.md)           | 다양한 실전 예시 모음: payload 구성, 케이스 변환, 페이지/커서 처리, Alias/Canonical, `@NoCaseTransform` 예 등 |
 
 ## 0. 개요
 표준 응답 구조는 최상위에 `status / version / datetime / duration / payload` 필드를 두고, `payload` 는 임의의 비즈니스 DTO(`BasePayload`) 또는 표준 리스트 컨테이너(`PageableList`, `IncrementalList`) 혹은 그것들을 조합한 사용자 정의 Payload 로 구성됩니다.
@@ -299,15 +304,7 @@ GlobalAliasMaps 구성 요소:
 - [ ] 다중 alias 필요 시 @JsonAlias + @NoCaseTransform (필요시) 조합 고려
 
 ---
-## 17. Cross References
-| 문서 | 설명 |
-|------|------|
-| [standard-api-response-library-guide.md](./standard-api-response-library-guide.md) | 실사용 가이드 (설정, 빌더 활용 흐름) |
-| [standard-api-response-examples.md](./standard-api-response-examples.md) | 다형/목록/케이스/alias 예제 카탈로그 |
-| [standard-api-specification.md](./standard-api-specification.md) | 표준 응답 & 요청 규격 정의 |
-
----
-## 18. 요약
+## 17. 요약
 `standard-api-response` 모듈은 "표준화된 상위 메타 + 유연한 payload" 구조를 제공하면서, 케이스/alias/리스트/커서/시간 측정/역직렬화 관용성을 한 번에 해결합니다.<br> 
 본 Reference 는 시그니처와 규칙을 빠르게 회고하기 위한 용도이며, 구체 사용 흐름은 가이드 & 예제 문서를 병행 참고하세요.
 
