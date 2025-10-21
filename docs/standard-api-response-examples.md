@@ -456,6 +456,187 @@ println("DYN_STATUS=${dynResp.status} class=${dynResp.payload::class.simpleName}
 ```
 > 보안 권고: typeHint → enum/whitelist 검증 후 역직렬화. 미허용 값이면 FAILURE + ErrorPayload.
 
+### 6.12 케이스별 역직렬화 예제
+섹션 1~5에서 이미 정의한 DTO(StatusPayload, ErrorPayload, ItemPayload, ItemsPageContainer, LogEntryPayload, LogsIncrementalContainer, MultiListsPayload, CompositePayload 등)로 만들어진 JSON을 다시 역직렬화하는 예제입니다.
+
+#### 6.12.1 단일 성공(StatusPayload)
+JSON:
+```json
+{"status": "SUCCESS", "version": "1.0", "datetime": "2023-08-01T12:00:00Z", "duration": 45, "payload": { "code": "OK", "message": "성공" } }
+```
+Kotlin:
+```kotlin
+val respStatus = StandardResponse.deserialize<StatusPayload>(jsonStatus)
+println(respStatus.payload.code)
+```
+Java:
+```java
+StandardResponse<StatusPayload> respStatus = StandardResponse.deserialize(jsonStatus, StatusPayload.class);
+System.out.println(respStatus.getPayload().getCode());
+```
+
+#### 6.12.2 단일 실패(ErrorPayload)
+JSON:
+```json
+{"status" :"FAILURE", "version": "1.0", "datetime": "2025-10-21T13:01:45:00Z", "duration": 20, "payload": {"code": "E400", "message": "잘못된 요청"}}
+```
+Kotlin:
+```kotlin
+val errorResp = StandardResponse.deserialize<ErrorPayload>(jsonError)
+require(errorResp.status == StandardStatus.FAILURE)
+```
+Java:
+```java
+StandardResponse<ErrorPayload> errorResp = StandardResponse.deserialize(jsonError, ErrorPayload.class);
+assert errorResp.getStatus() == StandardStatus.FAILURE;
+```
+
+#### 6.12.3 단일 페이지 리스트 컨테이너(ItemsPageContainer)
+JSON:
+```json
+{
+  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45:00Z", "duration": 20,
+  "payload": {
+    "pageable": {
+      "page": { "total": 10, "size": 2, "current": 1 },
+      "order": { "sorted": true, "by": [ { "field": "id", "dir": "ASC" } ] },
+      "items": {"total": 10, "current": 2, "list": [ { "id": 1, "name": "황용호" }, { "id": 2, "name": "홍용호" } ] }
+    }
+  }
+}
+```
+Kotlin:
+```kotlin
+val pageContainer = StandardResponse.deserialize<ItemsPageContainer>(jsonItems)
+println(pageContainer.payload.pageable.items.list.size) // 2
+```
+Java:
+```java
+StandardResponse<ItemsPageContainer> pageContainer = StandardResponse.deserialize(jsonItems, ItemsPageContainer.class);
+System.out.println(pageContainer.getPayload().getPageable().getItems().getList().size());
+```
+
+#### 6.12.4 단일 증분 리스트 컨테이너(LogsIncrementalContainer)
+JSON:
+```json
+{
+  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45:00Z", "duration": 20,
+  "payload": {
+    "incremental": {
+      "cursor": { "start": 0, "size": 2, "total": 100, "field": "idx" },
+      "items": { "total": 100, "current": 2, "list": [ { "idx": 0, "text": "log-0" }, { "idx": 1, "text": "log-1" } ] }
+    }
+  }
+}
+```
+Kotlin:
+```kotlin
+val incContainer = StandardResponse.deserialize<LogsIncrementalContainer>(jsonInc)
+println(incContainer.payload.incremental.cursor.start) // 0
+```
+Java:
+```java
+StandardResponse<LogsIncrementalContainer> incContainer = StandardResponse.deserialize(jsonInc, LogsIncrementalContainer.class);
+System.out.println(incContainer.getPayload().getIncremental().getCursor().getStart());
+```
+
+#### 6.12.5 직접 페이지 리스트(PageableList<ItemPayload>)
+JSON:
+```json
+{
+  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45:00Z", "duration": 20,
+  "payload": {
+    "page": { "total": 1, "size": 1, "current": 1 },
+    "order": null,
+    "items": { "total": 1, "current": 1, "list": [ { "id": 1, "name": "황용호" } ] }
+  }
+}
+```
+Kotlin:
+```kotlin
+val directPage = StandardResponse.deserialize<PageableList<ItemPayload>>(jsonDirectPage)
+println(directPage.payload.items.list.first().name)
+```
+Java (TypeReference):
+```java
+StandardResponse<PageableList<ItemPayload>> directPage = StandardResponse.deserialize(
+    jsonDirectPage, new TypeReference<PageableList<ItemPayload>>() {}
+);
+System.out.println(directPage.getPayload().getItems().getList().get(0).getName());
+```
+
+#### 6.12.6 직접 증분 리스트(IncrementalList<LogEntryPayload, Long>)
+JSON:
+```json
+{
+  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45:00Z", "duration": 20,
+  "payload": {
+    "cursor": { "start": 10, "size": 1, "total": 10, "field": "idx" },
+    "order": null,
+    "items": { "total": 10, "current": 1, "list": [ { "idx": 10, "text": "first" } ] }
+  }
+}
+```
+Kotlin:
+```kotlin
+val directInc = StandardResponse.deserialize<IncrementalList<LogEntryPayload, Long>>(jsonDirectInc)
+println(directInc.payload.items.list.first().text)
+```
+Java (TypeReference):
+```java
+StandardResponse<IncrementalList<LogEntryPayload, Long>> directInc = StandardResponse.deserialize(
+    jsonDirectInc, new TypeReference<IncrementalList<LogEntryPayload, Long>>() {}
+);
+System.out.println(directInc.getPayload().getItems().getList().get(0).getText());
+```
+
+#### 6.12.7 다중 리스트 컨테이너(MultiListsPayload)
+JSON:
+```json
+{
+  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45:00Z", "duration": 20,
+  "payload": {
+    "users": { "page": { "total": 2, "size": 2, "current": 1 }, "order": null, "items": { "total": 2, "current": 2, "list": [ { "id": 1, "name": "황용호" }, { "id": 2, "name": "홍용호"   } ] } },
+    "logs": { "cursor": { "start": 10, "size": 2, "total": 200, "field": "idx" }, "order": null, "items": { "total": 200, "current": 2, "list": [ { "idx": 10, "text": "boot" }, { "idx": 11, "text": "ready" } ] } }
+  }
+}
+```
+Kotlin:
+```kotlin
+val multiListsResp = StandardResponse.deserialize<MultiListsPayload>(jsonMulti)
+println(multiListsResp.payload.users.items.list.size to multiListsResp.payload.logs.items.list.size)
+```
+Java:
+```java
+StandardResponse<MultiListsPayload> multiListsResp = StandardResponse.deserialize(jsonMulti, MultiListsPayload.class);
+System.out.println(multiListsResp.getPayload().getUsers().getItems().getList().size());
+```
+
+#### 6.12.8 중첩 Composite(CompositePayload)
+JSON:
+```json
+{
+  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45:00Z", "duration": 20,
+  "payload": {
+    "info": { "system": "core-service", "version_text": "v2" },
+    "status": { "code": "OK", "message": "정상" },
+    "users": { "page": { "total": 1, "size": 1, "current": 1 }, "order": null, "items": { "total": 1, "current": 1, "list": [ { "id": 100, "name": "황용호" } ] } }
+  }
+}
+```
+Kotlin:
+```kotlin
+val compositeResp = StandardResponse.deserialize<CompositePayload>(jsonComposite)
+println(compositeResp.payload.info.versionText)
+```
+Java (TypeReference 권장):
+```java
+StandardResponse<CompositePayload> compositeResp = StandardResponse.deserialize(
+    jsonComposite, new TypeReference<CompositePayload>() {}
+);
+System.out.println(compositeResp.getPayload().getInfo().getVersionText());
+```
+
 ---
 ## 7. 케이스 컨벤션 (CaseConvention) 확장 예
 ### 7.1 기본 변환 매트릭스
