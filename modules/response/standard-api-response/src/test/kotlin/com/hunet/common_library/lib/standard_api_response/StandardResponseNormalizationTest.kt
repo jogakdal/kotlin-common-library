@@ -1,10 +1,9 @@
 package com.hunet.common_library.lib.standard_api_response
 
+import com.fasterxml.jackson.core.type.TypeReference
+import kotlinx.serialization.Serializable
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
-import kotlinx.serialization.Serializable
 
 @Serializable
 data class UserPayload(
@@ -14,7 +13,6 @@ data class UserPayload(
 ): BasePayload
 
 class StandardResponseNormalizationTest {
-
     @Test
     fun `혼합 대소문자 상위 키 역직렬화`() {
         val json = """
@@ -88,5 +86,38 @@ class StandardResponseNormalizationTest {
             assertEquals("황용호", userName)
             assertEquals("jogakdal@gmail.com", emailAddress)
         }
+    }
+
+    @Test
+    fun `TypeReference 기반 PageListPayload 역직렬화`() {
+        val json = """
+        {
+          "status":"SUCCESS",
+          "version":"1.0",
+          "datetime":"2025-10-15T00:00:00Z",
+          "duration":5,
+          "payload": {
+            "pageable": {
+              "page": { "size": 10, "current": 1, "total": 5 },
+              "order": null,
+              "items": {
+                "total": 2,
+                "current": 2,
+                "list": [
+                  { "userId": 1, "userName": "A", "emailAddress": "a@test.com" },
+                  { "userId": 2, "userName": "B", "emailAddress": "b@test.com" }
+                ]
+              }
+            }
+          }
+        }
+        """.trimIndent()
+
+        val typeRef = object: TypeReference<PageListPayload<UserPayload>>(){}
+        val resp = StandardResponse.deserialize(json, typeRef)
+        assertEquals(StandardStatus.SUCCESS, resp.status)
+        assertEquals(2, resp.payload.pageable.items.list.size)
+        assertEquals("A", resp.payload.pageable.items.list[0].userName)
+        assertEquals("B", resp.payload.pageable.items.list[1].userName)
     }
 }

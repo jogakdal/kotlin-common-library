@@ -101,24 +101,35 @@ internal fun collectGlobalAliasMaps(root: KClass<*>): GlobalAliasMaps {
 
     val serialization = mutableMapOf<String, String>()
     val canonical = mutableMapOf<String, String>()
+    val conflictCandidates = mutableMapOf<String, MutableSet<String>>()
+    val propertyAliasLower = mutableMapOf<String, MutableSet<String>>()
     val skipCase = mutableSetOf<String>()
     val visited = mutableSetOf<KClass<*>>()
 
     fun register(propertyName: String, alias: String?) {
         if (!alias.isNullOrBlank() && alias != propertyName) {
             val existing = serialization[propertyName]
-            if (existing != null && existing != alias)
-                LOG.warn("Alias conflict (serialization): property=$propertyName old=$existing new=$alias keeping-old")
-            else if (existing == null) serialization[propertyName] = alias
+            if (existing != null && existing != alias) {
+                val msg = "Alias conflict (serialization): property=$propertyName old=$existing new=$alias keeping-old"
+                if (AliasConflictConfig.mode == AliasConflictMode.ERROR) throw IllegalStateException(msg)
+                LOG.warn(msg)
+            } else if (existing == null) serialization[propertyName] = alias
         }
     }
 
     fun registerCanonical(candidate: String, propertyName: String) {
         val key = candidate.canonical()
         val existing = canonical[key]
-        if (existing != null && existing != propertyName)
-            LOG.warn("Alias canonical conflict: key=$key first=$existing second=$propertyName ignoring-second")
-        else if (existing == null) canonical[key] = propertyName
+        if (existing != null && existing != propertyName) {
+            val msg = "Alias canonical conflict: key=$key first=$existing second=$propertyName ignoring-second"
+            if (AliasConflictConfig.mode == AliasConflictMode.ERROR) throw IllegalStateException(msg)
+            LOG.warn(msg)
+
+            conflictCandidates.computeIfAbsent(key) { mutableSetOf(existing) }.add(propertyName)
+        } else if (existing == null) canonical[key] = propertyName
+        if (existing == null) {
+            conflictCandidates.computeIfAbsent(key) { mutableSetOf(propertyName) }
+        }
     }
 
     fun handleAliasVariants(str: String, propertyName: String) {
@@ -149,7 +160,10 @@ internal fun collectGlobalAliasMaps(root: KClass<*>): GlobalAliasMaps {
             aliases.forEach { alias ->
                 registerCanonical(alias, property.name)
                 handleAliasVariants(alias, property.name)
+                propertyAliasLower.computeIfAbsent(property.name) { mutableSetOf() }.add(alias.lowercase())
             }
+            propertyAliasLower.computeIfAbsent(property.name) { mutableSetOf() }.add(primary.lowercase())
+            propertyAliasLower.computeIfAbsent(property.name) { mutableSetOf() }.add(property.name.lowercase())
 
             handleAliasVariants(primary, property.name)
 
@@ -183,7 +197,10 @@ internal fun collectGlobalAliasMaps(root: KClass<*>): GlobalAliasMaps {
             aliases.forEach { alias ->
                 registerCanonical(alias, field.name)
                 handleAliasVariants(alias, field.name)
+                propertyAliasLower.computeIfAbsent(field.name) { mutableSetOf() }.add(alias.lowercase())
             }
+            propertyAliasLower.computeIfAbsent(field.name) { mutableSetOf() }.add(primary.lowercase())
+            propertyAliasLower.computeIfAbsent(field.name) { mutableSetOf() }.add(field.name.lowercase())
             handleAliasVariants(primary, field.name)
         }
 
@@ -199,13 +216,21 @@ internal fun collectGlobalAliasMaps(root: KClass<*>): GlobalAliasMaps {
             aliases.forEach { alias ->
                 registerCanonical(alias, paramName)
                 handleAliasVariants(alias, paramName)
+                propertyAliasLower.computeIfAbsent(paramName) { mutableSetOf() }.add(alias.lowercase())
             }
-            handleAliasVariants(primary, paramName)
+            propertyAliasLower.computeIfAbsent(paramName) { mutableSetOf() }.add(primary.lowercase())
+            propertyAliasLower.computeIfAbsent(paramName) { mutableSetOf() }.add(paramName.lowercase())
         }
     }
 
     recurse(root)
-    val maps = GlobalAliasMaps(serialization.toMap(), canonical.toMap(), skipCase.toSet())
+    val maps = GlobalAliasMaps(
+        serialization.toMap(),
+        canonical.toMap(),
+        skipCase.toSet(),
+        conflictCandidates.mapValues { it.value.toSet() },
+        propertyAliasLower.mapValues { it.value.toSet() }
+    )
     AliasCache.put(root, maps)
 
     return maps
@@ -232,9 +257,11 @@ private fun applyAliases(node: JsonNode, aliasMap: Map<String, String>): JsonNod
 
 @PublishedApi
 internal data class GlobalAliasMaps(
-    val serializationMap: Map<String, String>, // propertyName -> alias(for serialization)
-    val canonicalAliasToProp: Map<String, String>, // canonical(alias or alias variants) -> propertyName
-    val skipCaseKeys: Set<String> // 최종 변환에서 케이스 변경 제외될 키 모음 (alias 및 variants 포함)
+    val serializationMap: Map<String, String>,
+    val canonicalAliasToProp: Map<String, String>,
+    val skipCaseKeys: Set<String>,
+    val conflictCandidates: Map<String, Set<String>>,
+    val propertyAliasLower: Map<String, Set<String>>
 )
 
 fun <T: BasePayload> StandardResponse<T>.toJson(case: CaseConvention? = null, pretty: Boolean = false): String {
