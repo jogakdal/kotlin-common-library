@@ -1,12 +1,11 @@
 # Standard API 사양 (Specification)
 
 > ### 관련 문서 (Cross References)
-> | 문서                                                                               | 역할 / 초점                                                 | 이 문서와의 관계                                  |
-> |----------------------------------------------------------------------------------|---------------------------------------------------------|--------------------------------------------|
-> | [standard-api-response-library-guide.md](standard-api-response-library-guide.md) | 라이브러리 **사용자 가이드**: spec 을 준수하여 응답 생성/역직렬화 하는 헬퍼 API 설명. | spec 규칙을 실무 적용 형태로 해설. 규범 변경 시 여기 반영 필요.   |
-> | [standard-api-response-examples.md](standard-api-response-examples.md)           | **예제 카탈로그**: 대표/복합/경계 케이스 코드 스니펫 모음.                    | 사용 패턴을 구체화, 규칙 자체 변형 없음. 최신 spec 기준 유지 필요. |
-> | [standard-api-response-reference.md](standard-api-response-reference.md) | 레퍼런스 가이드: 모듈에 대한 상세 설명 제공                               |
-> | [README.md](../README.md)                                                        | **라이브러리 내부 개발/기여 가이드**: 구조, 수정 시 참고.                    | 라이브러리 업그레이드 시 spec 영향 여부 점검 필요.          |
+> | 문서                                                                               | 목적 / 차이점                                                         |
+> |----------------------------------------------------------------------------------|------------------------------------------------------------------|
+> | [standard-api-response-library-guide.md](standard-api-response-library-guide.md) | 라이브러리 **사용자 가이드**: 표준 응답 생성, 역직렬화, 케이스 변환, 사용 패턴 심화 설명 |
+> | [standard-api-response-reference.md](standard-api-response-reference.md) | **레퍼런스 매뉴얼**: 모듈 / 내부 타입 세부 설명                                   |
+> | [standard-api-response-examples.md](standard-api-response-examples.md) | 실전 예시 모음: payload 구성, 페이지/커서 처리, 역직렬화, 케이스 변환, Alias/Canonical 등 |
 >
 > 우선순위 충돌 시: **spec > 사용자 가이드 > 예제**. README 는 구현 레벨 참고 문서.
 
@@ -631,3 +630,138 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
   }
 }
 ```
+
+### 6. 응답 Payload 모듈러 설계 (Modular Composition)
+응답 `payload` 구조는 **작게 분리된 재사용 가능 단위(Atomic 요소)** 들을 조합하여 **Aggregate(조합형) Payload** 를 형성하도록 설계해야 합니다.<br> 이는 재사용성, 변경 격리, 전송량 최적화, 테스트 용이성을 높여 장기적인 유지보수 비용을 낮춥니다.
+
+#### 용어 정의
+| 용어 | 정의 | 비고 |
+|------|------|------|
+| Atomic 요소 | 더 이상 내부로 세분화할 실익이 없는 최소 단위 데이터 객체 | 예: 사용자 요약, 프로젝트 기본 정보 |
+| Aggregate Payload | 하나 이상의 Atomic 요소 + 하나 이상의 리스트(pageable / incremental) + 카운트/메타 등을 조합한 응답 구조 | 화면/유즈케이스 단위 |
+| Projection (View) | 특정 목적에 필요한 필드만 축약한 형태 | 보안/전송량 최적화 |
+
+#### 설계 목표
+1. **재사용**: 동일 Atomic 구조가 여러 API에서 일관되게 활용되게 하여 중복을 제거합니다.
+2. **변경 격리**: Atomic 수정이 Aggregate 전체 재작성으로 확산되지 않도록 합니다.
+3. **전송량 절감**: 초기 표시(첫 뷰)에 필요한 최소 필드만 포함하고 추가 정보는 후속 호출로 분리합니다.
+4. **테스트 단순화**: Atomic 단위 스냅샷 검증 및  Aggregate 조합 검증으로 범위를 축소합니다.
+5. **명료성**: 과도한 중첩/중복 필드를 제거하여 소비 측 파싱 복잡도를 감소시킵니다.
+
+#### 기본 원칙
+| 원칙      | 규칙                                            | 실무 가이드 |
+|---------|-----------------------------------------------|-------------|
+| 단일 책임   | Atomic은 단일 개념/엔티티 슬라이스만 표현해야 합니다.             | 불필요한 외부 도메인 끌어오지 말 것 |
+| 최소 필드   | 첫 화면/주요 기능 수행에 필수인 필드만 포함해야 합니다.              | 부가 상세는 별도 API 권장 |
+| 중첩 제한   | 2단계 초과 깊은 중첩은 지양합니다.                          | `list -> object -> list` 반복 방지 |
+| 식별자 분리  | 참조만 필요한 경우 전체 객체 대신 id(+label)만 제공합니다.        | 과도한 중첩/용량 감소 |
+| 버전 경계   | 대규모 변경은 새 Aggregate 로 분리합니다. (예: `DetailV2`)  | 구버전 병행 기간 운영 |
+| 리스트 일관성 | 모든 리스트는 `pageable` 또는 `incremental` 규칙을 따릅니다. | 임의 배열 금지 (단순 소량 고정 목록 제외) |
+| 중복 제거   | 동일 의미 구조의 반복 정의를 지양합니다.                       | Atomic 재사용 |
+| 일관된 네이밍 | 필드 명칭은 동일 의미에 동일 이름을 재사용합니다.                  | 혼동/alias 난립 방지 |
+
+#### Aggregate 구성 예시
+```json
+{
+  "status": "SUCCESS",
+  "version": "1.0",
+  "datetime": "2025-10-16T09:10:11Z",
+  "duration": 42,
+  "payload": {
+    "user": {
+      "user_id": 10,
+      "display_name": "황용호",
+      "role": "ADMIN"
+    },
+    "projects": {
+      "page": {"size": 5, "total": 12, "current": 1},
+      "order": {"sorted": true, "by": [{"field": "id", "direction": "asc"}]},
+      "items": {
+        "total": 60,
+        "current": 5,
+        "list": [
+          {"project_id": 101, "name": "PJT-A"},
+          {"project_id": 102, "name": "PJT-B"},
+          {"project_id": 103, "name": "PJT-C"},
+          {"project_id": 104, "name": "PJT-D"},
+          {"project_id": 105, "name": "PJT-E"}
+        ]
+      }
+    },
+    "unread_count": 7
+  }
+}
+```
+
+#### Incremental(더보기) 리스트와 혼합 예시
+```json
+{
+  "status": "SUCCESS",
+  "version": "1.0",
+  "datetime": "2025-10-16T09:10:11Z",
+  "duration": 33,
+  "payload": {
+    "user": {"user_id": 10, "display_name": "황용호"},
+    "activity_feed": {
+      "cursor": {"field": "id", "start": 9001, "end": 9005, "expandable": true},
+      "items": {
+        "total": 500,
+        "current": 5,
+        "list": [
+          {"id": 9001, "type": "LOGIN", "ts": "2025-10-16T09:09:58Z"},
+          {"id": 9002, "type": "VIEW", "ts": "2025-10-16T09:09:59Z"},
+          {"id": 9003, "type": "EDIT", "ts": "2025-10-16T09:10:00Z"},
+          {"id": 9004, "type": "VIEW", "ts": "2025-10-16T09:10:01Z"},
+          {"id": 9005, "type": "LOGOUT", "ts": "2025-10-16T09:10:02Z"}
+        ]
+      }
+    },
+    "highlight_projects": {
+      "page": {"size": 3, "total": 1, "current": 1},
+      "items": {
+        "total": 3,
+        "current": 3,
+        "list": [
+          {"project_id": 201, "name": "HI-A"},
+          {"project_id": 202, "name": "HI-B"},
+          {"project_id": 203, "name": "HI-C"}
+        ]
+      }
+    }
+  }
+}
+```
+
+#### 빈/소량 리스트 처리
+- 데이터가 없으면 `list: []` 로 표현합니다.
+- 별도 메타가 의미 없을 정도로 **고정/소량(예: 1~3개)** 의 단순 코드 목록은 예외적으로 평문 배열 사용을 허용할 수 있으나, 일관성을 위해 가능하면 동일한 리스트 구조를 유지합니다.
+
+#### 다중 리스트 조합
+여러 리스트를 포함하는 경우 각 리스트 블록은 `pageable` 또는 `incremental` 규칙을 독립적으로 충족해야 합니다.<br>의미가 다른 리스트는 명확한 필드명(`members`, `roles`, `activity_feed` 등)을 사용합니다.
+
+#### 마이그레이션 전략
+| 변경 유형 | 권장 전략 |
+|-----------|-----------|
+| 필드 추가 (Optional) | 추가 후 문서화, 클라이언트 하위 호환 유지 |
+| 필드 제거 | Deprecation 기간 표시 후 제거, 필요 시 대체 필드 병행 |
+| 의미 변경 (호환 불가) | 새 필드명 또는 새 Aggregate(`*V2`) 도입 |
+| 대규모 구조 재조합 | 구 구조 병행 노출 → 마이그레이션 완료 후 제거 |
+
+#### 안티 패턴 (지양할 점)
+| 패턴 | 문제 | 개선 |
+|------|------|------|
+| 거대 단일 Payload (과다 필드) | 전송량 증가, 변경 파급 | 원자화 + 조합 |
+| 비슷한 구조 Copy & Paste | 중복 유지보수 | 공용 Atomic 재사용 |
+| 깊은 중첩 (3단계 이상) | 파싱/가독성 저하 | 구조 평탄화, 별도 API 분리 |
+| 상세/요약 혼합된 리스트 아이템 | 불일치/분기 증가 | 요약 리스트 + 상세 개별 조회 |
+| 동일 의미 필드 서로 다른 이름 | 혼동, 매핑 비용 | 표준 이름 단일화 |
+
+#### 적용 절차 (권장 Flow)
+1. 핵심 엔터티/뷰 요구사항 식별 → Atomic 요소 초안 정의
+2. 화면/유즈케이스 별 Aggregate 구성 초안 (필수 vs 선택 필드 구분)
+3. 각 리스트 성격에 따라 pageable / incremental 결정
+4. 필드 명명 표준화 및 중복/모호성 제거
+5. JSON 스키마 예시 작성 및 리뷰 (빈/다중 리스트, 에러 케이스 포함)
+6. 직렬화 → 역직렬화 왕복 테스트 (정상 + 빈 리스트 + 다중 리스트)
+7. 문서 반영 및 클라이언트 공유
+8. 변경 발생 시 버전 전략 적용 (필요 시 `*V2` 구조 병행)

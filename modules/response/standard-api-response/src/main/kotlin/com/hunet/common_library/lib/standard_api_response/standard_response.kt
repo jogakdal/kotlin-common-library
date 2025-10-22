@@ -1,6 +1,7 @@
 package com.hunet.common_library.lib.standard_api_response
 
 import com.fasterxml.jackson.annotation.JsonIgnore
+import com.fasterxml.jackson.core.type.TypeReference
 import com.hunet.common_library.lib.standard_api_response.BasePayload.Companion.deserializePayload
 import com.hunet.common_library.lib.std_api_documentation.*
 import com.hunet.common_library.lib.std_api_documentation.DescriptiveEnum.Companion.DESCRIPTION_MARKER
@@ -488,6 +489,42 @@ data class StandardResponse<T : BasePayload> (
             }
             val duration = json.getCanonical("duration")?.jsonPrimitive?.long ?: 0L
             val payload = deserializePayload(json, payloadClass)
+            StandardResponse(
+                status = status,
+                version = version,
+                datetime = datetime,
+                duration = duration,
+                payload = payload
+            )
+        } catch (e: Exception) {
+            @Suppress("UNCHECKED_CAST")
+            StandardResponse(
+                status = StandardStatus.FAILURE,
+                version = "1.0",
+                datetime = Instant.now(),
+                duration = 0L,
+                payload = ErrorPayload(
+                    code = "E_DESERIALIZE_FAIL",
+                    message = e.message ?: "Deserialization failed"
+                ) as T
+            )
+        }
+
+        // TypeReference 기반 역직렬화 (Java 제네릭 타입 유지)
+        @JvmStatic
+        fun <T: BasePayload> deserialize(jsonString: String, typeRef: TypeReference<T>): StandardResponse<T> = try {
+            val json = JsonConfig.json.parseToJsonElement(jsonString).jsonObject
+            val status = json.getCanonical("status")?.jsonPrimitive?.content?.let {
+                StandardStatus.fromString(it)
+            } ?: StandardStatus.SUCCESS
+            val version = json.getCanonical("version")?.jsonPrimitive?.content ?: "1.0"
+            val datetime = when (val dt = json.getCanonical("datetime")) {
+                null -> Instant.now()
+                is JsonPrimitive -> if (dt.isString) Instant.parse(dt.content) else Instant.now()
+                else -> Instant.now()
+            }
+            val duration = json.getCanonical("duration")?.jsonPrimitive?.long ?: 0L
+            val payload = deserializePayload(json, typeRef)
             StandardResponse(
                 status = status,
                 version = version,

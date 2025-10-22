@@ -8,8 +8,10 @@ import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.readValue
+import com.fasterxml.jackson.core.type.TypeReference
 import com.hunet.common_library.lib.standard_api_response.KeyNormalizationUtil.canonical
 import io.swagger.v3.oas.annotations.media.Schema
+import java.lang.reflect.ParameterizedType
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
@@ -27,23 +29,37 @@ interface BasePayload {
             val serializationMap = global.serializationMap
 
             val canonicalToFinal = mutableMapOf<String, String>()
-            fun mapKey(original: String) = canonicalToFinal[original.canonical()] ?: original
+
+            fun resolveFinalKey(original: String): String {
+                val canon = original.canonical()
+                canonicalToFinal[canon]?.let { return it }
+
+                var baseProp = global.canonicalAliasToProp[canon]
+
+                if (AliasConflictConfig.mode == AliasConflictMode.WARN &&
+                    AliasConflictConfig.resolution == AliasConflictResolution.BEST_MATCH) {
+                    val candidates = global.conflictCandidates[canon]
+                    if (candidates != null && candidates.size > 1) {
+                        val lower = original.lowercase()
+                        val matched = candidates.firstOrNull { lower in (global.propertyAliasLower[it] ?: emptySet()) }
+                        if (matched != null) baseProp = matched
+                    }
+                }
+
+                val finalKey = when {
+                    baseProp != null -> serializationMap[baseProp] ?: baseProp
+                    else -> original
+                }
+                canonicalToFinal[canon] = finalKey
+                return finalKey
+            }
 
             fun recurse(elem: JsonElement): JsonElement = when (elem) {
                 is JsonObject -> buildJsonObject {
-                    elem.forEach { (k,v) -> put(mapKey(k), recurse(v)) }
+                    elem.forEach { (k,v) -> put(resolveFinalKey(k), recurse(v)) }
                 }
                 is JsonArray -> JsonArray(elem.map { recurse(it) })
                 else -> elem
-            }
-
-            global.canonicalAliasToProp.forEach { (canon, prop) ->
-                val finalKey = serializationMap[prop] ?: prop
-                canonicalToFinal.putIfAbsent(canon, finalKey)
-            }
-
-            serializationMap.values.forEach { alias ->
-                canonicalToFinal.putIfAbsent(alias.canonical(), alias)
             }
 
             return recurse(json)
@@ -58,6 +74,18 @@ interface BasePayload {
         fun <P : BasePayload> deserializePayload(jsonObject: JsonObject, type: Class<P>): P =
             jsonObject.getByCanonicalKey("payload")?.let { elem ->
                 Jackson.json.readValue(applyAliasesRecursively(elem, type.kotlin).toString(), type)
+            } ?: throw Exception("Payload is null")
+
+        // TypeReference 기반 (Java 제네릭 유지)
+        @JvmStatic
+        fun <P : BasePayload> deserializePayload(jsonObject: JsonObject, typeRef: TypeReference<P>): P =
+            jsonObject.getByCanonicalKey("payload")?.let { elem ->
+                val kClass = when (val t = typeRef.type) {
+                    is Class<*> -> t.kotlin
+                    is ParameterizedType -> (t.rawType as? Class<*>)?.kotlin
+                    else -> BasePayload::class
+                } ?: BasePayload::class
+                Jackson.json.readValue(applyAliasesRecursively(elem, kClass).toString(), typeRef)
             } ?: throw Exception("Payload is null")
     }
 }

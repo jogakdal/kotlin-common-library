@@ -12,6 +12,7 @@
 *.ipr
 *.log
 *.class
+*.bak
 /out/
 /temp/
 
