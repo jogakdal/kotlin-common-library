@@ -11,7 +11,7 @@ allprojects {
 subprojects {
     plugins.withId("org.jetbrains.kotlin.jvm") {
         extensions.findByName("java")?.let {
-            (it as org.gradle.api.plugins.JavaPluginExtension).toolchain {
+            (it as JavaPluginExtension).toolchain {
                 languageVersion.set(JavaLanguageVersion.of(21))
             }
         }
@@ -89,8 +89,81 @@ val syncSnippets by tasks.registering {
     }
 }
 
+// standard-api-response-library-guide.md 파일 내 version 블록 자동 업데이트
+val updateLibraryGuideVersions by tasks.registering {
+    group = "documentation"
+    description = "`standard-api-response-library-guide.md` 파일 내 version info 블록을 업데이트합니다."
+    val guideFile = file("docs/standard-api-response-library-guide.md")
+    inputs.file(guideFile)
+    outputs.file(guideFile)
+    doLast {
+        if (!guideFile.exists()) {
+            logger.warn("[updateLibraryGuideVersions] guide file not found: ${guideFile.path}")
+            return@doLast
+        }
+        val rootVersion = project.version.toString()
+        fun prop(name: String) = findProperty(name)?.toString()
+        val commonCore = prop("moduleVersion.common-core") ?: rootVersion
+        val annotations = prop("moduleVersion.std-api-annotations") ?: rootVersion
+        val stdApi = prop("moduleVersion.standard-api-response") ?: rootVersion
+        val nowSeoul = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Seoul"))
+        val ts = nowSeoul.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z"))
+        val newBlock = """
+```
+Last updated: $ts
+common-core: $commonCore
+std-api-annotations: $annotations
+standard-api-response: $stdApi
+```
+""".trim()
+        val pattern = Regex("<!-- version-info:start -->[\\s\\S]*?<!-- version-info:end -->")
+        val text = guideFile.readText()
+        if (!pattern.containsMatchIn(text)) {
+            logger.warn("[updateLibraryGuideVersions] version marker block이 없습니다; 스킵합니다.")
+            return@doLast
+        }
+        val replacement = "<!-- version-info:start -->\n$newBlock\n<!-- version-info:end -->"
+        val updated = pattern.replace(text) { replacement }
+        if (updated != text) {
+            guideFile.writeText(updated)
+            println("[updateLibraryGuideVersions] updated versions -> common-core=$commonCore, std-api-annotations=$annotations, standard-api-response=$stdApi")
+        } else {
+            println("[updateLibraryGuideVersions] no changes (already up to date)")
+        }
+    }
+}
+
 if (tasks.findByName("docs") == null) {
-    tasks.register("docs") { dependsOn(syncSnippets) }
+    tasks.register("docs") { dependsOn(updateLibraryGuideVersions) }
 } else {
-    tasks.named("docs") { dependsOn(syncSnippets) }
+    tasks.named("docs") { dependsOn(updateLibraryGuideVersions) }
+}
+
+val existingBuild = tasks.findByName("build")
+val rootBuild: TaskProvider<Task> = if (existingBuild != null) {
+    tasks.named("build")
+} else {
+    tasks.register("build") {
+        group = "build"
+        description = "Aggregate build for all subprojects"
+    }
+}
+
+rootBuild.configure {
+    dependsOn(updateLibraryGuideVersions)
+}
+
+gradle.projectsEvaluated {
+    rootBuild.configure {
+        gradle.rootProject.subprojects.forEach { sub ->
+            if (sub != rootProject && sub.tasks.findByName("build") != null) {
+                dependsOn(sub.path + ":build")
+            }
+        }
+    }
+    rootProject.subprojects.find { it.path == ":standard-api-response" }?.let { respProj ->
+        respProj.tasks.matching { it.name == "build" }.configureEach {
+            dependsOn(rootProject.tasks.named("updateLibraryGuideVersions"))
+        }
+    }
 }
