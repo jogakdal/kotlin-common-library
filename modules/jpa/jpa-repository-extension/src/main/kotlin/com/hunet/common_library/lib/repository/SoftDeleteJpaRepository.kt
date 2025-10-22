@@ -166,9 +166,19 @@ inline val Any.nativeTableName: String
     get() = this::class.getAnnotation<Table>()?.name
         ?: throw IllegalStateException("엔티티 ${this::class.simpleName}에 @Table(name=…)이 없습니다")
 
-fun buildPageable(pageNo: Int, pageSize: Int, sort: Sort = Sort.unsorted()): Pageable =
-    if (pageSize > 0) PageRequest.of(pageNo.coerceAtLeast(0), pageSize, sort)
-    else Pageable.unpaged(sort)
+fun <T : Number> buildPageable(
+    pageNo: T,
+    pageSize: T,
+    sort: Sort = Sort.unsorted()
+): Pageable {
+    val page = pageNo.toLong().coerceAtLeast(0).toInt()
+    val size = pageSize.toLong()
+
+    return if (size > 0)
+        PageRequest.of(page, size.toInt(), sort)
+    else
+        Pageable.unpaged(sort)
+}
 
 @NoRepositoryBean
 interface SoftDeleteJpaRepository<E, ID: Serializable> : JpaRepository<E, ID> {
