@@ -101,7 +101,7 @@ dependencies {
 ### 2.3 최신 버전 정보
 <!-- version-info:start -->
 ```
-Last updated: 2025-10-23 11:32:55 KST
+Last updated: 2025-10-23 16:07:48 KST
 common-core: 1.0.3-SNAPSHOT
 std-api-annotations: 1.0.1-SNAPSHOT
 standard-api-response: 1.1.1-SNAPSHOT

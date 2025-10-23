@@ -1,11 +1,4 @@
 package com.hunet.common.lib.repository
 
-import org.springframework.boot.context.properties.ConfigurationProperties
-import org.springframework.stereotype.Component
-
-@Component
-@ConfigurationProperties(prefix = "softdelete.upsert-all")
-data class SoftDeleteProperties(var flushInterval: Int = 50) {
-    init { require(flushInterval >= 1) { "flush-interval must be at least 1" } }
-}
-
+// Deprecated: SoftDeleteProperties moved to com.hunet.common.data.jpa.softdelete.SoftDeleteProperties
+// This file intentionally left blank to avoid duplicate class definitions.

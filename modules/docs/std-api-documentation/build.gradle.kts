@@ -19,5 +19,6 @@ dependencies {
     testImplementation("org.springframework:spring-test")
     testImplementation(commonLibs.springBootStarterTest)
     testImplementation("org.mockito:mockito-core:5.14.1")
+    testRuntimeOnly("org.mockito:mockito-agent:5.14.1")
     testImplementation(project(":test-support"))
 }

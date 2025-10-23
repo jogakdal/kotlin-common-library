@@ -1,7 +1,7 @@
 package com.hunet.common.lib.standard_api_response
 
 import com.fasterxml.jackson.databind.JsonNode
-import com.hunet.common.lib.logger.commonLogger
+import com.hunet.common.logging.commonLogger
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.core.MethodParameter

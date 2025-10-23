@@ -1,4 +1,4 @@
-package com.hunet.common.lib.logger
+package com.hunet.common.logging
 
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory

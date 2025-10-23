@@ -106,11 +106,12 @@ modules/
 
 ---
 ## 9. 검증 체크리스트
-- [ ] 모든 모듈 빌드 성공 (`./gradlew build`)
-- [ ] 단위/통합 테스트 성공
-- [ ] MavenLocal 퍼블리시 후 다른 샘플 프로젝트에서 의존성 정상 동작
-- [ ] AutoConfiguration Bean 등록 확인 (로그 또는 테스트)
-- [ ] 문서(Dokka, Markdown) 내 패키지 경로 최신 반영
+- [x] 모든 모듈 빌드 성공 (`./gradlew build`)
+- [ ] 단위/통합 테스트 성공 (추후 실행)
+- [x] SoftDelete 패키지 재배치 완료
+- [ ] MavenLocal 퍼블리시 후 외부 샘플 확인
+- [ ] AutoConfiguration Bean 로딩 통합 테스트
+- [ ] 문서(Dokka, Markdown) 패키지 경로 최종 반영
 - [ ] 릴리스 노트 포함 마이그레이션 가이드 작성
 
 ---
@@ -139,6 +140,13 @@ grep -rl "com.hunet.common.test_support" . | xargs sed -i '' 's/com\.hunet\.comm
 - 삭제 마킹 어노테이션: `com.hunet.common.data.jpa.softdelete.annotation.DeleteMark`
 - 시퀀스 생성: `com.hunet.common.data.jpa.sequence.SequenceGenerator`
 - 내부 헬퍼: `com.hunet.common.data.jpa.softdelete.internal.*`
+
+[완료] 2025-10-23 적용됨
+- 신규 패키지로 코드 이동 및 기존 경로 Deprecated forwarder 제공
+- AutoConfiguration.imports 에 `com.hunet.common.data.jpa.softdelete.SoftDeleteJpaRepositoryAutoConfiguration` 추가
+- 내부 타입(DeleteMarkValue, DeleteMarkInfo) `internal` 패키지로 분리
+- 문서 내 구 패키지 참조 없음(검색 확인)
+- 향후: Deprecated forwarder 1 릴리스 유지 후 제거 예정
 
 ---
 ## 12. 후속 개선 아이디어 (초안 범위 밖 - 선택)

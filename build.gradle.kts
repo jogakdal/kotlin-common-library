@@ -21,7 +21,27 @@ subprojects {
         compilerOptions.freeCompilerArgs.addAll("-Xjsr305=strict")
     }
 
-    tasks.withType<Test>().configureEach { useJUnitPlatform() }
+    tasks.withType<Test>().configureEach {
+        useJUnitPlatform()
+        if (!project.hasProperty("disableMockitoAgent")) {
+            doFirst {
+                val cpFiles = classpath.files
+                val agentJar = cpFiles.firstOrNull { it.name.startsWith("mockito-agent") }
+                    ?: cpFiles.firstOrNull { it.name.startsWith("byte-buddy-agent") }
+                    ?: cpFiles.firstOrNull { it.name.startsWith("mockito-core") }
+                if (agentJar != null) {
+                    val existing = (this as org.gradle.process.JavaForkOptions).jvmArgs ?: emptyList()
+                    if (existing.none { it.contains(agentJar.name) }) {
+                        jvmArgs("-javaagent:${agentJar.absolutePath}")
+                    }
+                    if (existing.none { it == "-XX:+EnableDynamicAgentLoading" }) {
+                        jvmArgs("-XX:+EnableDynamicAgentLoading")
+                    }
+                    println("[test-config] Ensured javaagent (${agentJar.name}) for ${project.path}")
+                }
+            }
+        }
+    }
 }
 
 // --- Snippet Sync (VariableProcessor 예제 기반) ---

@@ -1,6 +1,6 @@
 package com.hunet.common.support
 
-import com.hunet.common.lib.logger.commonLogger
+import com.hunet.common.logging.commonLogger
 import jakarta.persistence.EntityManager
 import jakarta.persistence.EntityManagerFactory
 import org.springframework.core.io.ClassPathResource

@@ -12,7 +12,7 @@ pluginManagement {
 dependencyResolutionManagement {
     repositories { mavenCentral() }
     versionCatalogs {
-        create("commonLibs") {
+        register("commonLibs") {
             from(files("gradle/libs.versions.toml"))
         }
     }
