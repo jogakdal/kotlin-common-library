@@ -16,8 +16,8 @@
 ## 빠른 의존성 예 (Gradle Kotlin DSL)
 ```kotlin
 dependencies {
-    implementation("com.hunet.common_library:common-core:<version>")
-    testImplementation("com.hunet.common_library:test-support:<version>")
+    implementation("com.hunet.common:common-core:<version>")
+    testImplementation("com.hunet.common:test-support:<version>")
 }
 ```
 

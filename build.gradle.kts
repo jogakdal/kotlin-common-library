@@ -25,8 +25,8 @@ subprojects {
 }
 
 // --- Snippet Sync (VariableProcessor 예제 기반) ---
-val snippetSource = file("modules/core/common-core/src/test/kotlin/com/hunet/common_library/lib/examples/VariableProcessorQuickStartExample.kt")
-val javaSnippetSource = file("modules/core/common-core/src/test/java/com/hunet/common_library/lib/examples/VariableProcessorJavaExample.java")
+val snippetSource = file("modules/core/common-core/src/test/kotlin/com/hunet/common/lib/examples/VariableProcessorQuickStartExample.kt")
+val javaSnippetSource = file("modules/core/common-core/src/test/java/com/hunet/common/lib/examples/VariableProcessorJavaExample.java")
 val rootReadme = file("README.md")
 val coreReadme = file("modules/core/common-core/README.md")
 val variableProcessExampleFile = file("docs/variable-processor-examples.md")

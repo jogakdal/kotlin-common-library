@@ -71,29 +71,37 @@
 ### 2.1 Gradle 의존성
 ```groovy
 dependencies {
-    implementation("com.hunet.common_library:common-core:<version>")
-    implementation("com.hunet.common_library:std-api-annotations:<version>")
-    implementation("com.hunet.common_library:standard-api-response:<version>")
+    implementation("com.hunet.common:common-core:<version>")
+    implementation("com.hunet.common:std-api-annotations:<version>")
+    implementation("com.hunet.common:standard-api-response:<version>")
 }
 ```
 ### 2.2 Maven 의존성
+
 ```xml
+
 <dependencies>
-  <dependency>
-    <groupId>com.hunet.common_library</groupId><artifactId>common-core</artifactId><version>버전</version>
-  </dependency>
-  <dependency>
-    <groupId>com.hunet.common_library</groupId><artifactId>std-api-annotations</artifactId><version>버전</version>
-  </dependency>
-  <dependency>
-    <groupId>com.hunet.common_library</groupId><artifactId>standard-api-response</artifactId><version>버전</version>
-  </dependency>
+    <dependency>
+        <groupId>com.hunet.common</groupId>
+        <artifactId>common-core</artifactId>
+        <version>버전</version>
+    </dependency>
+    <dependency>
+        <groupId>com.hunet.common</groupId>
+        <artifactId>std-api-annotations</artifactId>
+        <version>버전</version>
+    </dependency>
+    <dependency>
+        <groupId>com.hunet.common</groupId>
+        <artifactId>standard-api-response</artifactId>
+        <version>버전</version>
+    </dependency>
 </dependencies>
 ```
 ### 2.3 최신 버전 정보
 <!-- version-info:start -->
 ```
-Last updated: 2025-10-20 17:07:00 KST
+Last updated: 2025-10-23 11:32:55 KST
 common-core: 1.0.3-SNAPSHOT
 std-api-annotations: 1.0.1-SNAPSHOT
 standard-api-response: 1.1.1-SNAPSHOT

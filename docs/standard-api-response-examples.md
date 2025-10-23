@@ -13,9 +13,9 @@
 ### Gradle(Kotlin DSL)
 ```groovy
 dependencies {
-    implementation("com.hunet.common_library:common-core:<version>")
-    implementation("com.hunet.common_library:std-api-annotations:<version>")
-    implementation("com.hunet.common_library:standard-api-response:<version>")
+    implementation("com.hunet.common:common-core:<version>")
+    implementation("com.hunet.common:std-api-annotations:<version>")
+    implementation("com.hunet.common:standard-api-response:<version>")
 }
 ```
 (Java 프로젝트도 동일)

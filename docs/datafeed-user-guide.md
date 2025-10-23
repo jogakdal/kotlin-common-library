@@ -13,8 +13,8 @@ DataFeed는 테스트 / 시딩(Seeding) 환경에서 SQL 스크립트나 단일 
 ## 2. 의존성
 ```kotlin
 dependencies {
-    testImplementation("com.hunet.common_library:common-core:<version>")
-    testImplementation("com.hunet.common_library:test-support:<version>") // (선택) AbstractControllerTest 등
+    testImplementation("com.hunet.common:common-core:<version>")
+    testImplementation("com.hunet.common:test-support:<version>") // (선택) AbstractControllerTest 등
 }
 ```
 SNAPSHOT 사용 시 `<version>-SNAPSHOT`.

@@ -21,8 +21,8 @@
 소비 프로젝트(예: Gradle Kotlin DSL):
 ```kotlin
 dependencies {
-    testImplementation("com.hunet.common_library:test-support:<version>")
-    testImplementation("com.hunet.common_library:common-core:<version>") // DataFeed 포함 필요 시
+    testImplementation("com.hunet.common:test-support:<version>")
+    testImplementation("com.hunet.common:common-core:<version>") // DataFeed 포함 필요 시
 }
 ```
 (스냅샷 사용 시 `<version>-SNAPSHOT` 형식으로 조정)
