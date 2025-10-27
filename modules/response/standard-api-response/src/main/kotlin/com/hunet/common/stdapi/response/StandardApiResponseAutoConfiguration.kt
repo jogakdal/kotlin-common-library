@@ -1,4 +1,4 @@
-package com.hunet.common.lib.standard_api_response
+package com.hunet.common.stdapi.response
 
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
@@ -41,7 +41,7 @@ class RequestTimingFilter : OncePerRequestFilter() {
 @Configuration
 @ConditionalOnWebApplication
 @ConditionalOnProperty(
-    prefix = "standard-api-response.auto-duration-calculation",
+    prefix = "stdapi.response.auto-duration-calculation",
     name = ["active"],
     havingValue = "true",
     matchIfMissing = false
@@ -52,7 +52,6 @@ class StandardApiResponseAutoConfiguration {
     @Bean
     fun requestTimingFilterRegistration(
         filter: RequestTimingFilter,
-        @Value("\${standard-api-response.auto-duration-calculation.filter-order:#{T(java.lang.Integer).MIN_VALUE}}") order: Int
+        @Value("\${stdapi.response.auto-duration-calculation.filter-order:\${standard-api-response.auto-duration-calculation.filter-order:#{T(java.lang.Integer).MIN_VALUE}}}") order: Int
     ): FilterRegistrationBean<RequestTimingFilter> = FilterRegistrationBean(filter).apply { this.order = order }
 }
-

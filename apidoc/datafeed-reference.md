@@ -1,6 +1,6 @@
 # DataFeed Reference Manual
 
-본 문서는 DataFeed 의 구조/시그니처/파서 동작/로그 포맷/확장 가능 지점을 상세 기술합니다. 사용자 가이드는 `datafeed-user-guide.md` 참고.
+본 문서는 DataFeed의 구조/시그니처/파서 동작/로그 포맷/확장 가능 지점을 상세 기술합니다. 사용자 가이드는 `datafeed-user-guide.md` 참고.
 
 ## 1. 클래스 개요
 ```kotlin
@@ -14,8 +14,8 @@ open class DataFeed {
 
 ## 2. 라이프사이클 & Bean 생성
 - AutoConfiguration: `CommonCoreAutoConfiguration`
-  - 조건: EntityManagerFactory 존재시 `DataFeed` 빈 등록
-  - no-op: JPA 부재 시 test-support 의 fallback (별도 구현)
+  - 조건: EntityManagerFactory 존재 시 `DataFeed` 빈 등록
+  - no-op: JPA 부재 시 test-support의 fallback (별도 구현)
 - Scope: 싱글톤 (stateless, per-statement EM 전략)
 
 ## 3. Per-statement EntityManager 전략

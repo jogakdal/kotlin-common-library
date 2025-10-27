@@ -40,7 +40,7 @@
 | 모듈 | 역할 |
 |-------|------|
 | `common-core` | 공통 유틸/기초 타입 (시간, 공통 예외 등) |
-| `apidoc-annotations` (구 std-api-annotations) | `@InjectDuration`, `@ResponseCase`, `@NoCaseTransform` 등 어노테이션 제공 |
+| `apidoc-annotations` | `@InjectDuration`, `@ResponseCase`, `@NoCaseTransform` 등 어노테이션 제공 |
 | `standard-api-response` | 표준 응답/리스트/에러/역직렬화/케이스 변환 핵심 구현 |
 
 ### 1.4 지원 환경 & 런타임
@@ -101,11 +101,11 @@ dependencies {
 ### 2.3 최신 버전 정보
 <!-- version-info:start -->
 ```
-Last updated: 2025-10-27 09:15:49 KST
-common-core: 1.0.3-SNAPSHOT
-apidoc-core: 1.0.1-SNAPSHOT
-apidoc-annotations: 1.0.1-SNAPSHOT
-standard-api-response: 1.1.1-SNAPSHOT
+Last updated: 2025-10-27 10:30:58 KST
+common-core: 1.1.0-SNAPSHOT
+apidoc-core: 1.1.0-SNAPSHOT
+apidoc-annotations: 1.1.0-SNAPSHOT
+standard-api-response: 1.2.0-SNAPSHOT
 ```
 <!-- version-info:end -->
 

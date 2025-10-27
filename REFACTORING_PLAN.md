@@ -21,7 +21,7 @@
 | jpa-repository-extension | com.hunet.common.lib.repository | 의미 불명확(lib), 확장 성격 불분명 |
 | std-api-annotations | com.hunet.common.lib.std_api_documentation | snake_case, annotations vs 문서 혼재 | → 변경: apidoc-annotations 패키지 com.hunet.common.apidoc.annotations (완료)
 | std-api-documentation | com.hunet.common.lib.std_api_documentation | 동일 패키지 충돌, 책임 불분리 | → 변경: apidoc-core 패키지 com.hunet.common.apidoc.core (완료)
-| standard-api-response | com.hunet.common.lib.standard_api_response | 길고 snake_case, std-api 네이밍 불통일 |
+| standard-api-response | com.hunet.common.stdapi.response | 길고 snake_case, std-api 네이밍 불통일 (패키지 리네임 완료: com.hunet.common.stdapi.response) |
 | test-support | com.hunet.common.test_support | snake_case 및 최상위 공개 의도 불명확 |
 | examples(테스트 내) | com.hunet.common.lib.examples | lib 네이밍 잔존, 위치 혼재 |
 
@@ -33,7 +33,7 @@
 | com.hunet.common.lib.repository.softdelete 관련 | com.hunet.common.data.jpa.softdelete | 삭제 마킹 관련 기능 집중 |
 | com.hunet.common.lib.std_api_documentation (annotations) | com.hunet.common.stdapi.annotation | Swagger/문서용 커스텀 어노테이션 |
 | com.hunet.common.lib.std_api_documentation (documentation helper) | com.hunet.common.stdapi.doc | 문서/스캐폴딩/헬퍼 |
-| com.hunet.common.lib.standard_api_response | com.hunet.common.stdapi.response | 표준 응답 처리/직렬화 |
+| com.hunet.common.stdapi.response | com.hunet.common.stdapi.response | 표준 응답 처리/직렬화 (리네임 적용 완료) |
 | com.hunet.common.test_support | com.hunet.common.test.support | 테스트 지원 전용 |
 | com.hunet.common.lib.examples | com.hunet.common.examples | 샘플/QuickStart 코드 |
 | com.hunet.common.autoconfigure (유지) | com.hunet.common.autoconfigure | 공통 AutoConfig 루트 유지 |
@@ -52,7 +52,7 @@ modules/
   jpa/jpa-repository-extension -> com.hunet.common.data.jpa.*
   annotations/std-api-annotations -> com.hunet.common.apidoc.annotations (완료)
   docs/std-api-documentation -> com.hunet.common.apidoc.core (완료)
-  response/standard-api-response -> com.hunet.common.stdapi.response
+  response/standard-api-response -> com.hunet.common.stdapi.response (완료)
   test/test-support -> com.hunet.common.test.support
   docs/std-api-documentation (문서 생성 코드) -> (doc 하위 유지)
 ```
@@ -179,10 +179,10 @@ grep -rl "com.hunet.common.test_support" . | xargs sed -i '' 's/com\.hunet\.comm
 ## 15. 버전 및 배포 정책
 - 리팩토링 완료 후 첫 릴리스: 0.1.0 (Breaking Changes)
 - README 최상단에 이전 버전 → 새로운 패키지 매핑 테이블 추가
-- Maven Central 또는 내부 Nexus 퍼블리시 전에 샘플 프로젝트 1개로 연동 테스트
+- Maven Central 또는 내부 Nexus 퍼블리시 전 샘플 프로젝트 1개로 연동 테스트
 
 ---
-## 16. 승인의 다음 단계
+## 16. 승인 이후 단계
 1. 본 초안 리뷰 의견 반영
 2. 확정판 작성 (섹션 3, 7 매핑/단계 확정)
 3. 이슈 생성 (GitHub/Jira 등) → 각 단계 추적

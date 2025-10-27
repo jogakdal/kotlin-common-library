@@ -1,7 +1,5 @@
 # apidoc-annotations Mini Reference (구 std-api-annotations)
 
-> NOTE: 이전 모듈명 `std-api-annotations` 는 리팩터링 후 `apidoc-annotations` 로 변경되었습니다. 기존 의존성은 artifactId 교체만 하면 동일하게 동작합니다. `@RequestDescription` / `@SwaggerDescribable` 는 Deprecated 상태이며 향후 버전에서 제거 예정입니다. 클래스/필드 문서화에는 표준 `@Schema` 사용을 권장합니다.
-
 `apidoc-annotations` 모듈은 표준 응답/문서화 체계에서 재사용되는 **어노테이션 & Enum 직렬화 규약**을 제공합니다. 이 문서는 간단 요약 / 시그니처 / 사용 패턴 / 주의 사항에 집중한 미니 레퍼런스입니다.
 
 관련 문서:

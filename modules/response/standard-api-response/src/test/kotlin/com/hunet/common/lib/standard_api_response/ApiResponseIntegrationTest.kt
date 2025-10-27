@@ -1,4 +1,4 @@
-package com.hunet.common.lib.standard_api_response
+package com.hunet.common.stdapi.response
 
 import com.hunet.common.test.support.AbstractControllerTest
 import org.junit.jupiter.api.Test

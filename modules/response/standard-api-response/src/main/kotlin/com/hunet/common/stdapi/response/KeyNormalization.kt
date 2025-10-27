@@ -1,6 +1,6 @@
-package com.hunet.common.lib.standard_api_response
+package com.hunet.common.stdapi.response
 
-import com.hunet.common.lib.standard_api_response.KeyNormalizationUtil.canonical
+import com.hunet.common.stdapi.response.KeyNormalizationUtil.canonical
 import kotlinx.serialization.json.*
 
 @PublishedApi

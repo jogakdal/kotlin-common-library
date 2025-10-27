@@ -1,4 +1,4 @@
-package com.hunet.common.lib.standard_api_response
+package com.hunet.common.stdapi.response
 
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.MapperFeature
@@ -9,7 +9,8 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.fasterxml.jackson.core.type.TypeReference
-import com.hunet.common.lib.standard_api_response.KeyNormalizationUtil.canonical
+import com.hunet.common.stdapi.response.KeyNormalizationUtil.canonical
+import com.hunet.common.stdapi.response.getByCanonicalKey // 확장 함수 사용 명시적 import
 import io.swagger.v3.oas.annotations.media.Schema
 import java.lang.reflect.ParameterizedType
 import kotlinx.serialization.Contextual

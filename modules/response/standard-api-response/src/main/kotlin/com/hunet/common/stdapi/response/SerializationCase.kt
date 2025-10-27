@@ -1,4 +1,4 @@
-package com.hunet.common.lib.standard_api_response
+package com.hunet.common.stdapi.response
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
@@ -9,7 +9,7 @@ import kotlin.reflect.full.declaredMemberProperties
 import kotlin.reflect.full.findAnnotation
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.annotation.JsonAlias
-import com.hunet.common.lib.standard_api_response.KeyNormalizationUtil.canonical
+import com.hunet.common.stdapi.response.KeyNormalizationUtil.canonical
 import kotlin.reflect.KClass
 import kotlin.reflect.full.isSubclassOf
 import kotlin.reflect.KType

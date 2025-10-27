@@ -1,4 +1,4 @@
-package com.hunet.common.lib.standard_api_response
+package com.hunet.common.stdapi.response
 
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.KSerializer

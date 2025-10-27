@@ -80,13 +80,7 @@ dataFeed.executeUpsertSql("INSERT INTO feature_flag(id, enabled) VALUES (1, true
 2. 대량/장문 SQL: 별도 `.sql` 파일로 관리 후 `executeScriptFromFile`
 3. 민감 트랜잭션 케이스(원자성 필요): 여러 구문 하나로 합치거나 직접 EM/트랜잭션 제어
 
-## 11. 버전 히스토리
-| 버전(시점) | 변경 |
-|------------|------|
-| 2025-10 | Per-statement EM 전략 도입 (구문별 새 EntityManager) |
-| 2025-09 이전 | 단일 EM 재사용 + 수동 clear 접근 |
-
-## 12. 한계 & 비권장 사례
+## 11. 한계 & 비권장 사례
 - 대규모 마이그레이션/DDL 배포 목적 X → Flyway/Liquibase 사용 권장
 - 프로덕션 경합 높은 구문 대량 실행 X (테스트 세션 전용)
 

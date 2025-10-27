@@ -1,29 +1,25 @@
-package com.hunet.common.lib.standard_api_response
+package com.hunet.common.stdapi.response
 
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.core.type.TypeReference
-import com.hunet.common.lib.standard_api_response.BasePayload.Companion.deserializePayload
-import com.hunet.common.apidoc.enum.EnumConstant
+import com.hunet.common.apidoc.annotations.Sequence
+import com.hunet.common.apidoc.annotations.SwaggerDescription
 import com.hunet.common.apidoc.enum.DescriptiveEnum
 import com.hunet.common.apidoc.enum.DescriptiveEnum.Companion.DESCRIPTION_MARKER
-import com.hunet.common.apidoc.annotations.SwaggerDescription
-import com.hunet.common.apidoc.annotations.Sequence
+import com.hunet.common.apidoc.enum.EnumConstant
+import com.hunet.common.stdapi.response.BasePayload.Companion.deserializePayload
 import io.swagger.v3.oas.annotations.media.Schema
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.long
+import kotlinx.serialization.json.*
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Sort
 import java.time.Duration
 import java.time.Instant
-import kotlin.math.min
+import java.util.function.BiFunction
 import java.util.function.Function
 import java.util.function.Supplier
-import java.util.function.BiFunction
+import kotlin.math.min
 
 @EnumConstant
 enum class StandardStatus(

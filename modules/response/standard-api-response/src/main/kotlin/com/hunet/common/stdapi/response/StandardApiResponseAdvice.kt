@@ -1,4 +1,4 @@
-package com.hunet.common.lib.standard_api_response
+package com.hunet.common.stdapi.response
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.hunet.common.logging.commonLogger
@@ -31,12 +31,12 @@ import kotlin.time.Duration as KtDuration
  */
 @ControllerAdvice
 class StandardApiResponseAdvice(
-    @Value("\${standard-api-response.case.enabled:true}") private val caseEnabled: Boolean = true,
-    @Value("\${standard-api-response.case.default:IDENTITY}") private val defaultCaseName: String = "IDENTITY",
-    @Value("\${standard-api-response.case.query-override:true}") private val queryOverride: Boolean = true,
-    @Value("\${standard-api-response.case.header-override:true}") private val headerOverride: Boolean = true,
-    @Value("\${standard-api-response.case.query-param:case}") private val queryParamName: String = "case",
-    @Value("\${standard-api-response.case.header-name:X-Response-Case}")
+    @Value("\${stdapi.response.case.enabled:\${standard-api-response.case.enabled:true}}") private val caseEnabled: Boolean = true,
+    @Value("\${stdapi.response.case.default:\${standard-api-response.case.default:IDENTITY}}") private val defaultCaseName: String = "IDENTITY",
+    @Value("\${stdapi.response.case.query-override:\${standard-api-response.case.query-override:true}}") private val queryOverride: Boolean = true,
+    @Value("\${stdapi.response.case.header-override:\${standard-api-response.case.header-override:true}}") private val headerOverride: Boolean = true,
+    @Value("\${stdapi.response.case.query-param:\${standard-api-response.case.query-param:case}}") private val queryParamName: String = "case",
+    @Value("\${stdapi.response.case.header-name:\${standard-api-response.case.header-name:X-Response-Case}}")
     private val headerName: String = "X-Response-Case"
 ) : ResponseBodyAdvice<Any> {
     companion object { val LOG by commonLogger() }
