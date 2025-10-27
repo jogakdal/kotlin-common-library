@@ -20,16 +20,15 @@ dependencies {
     implementation(commonLibs.epagesRestdocsApiSpecMockmvc)
     implementation(commonLibs.jakartaAnnotationApi)
     implementation(project(":common-core"))
-    implementation(project(":std-api-annotations"))
+    implementation(project(":apidoc-annotations"))
 
     implementation(commonLibs.springBootStarterWeb)
     implementation(commonLibs.kotlinReflect)
     implementation(commonLibs.slf4jApi)
     testImplementation(kotlin("test"))
-    testImplementation("org.springframework:spring-test")
-    testImplementation(commonLibs.springBootStarterTest)
-    testImplementation("org.mockito:mockito-core:5.14.1")
-    testRuntimeOnly("org.mockito:mockito-agent:5.14.1")
+    testImplementation(commonLibs.springTest)
+    testImplementation(commonLibs.mockitoCore)
+    testImplementation(commonLibs.mockitoJunitJupiter)
     testImplementation(project(":test-support"))
 }
 

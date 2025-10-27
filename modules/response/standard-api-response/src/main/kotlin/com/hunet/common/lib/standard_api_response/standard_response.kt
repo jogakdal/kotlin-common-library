@@ -3,8 +3,11 @@ package com.hunet.common.lib.standard_api_response
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.core.type.TypeReference
 import com.hunet.common.lib.standard_api_response.BasePayload.Companion.deserializePayload
-import com.hunet.common.lib.std_api_documentation.*
-import com.hunet.common.lib.std_api_documentation.DescriptiveEnum.Companion.DESCRIPTION_MARKER
+import com.hunet.common.apidoc.enum.EnumConstant
+import com.hunet.common.apidoc.enum.DescriptiveEnum
+import com.hunet.common.apidoc.enum.DescriptiveEnum.Companion.DESCRIPTION_MARKER
+import com.hunet.common.apidoc.annotations.SwaggerDescription
+import com.hunet.common.apidoc.annotations.Sequence
 import io.swagger.v3.oas.annotations.media.Schema
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
@@ -32,7 +35,7 @@ enum class StandardStatus(
     SUCCESS("SUCCESS", "성공"),
     FAILURE("FAILURE", "실패");
     companion object {
-        const val DESCRIPTION = "표준 응답 상태($DESCRIPTION_MARKER)"
+        const val DESCRIPTION = "표준 응답 상태(${DESCRIPTION_MARKER})"
 
         @JvmStatic
         fun fromString(text: String): StandardStatus =
@@ -51,7 +54,7 @@ enum class OrderDirection(
     DESC("desc", "내림차순");
 
     companion object {
-        const val DESCRIPTION = "정렬 방향($DESCRIPTION_MARKER)"
+        const val DESCRIPTION = "정렬 방향(${DESCRIPTION_MARKER})"
 
         @JvmStatic
         fun fromString(text: String): OrderDirection =

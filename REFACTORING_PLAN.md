@@ -19,8 +19,8 @@
 |------|------------------|--------|
 | common-core | com.hunet.common.autoconfigure / com.hunet.common.lib.* | lib 중복, 책임 혼재 |
 | jpa-repository-extension | com.hunet.common.lib.repository | 의미 불명확(lib), 확장 성격 불분명 |
-| std-api-annotations | com.hunet.common.lib.std_api_documentation | snake_case, annotations vs 문서 혼재 |
-| std-api-documentation | com.hunet.common.lib.std_api_documentation | 동일 패키지 충돌, 책임 불분리 |
+| std-api-annotations | com.hunet.common.lib.std_api_documentation | snake_case, annotations vs 문서 혼재 | → 변경: apidoc-annotations 패키지 com.hunet.common.apidoc.annotations (완료)
+| std-api-documentation | com.hunet.common.lib.std_api_documentation | 동일 패키지 충돌, 책임 불분리 | → 변경: apidoc-core 패키지 com.hunet.common.apidoc.core (완료)
 | standard-api-response | com.hunet.common.lib.standard_api_response | 길고 snake_case, std-api 네이밍 불통일 |
 | test-support | com.hunet.common.test_support | snake_case 및 최상위 공개 의도 불명확 |
 | examples(테스트 내) | com.hunet.common.lib.examples | lib 네이밍 잔존, 위치 혼재 |
@@ -50,8 +50,8 @@
 modules/
   core/common-core -> com.hunet.common.core, com.hunet.common.autoconfigure
   jpa/jpa-repository-extension -> com.hunet.common.data.jpa.*
-  annotations/std-api-annotations -> com.hunet.common.stdapi.annotation
-  docs/std-api-documentation -> com.hunet.common.stdapi.doc
+  annotations/std-api-annotations -> com.hunet.common.apidoc.annotations (완료)
+  docs/std-api-documentation -> com.hunet.common.apidoc.core (완료)
   response/standard-api-response -> com.hunet.common.stdapi.response
   test/test-support -> com.hunet.common.test.support
   docs/std-api-documentation (문서 생성 코드) -> (doc 하위 유지)
@@ -80,7 +80,7 @@ modules/
 1. 패키지 매핑 확정 (이 문서 리뷰 후 태그: `plan-approved`)
 2. 모듈별 순차 리팩토링 (PR 분리)
    - A. jpa-repository-extension
-   - B. std-api-annotations / std-api-documentation / standard-api-response (stdapi 통합 세트)
+   - B. apidoc-annotations / apidoc-core / standard-api-response (stdapi 통합 세트) (완료)
    - C. test-support
    - D. examples 추출
 3. 각 단계에서 수행:

@@ -15,9 +15,9 @@ dependencies {
     implementation(commonLibs.jakartaAnnotationApi)
     implementation(commonLibs.slf4jApi)
 
-    compileOnly("org.springframework.boot:spring-boot-autoconfigure")
-    annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
+    compileOnly(commonLibs.springBootAutoconfigure)
+    annotationProcessor(commonLibs.springBootConfigProcessor)
 
-    testImplementation("org.junit.jupiter:junit-jupiter-api")
-    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine")
+    testImplementation(commonLibs.junitJupiterApi)
+    testRuntimeOnly(commonLibs.junitJupiterEngine)
 }

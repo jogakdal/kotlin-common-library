@@ -12,8 +12,8 @@ dependencies {
     implementation(project(":common-core"))
 
     testImplementation(commonLibs.springBootStarterTest)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("com.h2database:h2")
+    testRuntimeOnly(commonLibs.junitPlatformLauncher)
+    testImplementation(commonLibs.h2)
 }
 
 kotlin {
