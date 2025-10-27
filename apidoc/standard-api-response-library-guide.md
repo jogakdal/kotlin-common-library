@@ -101,7 +101,7 @@ dependencies {
 ### 2.3 최신 버전 정보
 <!-- version-info:start -->
 ```
-Last updated: 2025-10-27 10:30:58 KST
+Last updated: 2025-10-27 11:10:02 KST
 common-core: 1.1.0-SNAPSHOT
 apidoc-core: 1.1.0-SNAPSHOT
 apidoc-annotations: 1.1.0-SNAPSHOT

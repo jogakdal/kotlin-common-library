@@ -1,4 +1,4 @@
-package com.hunet.common.lib.response
+package com.hunet.common.stdapi.response
 
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
@@ -15,4 +15,3 @@ class MockitoAgentVerificationTest {
         assertEquals("hello", mock.greet())
     }
 }
-

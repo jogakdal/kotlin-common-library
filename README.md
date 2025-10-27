@@ -48,10 +48,9 @@
 
 ### test-support (`modules/test/test-support`)
 - `com.hunet.common.test.support` : 통합 테스트 지원 (Controller Test 등)
-- `com.hunet.common.test_support` : underscore 변형 (이전 호환/Forwarder)
 
 > NOTE
-> - `com.hunet.common.lib.std_api_documentation`, `com.hunet.common.lib.standard_api_response`, `com.hunet.common.test_support` 등 underscore 또는 레거시 prefix 패키지는 과거 호환/점진적 마이그레이션을 위한 forwarder입니다. 신규 코드에서는 주요 패키지(`stdapi.response`, `apidoc.core`, `test.support`)를 우선 사용하세요.
+> - `com.hunet.common.lib.std_api_documentation`, `com.hunet.common.lib.standard_api_response` 는 레거시 prefix/underscore 패키지로서 마이그레이션용 forwarder 입니다.
 
 ## 빠른 의존성 예 (Gradle Kotlin DSL)
 ```kotlin
