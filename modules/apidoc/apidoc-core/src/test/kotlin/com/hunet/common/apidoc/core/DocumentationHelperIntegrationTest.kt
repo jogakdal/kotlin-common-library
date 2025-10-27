@@ -2,7 +2,7 @@ package com.hunet.common.apidoc.core
 
 import com.epages.restdocs.apispec.ParameterDescriptorWithType
 import com.epages.restdocs.apispec.SimpleType
-import com.hunet.common.test_support.AbstractControllerTest
+import com.hunet.common.test.support.AbstractControllerTest
 import io.swagger.v3.oas.annotations.media.Schema
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test

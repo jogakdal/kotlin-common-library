@@ -124,4 +124,3 @@ class FindApiTest : AbstractControllerTest() {
 
 ## 12. 요약
 `AbstractControllerTest` 는 테스트 부트스트랩/헬퍼를 표준화해 반복 코드를 제거하고, DataFeed 와 조합 시 “준비된 데이터 → 호출 → 검증” 흐름을 단순화합니다.
-

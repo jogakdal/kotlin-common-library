@@ -1,6 +1,6 @@
 package com.hunet.common.lib.standard_api_response
 
-import com.hunet.common.test_support.AbstractControllerTest
+import com.hunet.common.test.support.AbstractControllerTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.springframework.boot.autoconfigure.SpringBootApplication

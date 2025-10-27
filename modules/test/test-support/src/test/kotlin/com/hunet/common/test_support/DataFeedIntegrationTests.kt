@@ -1,4 +1,4 @@
-package com.hunet.common.test_support
+package com.hunet.common.test.support
 
 import com.hunet.common.autoconfigure.CommonCoreAutoConfiguration
 import com.hunet.common.support.DataFeed
