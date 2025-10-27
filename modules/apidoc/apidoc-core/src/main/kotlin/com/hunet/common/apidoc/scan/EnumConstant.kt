@@ -1,8 +1,8 @@
 package com.hunet.common.apidoc.scan
 
-import com.hunet.common.apidoc.enum.EnumConstant
-import com.hunet.common.apidoc.enum.DescriptiveEnum
-import com.hunet.common.apidoc.enum.ExceptionCode
+import com.hunet.common.apidoc.enums.EnumConstant
+import com.hunet.common.apidoc.enums.DescriptiveEnum
+import com.hunet.common.apidoc.enums.ExceptionCode
 import jakarta.annotation.PostConstruct
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider

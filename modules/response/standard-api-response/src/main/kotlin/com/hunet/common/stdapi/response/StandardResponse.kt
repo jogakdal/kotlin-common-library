@@ -4,9 +4,9 @@ import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.core.type.TypeReference
 import com.hunet.common.apidoc.annotations.Sequence
 import com.hunet.common.apidoc.annotations.SwaggerDescription
-import com.hunet.common.apidoc.enum.DescriptiveEnum
-import com.hunet.common.apidoc.enum.DescriptiveEnum.Companion.DESCRIPTION_MARKER
-import com.hunet.common.apidoc.enum.EnumConstant
+import com.hunet.common.apidoc.enums.DescriptiveEnum
+import com.hunet.common.apidoc.enums.DescriptiveEnum.Companion.DESCRIPTION_MARKER
+import com.hunet.common.apidoc.enums.EnumConstant
 import com.hunet.common.stdapi.response.BasePayload.Companion.deserializePayload
 import io.swagger.v3.oas.annotations.media.Schema
 import kotlinx.serialization.Contextual

@@ -1,4 +1,4 @@
-package com.hunet.common.apidoc.enum
+package com.hunet.common.apidoc.enums
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test

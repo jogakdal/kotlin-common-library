@@ -4,7 +4,7 @@ import com.epages.restdocs.apispec.*
 import com.hunet.common.apidoc.annotations.Sequence
 import com.hunet.common.apidoc.annotations.SwaggerDescribable
 import com.hunet.common.apidoc.annotations.SwaggerDescription
-import com.hunet.common.apidoc.enum.DescriptiveEnum
+import com.hunet.common.apidoc.enums.DescriptiveEnum
 import com.hunet.common.util.getAnnotation
 import com.hunet.common.util.isExistAnnotation
 import io.swagger.v3.oas.annotations.media.Schema
