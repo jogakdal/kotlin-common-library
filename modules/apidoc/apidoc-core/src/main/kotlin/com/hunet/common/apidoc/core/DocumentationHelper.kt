@@ -1,14 +1,12 @@
 package com.hunet.common.apidoc.core
 
-import com.hunet.common.apidoc.enum.DescriptiveEnum
+import com.epages.restdocs.apispec.*
 import com.hunet.common.apidoc.annotations.Sequence
 import com.hunet.common.apidoc.annotations.SwaggerDescribable
 import com.hunet.common.apidoc.annotations.SwaggerDescription
-import com.epages.restdocs.apispec.MockMvcRestDocumentationWrapper
-import com.epages.restdocs.apispec.ParameterDescriptorWithType
-import com.epages.restdocs.apispec.ResourceDocumentation
-import com.epages.restdocs.apispec.ResourceSnippetParameters
-import com.epages.restdocs.apispec.SimpleType
+import com.hunet.common.apidoc.enum.DescriptiveEnum
+import com.hunet.common.util.getAnnotation
+import com.hunet.common.util.isExistAnnotation
 import io.swagger.v3.oas.annotations.media.Schema
 import org.springframework.restdocs.mockmvc.RestDocumentationResultHandler
 import org.springframework.restdocs.operation.preprocess.Preprocessors
@@ -20,14 +18,7 @@ import org.springframework.restdocs.snippet.Attributes
 import java.lang.reflect.AnnotatedElement
 import java.time.*
 import java.util.*
-import kotlin.reflect.KAnnotatedElement
-import kotlin.reflect.KClass
-import kotlin.reflect.KProperty1
-import kotlin.reflect.full.findAnnotation
 import kotlin.reflect.full.memberProperties
-import kotlin.reflect.full.primaryConstructor
-import kotlin.reflect.jvm.javaField
-import kotlin.reflect.jvm.javaGetter
 
 /**
  * 스프링 REST Docs용 문서 스니펫을 생성하는 헬퍼 함수
@@ -104,10 +95,14 @@ fun buildDocument(
             }
             if (formParameters.isNotEmpty()) formParameters(*formParameters.toTypedArray())
             if (requestObject != null) requestFields(
-                buildDescriptors(requestObject, "").mapIndexed { idx, fd -> fd.apply { attributes(Attributes.key("order").value(idx)) } }
+                buildDescriptors(requestObject, "").mapIndexed { idx, fd ->
+                    fd.apply { attributes(Attributes.key("order").value(idx)) }
+                }
             )
             if (responseObject != null) responseFields(
-                buildDescriptors(responseObject, parentPath = "").mapIndexed { idx, fd -> fd.apply { attributes(Attributes.key("order").value(idx)) } }
+                buildDescriptors(responseObject, parentPath = "").mapIndexed { idx, fd ->
+                    fd.apply { attributes(Attributes.key("order").value(idx)) }
+                }
             )
         }.build()
     )
@@ -125,7 +120,9 @@ fun buildDocument(
 fun buildDescriptors(instance: Any, parentPath: String = ""): List<FieldDescriptor> {
     if (instance is DescriptiveEnum) {
         val constants: List<DescriptiveEnum> =
-            (instance::class.java.enumConstants?.filterIsInstance<DescriptiveEnum>() ?: emptyList()).filter { it.describable }.sortedBy { constant ->
+            (instance::class.java.enumConstants?.filterIsInstance<DescriptiveEnum>() ?: emptyList()).filter {
+                it.describable
+            }.sortedBy { constant ->
                 try {
                     val enumConst = constant as Enum<*>
                     val enumClass: Class<*> =
@@ -140,21 +137,40 @@ fun buildDescriptors(instance: Any, parentPath: String = ""): List<FieldDescript
         return constants.map { constant ->
             val enumName = (constant as Enum<*>).name
             val path = if (parentPath.isEmpty()) enumName else "$parentPath.$enumName"
-            (if (parentPath.isEmpty()) fieldWithPath(path) else subsectionWithPath(path)).description(constant.toDescription()).type(determineJsonFieldTypeByValue(instance.value)).optional()
+            (if (parentPath.isEmpty()) fieldWithPath(path) else subsectionWithPath(path))
+                .description(constant.toDescription()).type(determineJsonFieldTypeByValue(instance.value)).optional()
         }
     }
-    return instance::class.takeIf { it.isExistAnnotation<SwaggerDescribable>() || it.isExistAnnotation<Schema>() }?.memberProperties.orEmpty().mapNotNull { prop ->
-        prop.getAnnotation<Schema>()?.let { schemaAnn -> Triple(prop, schemaAnn.description, !schemaAnn.required) } ?: prop.getAnnotation<SwaggerDescription>()?.let { rd -> Triple(prop, rd.description, rd.optional) }
-    }.sortedBy { (prop, _, _) -> prop.getAnnotation<Sequence>()?.value ?: Int.MAX_VALUE }.flatMap { (prop, description, optional) ->
+    return instance::class.takeIf {
+        it.isExistAnnotation<SwaggerDescribable>() || it.isExistAnnotation<Schema>()
+    }?.memberProperties.orEmpty().mapNotNull { prop ->
+        prop.getAnnotation<Schema>()?.let { schemaAnn ->
+            Triple(prop, schemaAnn.description, !schemaAnn.required)
+        } ?: prop.getAnnotation<SwaggerDescription>()?.let { rd ->
+            Triple(prop, rd.description, rd.optional)
+        }
+    }.sortedBy { (prop, _, _) ->
+        prop.getAnnotation<Sequence>()?.value ?: Int.MAX_VALUE
+    }.flatMap { (prop, description, optional) ->
         val value = prop.getter.call(instance)
         val path = if (parentPath.isEmpty()) prop.name else "$parentPath.${prop.name}"
-        (if (parentPath.isEmpty()) fieldWithPath(path) else subsectionWithPath(path)).description((value as? DescriptiveEnum)?.let { DescriptiveEnum.replaceDescription(description, it::class) } ?: description).let { fd -> if (optional || prop.returnType.isMarkedNullable) fd.optional() else fd }.type(determineJsonFieldTypeByValue(value)).let { fd ->
+        (if (parentPath.isEmpty()) fieldWithPath(path) else subsectionWithPath(path))
+            .description(
+                (value as? DescriptiveEnum)?.let {
+                    DescriptiveEnum.replaceDescription(description, it::class)
+                } ?: description
+            ).let { fd ->
+                if (optional || prop.returnType.isMarkedNullable) fd.optional() else fd
+            }.type(determineJsonFieldTypeByValue(value)).let { fd ->
             listOf(fd) +
                 (value as? List<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
                 (value as? Array<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
                 (value as? Map<*, *>)?.values?.filterNotNull()?.flatMap { buildDescriptors(it, "$path.*") }.orEmpty() +
                 (value as? Set<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
-                (value.takeIf { it != null && (it::class.isExistAnnotation<SwaggerDescribable>() || it::class.isExistAnnotation<Schema>()) }?.let { buildDescriptors(it, path) }.orEmpty())
+                (value.takeIf {
+                    it != null &&
+                            (it::class.isExistAnnotation<SwaggerDescribable>() || it::class.isExistAnnotation<Schema>())
+                }?.let { buildDescriptors(it, path) }.orEmpty())
         }
     }
 }
@@ -176,31 +192,6 @@ private fun determineJsonFieldTypeByValue(value: Any?): JsonFieldType = when (va
     else -> JsonFieldType.OBJECT
 }
 
-inline fun <reified A : Annotation> KAnnotatedElement.getAnnotation(): A? {
-    this.findAnnotation<A>()?.let { return it }
-    if (this is KProperty1<*, *>) {
-        this.javaField?.getAnnotation(A::class.java)?.let { return it }
-        this.javaGetter?.getAnnotation(A::class.java)?.let { return it }
-        val ownerClass = (this.javaField?.declaringClass ?: this.javaGetter?.declaringClass)?.kotlin
-        ownerClass?.primaryConstructor
-            ?.parameters
-            ?.firstOrNull { it.name == this.name }
-            ?.findAnnotation<A>()
-            ?.let { return it }
-        return null
-    }
-    if (this is KClass<*>) {
-        this.java.getAnnotation(A::class.java)?.let { return it }
-    }
-    return null
-}
-
-inline fun <reified A : Annotation> AnnotatedElement.getAnnotation(): A? =
-    this.getAnnotation(A::class.java)
-
-inline fun <reified A : Annotation> KAnnotatedElement.isExistAnnotation(): Boolean =
-    this.getAnnotation<A>() != null
-
 private fun jsonTypeToParamType(type: Any?): SimpleType = when (type) {
     is JsonFieldType -> when (type) {
         JsonFieldType.NUMBER -> SimpleType.NUMBER
@@ -209,3 +200,5 @@ private fun jsonTypeToParamType(type: Any?): SimpleType = when (type) {
     }
     else -> SimpleType.STRING
 }
+
+inline fun <reified A : Annotation> AnnotatedElement.getAnnotation(): A? = this.getAnnotation(A::class.java)

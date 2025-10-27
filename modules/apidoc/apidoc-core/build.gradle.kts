@@ -8,6 +8,7 @@ dependencies {
     implementation(platform(commonLibs.springBootDependencies))
     implementation(project(":apidoc-annotations"))
     implementation(project(":standard-api-response"))
+    implementation(project(":common-core"))
     implementation(commonLibs.springRestdocsMockmvc)
     implementation(commonLibs.epagesRestdocsApiSpecMockmvc)
     implementation(commonLibs.swaggerAnnotations)

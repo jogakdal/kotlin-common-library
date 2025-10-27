@@ -3,10 +3,11 @@ package com.hunet.common.data.jpa.softdelete
 import com.hunet.common.data.jpa.sequence.GenerateSequentialCode
 import com.hunet.common.data.jpa.sequence.SequenceGenerator
 import com.hunet.common.data.jpa.softdelete.annotation.deleteMarkInfo
-import com.hunet.common.data.jpa.softdelete.annotation.getAnnotation
 import com.hunet.common.data.jpa.softdelete.internal.DeleteMarkInfo
 import com.hunet.common.data.jpa.softdelete.internal.DeleteMarkValue
 import com.hunet.common.lib.SpringContextHolder
+import com.hunet.common.util.annotatedFields
+import com.hunet.common.util.getAnnotation
 import com.hunet.common.util.isNotEmpty
 import jakarta.persistence.*
 import jakarta.persistence.criteria.Predicate
@@ -105,16 +106,6 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
         SpringContextHolder.getProperty("softdelete.upsert-all.flush-interval", 50)
     }
     private val seqCounters = ConcurrentHashMap<String, AtomicLong>()
-
-    companion object {
-        inline fun <reified A : Annotation> KClass<*>.annotatedFields(): List<KMutableProperty1<*, *>> =
-            generateSequence(this) { it.java.superclass?.kotlin }
-                .filter { klass -> klass.findAnnotation<MappedSuperclass>() != null }
-                .flatMap { klass -> klass.declaredMemberProperties.asSequence() }
-                .filter { it.findAnnotation<A>() != null }
-                .mapNotNull { prop -> (prop as? KMutableProperty1<*, *>)?.apply { isAccessible = true } }
-                .toList()
-    }
 
     override fun getEntityClass(): Class<E> = entityType
 
