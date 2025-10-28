@@ -35,7 +35,7 @@ class RequestTimingFilter : OncePerRequestFilter() {
 
 /**
  * 자동 구성:
- *   standard-api-response.auto-duration-calculation.active=true 일 때 활성.
+ *   stdapi.response.auto-duration-calculation.active=true 일 때 활성.
  *   filter-order 로 필터 우선순위 지정 (기본 Int.MIN_VALUE)
  */
 @Configuration
@@ -52,6 +52,10 @@ class StandardApiResponseAutoConfiguration {
     @Bean
     fun requestTimingFilterRegistration(
         filter: RequestTimingFilter,
-        @Value("\${stdapi.response.auto-duration-calculation.filter-order:\${standard-api-response.auto-duration-calculation.filter-order:#{T(java.lang.Integer).MIN_VALUE}}}") order: Int
+        @Value(
+            "\${stdapi.response.auto-duration-calculation.filter-order:" +
+                    "\${standard-api-response.auto-duration-calculation.filter-order:#{T(java.lang.Integer).MIN_VALUE}}}"
+        )
+        order: Int
     ): FilterRegistrationBean<RequestTimingFilter> = FilterRegistrationBean(filter).apply { this.order = order }
 }

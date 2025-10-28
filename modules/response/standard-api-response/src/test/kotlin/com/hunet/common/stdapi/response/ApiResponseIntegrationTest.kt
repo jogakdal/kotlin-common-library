@@ -43,8 +43,8 @@ class DemoController {
 }
 
 @TestPropertySource(properties = [
-    "standard-api-response.case.default=IDENTITY",
-    "standard-api-response.auto-duration-calculation.active=true"
+    "stdapi.response.case.default=IDENTITY",
+    "stdapi.response.auto-duration-calculation.active=true"
 ])
 class ApiResponseIntegrationTest : AbstractControllerTest() {
 

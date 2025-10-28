@@ -101,7 +101,7 @@ dependencies {
 ### 2.3 최신 버전 정보
 <!-- version-info:start -->
 ```
-Last updated: 2025-10-27 16:39:44 KST
+Last updated: 2025-10-28 16:12:23 KST
 common-core: 1.1.0-SNAPSHOT
 apidoc-core: 1.1.0-SNAPSHOT
 apidoc-annotations: 1.1.0-SNAPSHOT
@@ -111,12 +111,13 @@ standard-api-response: 1.2.0-SNAPSHOT
 
 ### 2.4 최소 설정 (application.yml 예)
 ```yaml
-standard-api-response:
-  auto-duration-calculation:
-    active: true          # duration 자동 주입
-  case:
-    enabled: true         # 응답 키 케이스 변환 활성화
-    default: IDENTITY     # 기본 케이스 (필요 시 SNAKE_CASE 등)
+stdapi:
+  response:
+    auto-duration-calculation:
+      active: true          # duration 자동 주입
+    case:
+      enabled: true         # 응답 키 케이스 변환 활성화
+      default: IDENTITY     # 기본 케이스 (필요 시 SNAKE_CASE 등)
 ```
 > 케이스 쿼리 / 헤더 오버라이드가 필요하면 `query-override: true`, `header-override: true` 및 파라미터/헤더 이름을 추가 설정.
 
@@ -197,9 +198,10 @@ StandardResponse<ErrorPayload> timedResp = StandardResponse.buildWithCallback(
 ### 3.4 자동 Duration 주입 (`@InjectDuration`)
 application.yml:
 ```yaml
-standard-api-response:
-  auto-duration-calculation:
-    active: true
+stdapi:
+  response:
+    auto-duration-calculation:
+      active: true
 ```
 DTO:
 ```kotlin
@@ -372,14 +374,15 @@ data class Sample(@JsonProperty("api_key") @NoCaseTransform val apiKey: String, 
 
 ### 5.6 전역 설정 (application.yml)
 ```yaml
-standard-api-response:
-  case:
-    enabled: true
-    default: IDENTITY
-    query-override: true
-    header-override: true
-    query-param: case
-    header-name: X-Response-Case
+stdapi:
+  response:
+    case:
+      enabled: true
+      default: IDENTITY
+      query-override: true
+      header-override: true
+      query-param: case
+      header-name: X-Response-Case
 ```
 우선순위: 쿼리 파라미터 > 헤더 > DTO `@ResponseCase` > default. `enabled=false` 시 변환 비활성.
 
@@ -534,10 +537,10 @@ Alias는 `@JsonProperty`(대표 키) + `@JsonAlias`(허용 추가 키) 조합으
 - Canonical 정규화: `user_id / user-id / userId / USERID` → 모두 동일 그룹.
 - 충돌 기본 정책: 최초 등록(First-win). 충돌 시 WARN 로그.
 - 옵션 모드
-    - `standard-api-response.alias-conflict-mode`: `WARN`(기본) | `ERROR`
+    - `stdapi.response.alias-conflict-mode`: `WARN`(기본) | `ERROR`
         - `WARN`: 로그만 출력하고 first-win 유지
         - `ERROR`: 충돌 즉시 예외(애플리케이션 부팅/요청 실패) → CI 강제 차단 용도
-    - `standard-api-response.alias-conflict-resolution`: `FIRST_WIN`(기본) | `BEST_MATCH` (WARN 모드에서만 의미)
+    - `stdapi.response.alias-conflict-resolution`: `FIRST_WIN`(기본) | `BEST_MATCH` (WARN 모드에서만 의미)
         - `FIRST_WIN`: 충돌 시 최초 등록 필드 우선 선택
         - `BEST_MATCH`: 실제 입력 JSON 키와 alias 집합이 가장 직접적으로 일치하는 property 우선 선택 (점진 마이그레이션에 유용)
 
@@ -633,7 +636,7 @@ Service 내부는 실패 시 예외 → Advice 단일 경로에서 표준화 →
 | 단순 성공 응답(상태/버전 기본) | `StandardResponse.build(payload)` | side-effect 없음, duration auto 옵션만 연동 |
 | 상태/버전/에러 분기/동적 처리 | `StandardResponse.build(callback = { StandardCallbackResult(...) })` | 한 곳에서 status/version/payload 결정, 확장 용이 |
 | Java 동등 기능 | `StandardResponse.buildWithCallback(() -> new StandardCallbackResult(...))` | Kotlin 패턴과 동일 의미 |
-| 대규모 응답에서 케이스 변환 OFF | `standard-api-response.case.enabled=false` | 케이스 변환/토큰화 비용 제거 |
+| 대규모 응답에서 케이스 변환 OFF | `stdapi.response.case.enabled=false` | 케이스 변환/토큰화 비용 제거 |
 | 부분 실패 가능(배치) | callback 내부 누적 후 최종 StandardCallbackResult | 실패 정책 문서화 권장 |
 
 ### A.2 build vs callback 선택 기준
@@ -643,11 +646,12 @@ Service 내부는 실패 시 예외 → Advice 단일 경로에서 표준화 →
 
 ### A.3 케이스 변환 비활성화 전체 옵션 예시
 ```yaml
-standard-api-response:
-  case:
-    enabled: false   # 필드 원본 케이스 유지
-  auto-duration-calculation:
-    active: true
+stdapi:
+  response:
+    case:
+      enabled: false   # 필드 원본 케이스 유지
+    auto-duration-calculation:
+      active: true
 ```
 > enabled=false 상태에서 부분 변환 필요 시 외부 레이어(Controller advice 등)에서 선택적 케이스 변환.
 

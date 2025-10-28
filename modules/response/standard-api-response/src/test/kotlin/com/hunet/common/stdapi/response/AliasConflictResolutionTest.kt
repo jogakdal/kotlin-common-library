@@ -27,14 +27,14 @@ class AliasConflictResolutionTest {
         "\"payload\":$fragment}".trimIndent()
 
     @Test
-    fun firstWin_userId_input_maps_to_snake_property() {
+    fun firstWin_userId_input_maps_to_camel_property() {
         AliasConflictConfig.mode = AliasConflictMode.WARN
         AliasConflictConfig.resolution = AliasConflictResolution.FIRST_WIN
         clearAliasCaches()
         val json = wrap("{\"userId\":10}")
         val resp = StandardResponse.deserialize<AmbiguousPayload>(json)
-        assertEquals(10, resp.payload.snake)
-        assertNull(resp.payload.camel)
+        assertEquals(10, resp.payload.camel)
+        assertNull(resp.payload.snake)
     }
 
     @Test

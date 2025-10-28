@@ -2,6 +2,7 @@ package com.hunet.common.stdapi.response
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.hunet.common.logging.commonLogger
+import com.hunet.common.util.getAnnotation
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.core.MethodParameter
@@ -19,7 +20,6 @@ import kotlin.reflect.KFunction
 import kotlin.reflect.KMutableProperty1
 import kotlin.reflect.KParameter
 import kotlin.reflect.KProperty1
-import kotlin.reflect.full.findAnnotation
 import kotlin.reflect.full.memberProperties
 import kotlin.time.DurationUnit
 import kotlin.time.toDuration
@@ -31,11 +31,21 @@ import kotlin.time.Duration as KtDuration
  */
 @ControllerAdvice
 class StandardApiResponseAdvice(
-    @Value("\${stdapi.response.case.enabled:\${standard-api-response.case.enabled:true}}") private val caseEnabled: Boolean = true,
-    @Value("\${stdapi.response.case.default:\${standard-api-response.case.default:IDENTITY}}") private val defaultCaseName: String = "IDENTITY",
-    @Value("\${stdapi.response.case.query-override:\${standard-api-response.case.query-override:true}}") private val queryOverride: Boolean = true,
-    @Value("\${stdapi.response.case.header-override:\${standard-api-response.case.header-override:true}}") private val headerOverride: Boolean = true,
-    @Value("\${stdapi.response.case.query-param:\${standard-api-response.case.query-param:case}}") private val queryParamName: String = "case",
+    @Value("\${stdapi.response.case.enabled:\${standard-api-response.case.enabled:true}}")
+    private val caseEnabled: Boolean = true,
+
+    @Value("\${stdapi.response.case.default:\${standard-api-response.case.default:IDENTITY}}")
+    private val defaultCaseName: String = "IDENTITY",
+
+    @Value("\${stdapi.response.case.query-override:\${standard-api-response.case.query-override:true}}")
+    private val queryOverride: Boolean = true,
+
+    @Value("\${stdapi.response.case.header-override:\${standard-api-response.case.header-override:true}}")
+    private val headerOverride: Boolean = true,
+
+    @Value("\${stdapi.response.case.query-param:\${standard-api-response.case.query-param:case}}")
+    private val queryParamName: String = "case",
+
     @Value("\${stdapi.response.case.header-name:\${standard-api-response.case.header-name:X-Response-Case}}")
     private val headerName: String = "X-Response-Case"
 ) : ResponseBodyAdvice<Any> {
@@ -117,7 +127,7 @@ class StandardApiResponseAdvice(
         if (body == null) return null
         val kClass = body::class
         val allProps = kClass.memberProperties
-        val targets = allProps.filter { it.findAnnotation<InjectDuration>() != null }
+        val targets = allProps.filter { it.getAnnotation<InjectDuration>() != null }
         if (targets.isEmpty()) return body
         var mutated = false
         targets.forEach { prop ->
@@ -137,7 +147,7 @@ class StandardApiResponseAdvice(
                     val nm = p.name ?: continue
                     val prop = map[nm] as? KProperty1<Any, *> ?: continue
 
-                    args[p] = if (prop.findAnnotation<InjectDuration>() != null) convertForProperty(prop, elapsedNanos)
+                    args[p] = if (prop.getAnnotation<InjectDuration>() != null) convertForProperty(prop, elapsedNanos)
                     else prop.get(body)
                 }
                 return runCatching { copyFn.callBy(args) }.getOrElse { body }
@@ -147,7 +157,7 @@ class StandardApiResponseAdvice(
     }
 
     private fun convertForProperty(prop: KProperty1<Any, *>, elapsedNanos: Long): Any? {
-        val ann = prop.findAnnotation<InjectDuration>() ?: return null
+        val ann = prop.getAnnotation<InjectDuration>() ?: return null
         val v = ann.unit.convert(elapsedNanos, TimeUnit.NANOSECONDS)
         return when (prop.returnType.classifier) {
             Long::class -> v

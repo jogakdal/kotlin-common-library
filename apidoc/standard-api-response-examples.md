@@ -23,11 +23,12 @@ dependencies {
 ### application.yml (선택)
 Duration 자동 주입과 케이스 변환 설정:
 ```yaml
-standard-api-response:
-  auto-duration-calculation:
-    active: true
-  case:
-    default: SNAKE_CASE
+stdapi:
+  response:
+    auto-duration-calculation:
+      active: true
+    case:
+      default: SNAKE_CASE
 ```
 (설정 없으면 DTO 원본 케이스 사용)
 
@@ -756,7 +757,7 @@ println(complex.payload.entries[0]["k1"]!!.childId) // 1
 ```kotlin
 clearAliasCaches() // 캐시 초기화
 ```
-> 대형 응답 케이스 변환 비용 우려 시 `standard-api-response.case.enabled=false` 적용 + 경계 레이어 선택적 변환 고려.
+> 대형 응답 케이스 변환 비용 우려 시 `stdapi.response.case.enabled=false` 적용 + 경계 레이어 선택적 변환 고려.
 
 ---
 ## 10. 트러블슈팅 빠른 점검표

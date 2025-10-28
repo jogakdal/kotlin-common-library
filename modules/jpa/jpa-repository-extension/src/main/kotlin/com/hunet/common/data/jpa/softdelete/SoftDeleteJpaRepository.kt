@@ -2,6 +2,7 @@ package com.hunet.common.data.jpa.softdelete
 
 import com.hunet.common.data.jpa.sequence.GenerateSequentialCode
 import com.hunet.common.data.jpa.sequence.SequenceGenerator
+import com.hunet.common.data.jpa.sequence.spelExpressionParser
 import com.hunet.common.data.jpa.softdelete.annotation.deleteMarkInfo
 import com.hunet.common.data.jpa.softdelete.internal.DeleteMarkInfo
 import com.hunet.common.data.jpa.softdelete.internal.DeleteMarkValue
@@ -30,10 +31,7 @@ import java.time.LocalDateTime
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
-import kotlin.reflect.KClass
 import kotlin.reflect.KMutableProperty1
-import kotlin.reflect.full.declaredMemberProperties
-import kotlin.reflect.full.findAnnotation
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.jvm.isAccessible
 
@@ -110,9 +108,8 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
     override fun getEntityClass(): Class<E> = entityType
 
     private fun findByUpsertKey(entity: E): E? {
-        // 1) Kotlin 프로퍼티(@PROPERTY)에 붙은 @UpsertKey 우선 탐색
         val upsertKeyProp = entityType.kotlin.memberProperties.firstOrNull {
-            it.findAnnotation<UpsertKey>() != null
+            it.getAnnotation<UpsertKey>() != null
         }
         if (upsertKeyProp != null) {
             upsertKeyProp.isAccessible = true
@@ -134,9 +131,10 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
             cq.where(*predicates.toTypedArray())
             return entityManager.createQuery(cq).resultList.firstOrNull()
         }
-        // 2) Kotlin 프로퍼티가 없으면 Java 필드(@FIELD)에 붙은 @UpsertKey 탐색
-        val upsertKeyField = entityType.declaredFields.firstOrNull { it.isAnnotationPresent(UpsertKey::class.java) }
-            ?: return null
+
+        val upsertKeyField = entityType.declaredFields.firstOrNull {
+            it.isAnnotationPresent(UpsertKey::class.java)
+        } ?: return null
         upsertKeyField.isAccessible = true
         val fieldValue = upsertKeyField.get(entity)
         val cb = entityManager.criteriaBuilder
@@ -163,8 +161,8 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
             if (prop is KMutableProperty1<*, *>) {
                 prop.isAccessible = true
                 when {
-                    prop.findAnnotation<CreatedDate>() != null -> {}
-                    prop.findAnnotation<LastModifiedDate>() != null -> prop.setter.call(existing, LocalDateTime.now())
+                    prop.getAnnotation<CreatedDate>() != null -> {}
+                    prop.getAnnotation<LastModifiedDate>() != null -> prop.setter.call(existing, LocalDateTime.now())
                     else -> prop.getter.call(entity)?.let { newValue -> prop.setter.call(existing, newValue) }
                 }
             }
@@ -174,10 +172,10 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
 
     private fun applyUpdateEntity(entity: E, copyFunc: (E) -> Unit): E {
         val createdProps = entity::class.memberProperties.filterIsInstance<KMutableProperty1<E, Any?>>().filter {
-            it.findAnnotation<CreatedDate>() != null
+            it.getAnnotation<CreatedDate>() != null
         }
         val lastModifiedProps = entity::class.memberProperties.filterIsInstance<KMutableProperty1<E, Any?>>().filter {
-            it.findAnnotation<LastModifiedDate>() != null
+            it.getAnnotation<LastModifiedDate>() != null
         }
         @Suppress("UNCHECKED_CAST")
         val deleteProp = deleteMarkInfo?.field as? KMutableProperty1<E, Any?>
@@ -193,20 +191,20 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
     private fun generateSequentialCodes(entity: E) {
         entity::class.memberProperties
             .filterIsInstance<KMutableProperty1<Any, Any?>>()
-            .filter { it.findAnnotation<GenerateSequentialCode>() != null }
+            .filter { it.getAnnotation<GenerateSequentialCode>() != null }
             .forEach { prop ->
                 prop.isAccessible = true
                 val current = (prop.get(entity) as? String).orEmpty()
                 if (current.isBlank()) {
-                    val ann = prop.findAnnotation<GenerateSequentialCode>()!!
+                    val ann = prop.getAnnotation<GenerateSequentialCode>()!!
                     val prefix = if (ann.prefixExpression.isNotBlank()) {
-                        com.hunet.common.data.jpa.sequence.spelExpressionParser
-                            .parseExpression(ann.prefixExpression)
+                        spelExpressionParser.parseExpression(ann.prefixExpression)
                             .getValue(StandardEvaluationContext(entity)) as String
                     } else ann.prefixProvider.java.getDeclaredConstructor().newInstance().determinePrefix(entity)
                     val genCandidate = sequenceGenerator.generateKey(prefix, entity) as? String
-                    val finalCode = genCandidate?.takeIf { it.isNotBlank() }
-                        ?: (prefix + seqCounters.computeIfAbsent(prefix) { AtomicLong(0) }.incrementAndGet())
+                    val finalCode = genCandidate?.takeIf {
+                        it.isNotBlank()
+                    } ?: (prefix + seqCounters.computeIfAbsent(prefix) { AtomicLong(0) }.incrementAndGet())
                     try { prop.setter.call(entity, finalCode) } catch (_: Exception) {}
                 }
             }
@@ -219,13 +217,13 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
                 if (current.isBlank()) {
                     val ann = field.getAnnotation(GenerateSequentialCode::class.java)
                     val prefix = if (ann.prefixExpression.isNotBlank()) {
-                        com.hunet.common.data.jpa.sequence.spelExpressionParser
-                            .parseExpression(ann.prefixExpression)
+                        spelExpressionParser.parseExpression(ann.prefixExpression)
                             .getValue(StandardEvaluationContext(entity)) as String
                     } else ann.prefixProvider.java.getDeclaredConstructor().newInstance().determinePrefix(entity)
                     val genCandidate = sequenceGenerator.generateKey(prefix, entity) as? String
-                    val finalCode = genCandidate?.takeIf { it.isNotBlank() }
-                        ?: (prefix + seqCounters.computeIfAbsent(prefix) { AtomicLong(0) }.incrementAndGet())
+                    val finalCode = genCandidate?.takeIf {
+                        it.isNotBlank()
+                    } ?: (prefix + seqCounters.computeIfAbsent(prefix) { AtomicLong(0) }.incrementAndGet())
                     field.set(entity, finalCode)
                 }
             }
@@ -328,6 +326,7 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
                 else -> " AND e.${it.fieldName} = :aliveMarkValue"
             }
         } ?: ""
+
         return entityManager.createQuery(
             "$selectClause FROM $entityName e $condition$deleteClause", resultClass
         ).apply {
@@ -446,7 +445,7 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
     @Modifying
     override fun softDelete(entity: E): Int {
         entity::class.memberProperties
-            .filter { prop -> prop.findAnnotation<OneToMany>() != null || prop.getAnnotation<OneToMany>() != null }
+            .filter { prop -> prop.getAnnotation<OneToMany>() != null || prop.getAnnotation<OneToMany>() != null }
             .forEach { prop ->
                 prop.isAccessible = true
                 val children = prop.getter.call(entity) as? Collection<*> ?: return@forEach

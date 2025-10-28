@@ -155,10 +155,10 @@ typealias DefaultResponse = StandardResponse<BasePayload>
 ## 5. Case Convention 적용 규칙
 1. 적용 위치: `StandardApiResponseAdvice.beforeBodyWrite` (JSON 직렬화 직전)
 2. 결정 우선순위 (높음→낮음):
-   1) Query Parameter (`?case=...`) – `standard-api-response.case.query-override=true`
-   2) Header (`X-Response-Case`) – `standard-api-response.case.header-override=true`
+   1) Query Parameter (`?case=...`) – `stdapi.response.case.query-override=true`
+   2) Header (`X-Response-Case`) – `stdapi.response.case.header-override=true`
    3) Payload 클래스 `@ResponseCase`
-   4) 설정 기본값 `standard-api-response.case.default`
+   4) 설정 기본값 `stdapi.response.case.default`
    5) Fallback: `IDENTITY`
 3. 변환 제외: `@NoCaseTransform` 필드 + 해당 alias/variant
 4. 지원 값: `IDENTITY, SNAKE_CASE, SCREAMING_SNAKE_CASE, KEBAB_CASE, CAMEL_CASE, PASCAL_CASE`
@@ -224,8 +224,8 @@ Edge Case 처리:
 | Advice | `StandardApiResponseAdvice` – `StandardResponse` 탐지 후 `@InjectDuration` 필드 주입 |
 | 지원 타입 | Long / Int / Double / String / java.time.Duration / kotlin.time.Duration |
 | 단위 지정 | `@InjectDuration(unit=TimeUnit.X)` |
-| 활성화 | `standard-api-response.auto-duration-calculation.active=true` |
-| 필터 순서 | `standard-api-response.auto-duration-calculation.filter-order` (기본 `Int.MIN_VALUE`) |
+| 활성화 | `stdapi.response.auto-duration-calculation.active=true` |
+| 필터 순서 | `stdapi.response.auto-duration-calculation.filter-order` (기본 `Int.MIN_VALUE`) |
 
 ---
 ## 9. 빌더 & 팩토리 패턴 요약
@@ -265,14 +265,14 @@ GlobalAliasMaps 구성:
 ## 12. 구성 프로퍼티 Reference
 | Property | 기본값 | 설명 |
 |----------|--------|------|
-| `standard-api-response.case.enabled` | true | 케이스 변환 on/off |
-| `standard-api-response.case.default` | IDENTITY | 글로벌 기본 케이스 |
-| `standard-api-response.case.query-override` | true | Query Param 우선 허용 |
-| `standard-api-response.case.header-override` | true | Header 우선 허용 |
-| `standard-api-response.case.query-param` | case | 케이스 지정 query 파라미터명 |
-| `standard-api-response.case.header-name` | X-Response-Case | 케이스 지정 헤더명 |
-| `standard-api-response.auto-duration-calculation.active` | (없음/false) | true 시 Filter 자동 등록 |
-| `standard-api-response.auto-duration-calculation.filter-order` | Int.MIN_VALUE | Filter 우선순위 |
+| `stdapi.response.case.enabled` | true | 케이스 변환 on/off |
+| `stdapi.response.case.default` | IDENTITY | 글로벌 기본 케이스 |
+| `stdapi.response.case.query-override` | true | Query Param 우선 허용 |
+| `stdapi.response.case.header-override` | true | Header 우선 허용 |
+| `stdapi.response.case.query-param` | case | 케이스 지정 query 파라미터명 |
+| `stdapi.response.case.header-name` | X-Response-Case | 케이스 지정 헤더명 |
+| `stdapi.response.auto-duration-calculation.active` | (없음/false) | true 시 Filter 자동 등록 |
+| `stdapi.response.auto-duration-calculation.filter-order` | Int.MIN_VALUE | Filter 우선순위 |
 
 ---
 ## 13. 확장 & 커스터마이징 포인트

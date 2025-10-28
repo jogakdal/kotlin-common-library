@@ -1,10 +1,10 @@
 package com.hunet.common.data.jpa.sequence
 
+import com.hunet.common.util.getAnnotation
 import org.springframework.expression.spel.standard.SpelExpressionParser
 import org.springframework.expression.spel.support.StandardEvaluationContext
 import org.springframework.stereotype.Component
 import kotlin.reflect.KClass
-import kotlin.reflect.full.findAnnotation
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.jvm.isAccessible
 
@@ -34,13 +34,13 @@ fun applySequentialCode(entity: Any, sequenceGenerator: SequenceGenerator) {
     // Kotlin 프로퍼티(@PROPERTY) 처리
     entity::class.memberProperties
         .filterIsInstance<kotlin.reflect.KMutableProperty1<*, *>>()
-        .filter { it.findAnnotation<GenerateSequentialCode>() != null }
+        .filter { it.getAnnotation<GenerateSequentialCode>() != null }
         .forEach { rawProp ->
             val prop = rawProp as kotlin.reflect.KMutableProperty1<Any, Any?>
             prop.isAccessible = true
             val current = (prop.get(entity) as? String).orEmpty()
             if (current.isBlank()) {
-                val ann = prop.findAnnotation<GenerateSequentialCode>()
+                val ann = prop.getAnnotation<GenerateSequentialCode>()
                     ?: throw IllegalStateException("@GenerateSequentialCode가 사라졌습니다")
                 val prefix = if (ann.prefixExpression.isNotBlank()) {
                     spelExpressionParser.parseExpression(ann.prefixExpression)

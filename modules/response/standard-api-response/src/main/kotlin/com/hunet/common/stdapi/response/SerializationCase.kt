@@ -6,10 +6,10 @@ import com.fasterxml.jackson.databind.node.ArrayNode
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.full.declaredMemberProperties
-import kotlin.reflect.full.findAnnotation
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.annotation.JsonAlias
 import com.hunet.common.stdapi.response.KeyNormalizationUtil.canonical
+import com.hunet.common.util.getAnnotation
 import kotlin.reflect.KClass
 import kotlin.reflect.full.isSubclassOf
 import kotlin.reflect.KType
@@ -146,12 +146,14 @@ internal fun collectGlobalAliasMaps(root: KClass<*>): GlobalAliasMaps {
 
     fun recurse(kClass: KClass<*>) {
         if (!visited.add(kClass)) return
-        val properties = (kClass.memberProperties + kClass.declaredMemberProperties).distinctBy { it.name }
+        val properties = (kClass.memberProperties + kClass.declaredMemberProperties)
+            .distinctBy { it.name }
+            .sortedBy { it.name }
         properties.forEach { property ->
-            val jsonProperty = property.findAnnotation<JsonProperty>()?.value?.takeUnless { it.isBlank() }
-            val aliases = property.findAnnotation<JsonAlias>()?.value?.filterNot { it.isBlank() } ?: emptyList()
+            val jsonProperty = property.getAnnotation<JsonProperty>()?.value?.takeUnless { it.isBlank() }
+            val aliases = property.getAnnotation<JsonAlias>()?.value?.filterNot { it.isBlank() } ?: emptyList()
             val primary = jsonProperty ?: property.name
-            if (property.findAnnotation<NoCaseTransform>() != null) recordSkipKeys(primary, aliases)
+            if (property.getAnnotation<NoCaseTransform>() != null) recordSkipKeys(primary, aliases)
 
             register(property.name, jsonProperty)
             registerCanonical(primary, property.name)
@@ -206,10 +208,10 @@ internal fun collectGlobalAliasMaps(root: KClass<*>): GlobalAliasMaps {
 
         kClass.primaryConstructor?.parameters?.forEach { param ->
             val paramName = param.name ?: return@forEach
-            val jsonProperty = param.findAnnotation<JsonProperty>()?.value?.takeUnless { it.isBlank() }
-            val aliases = param.findAnnotation<JsonAlias>()?.value?.filterNot { it.isBlank() } ?: emptyList()
+            val jsonProperty = param.getAnnotation<JsonProperty>()?.value?.takeUnless { it.isBlank() }
+            val aliases = param.getAnnotation<JsonAlias>()?.value?.filterNot { it.isBlank() } ?: emptyList()
             val primary = jsonProperty ?: paramName
-            if (param.findAnnotation<NoCaseTransform>() != null) recordSkipKeys(primary, aliases)
+            if (param.getAnnotation<NoCaseTransform>() != null) recordSkipKeys(primary, aliases)
             register(paramName, jsonProperty)
             registerCanonical(primary, paramName)
             registerCanonical(paramName, paramName)
