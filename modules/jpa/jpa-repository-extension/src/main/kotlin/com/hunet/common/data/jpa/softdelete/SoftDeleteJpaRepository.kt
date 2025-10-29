@@ -12,7 +12,6 @@ import com.hunet.common.util.getAnnotation
 import com.hunet.common.util.isNotEmpty
 import jakarta.persistence.*
 import jakarta.persistence.criteria.Predicate
-import org.slf4j.LoggerFactory
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Configuration
 import org.springframework.data.annotation.CreatedDate
@@ -85,7 +84,6 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
     val entityInformation: JpaEntityInformation<E, *>,
     val entityManager: EntityManager
 ) : SimpleJpaRepository<E, ID>(entityInformation, entityManager), SoftDeleteJpaRepository<E, ID> {
-    private val log = LoggerFactory.getLogger(javaClass)
     private val registry: SoftDeleteRepositoryRegistry by lazy { SpringContextHolder.getBean() }
     private val sequenceGenerator: SequenceGenerator by lazy { SpringContextHolder.getBean() }
     val entityType by lazy { entityInformation.javaType }

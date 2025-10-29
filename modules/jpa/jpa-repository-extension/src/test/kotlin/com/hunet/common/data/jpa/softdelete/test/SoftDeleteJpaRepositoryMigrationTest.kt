@@ -171,7 +171,7 @@ class SoftDeleteJpaRepositoryMigrationTest {
     fun `OneToMany annotation 검색이 getAnnotation으로 정상 동작한다`() {
         class ParentEntity {
             @OneToMany(mappedBy = "parent")
-            var children: List<ChildEntity> = emptyList()
+            var children: MutableList<ChildEntity> = emptyList<ChildEntity>().toMutableList()
 
             var name: String = ""
         }
