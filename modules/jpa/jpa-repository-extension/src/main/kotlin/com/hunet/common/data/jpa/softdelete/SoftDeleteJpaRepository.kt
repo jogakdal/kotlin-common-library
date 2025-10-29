@@ -161,32 +161,60 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
                 when {
                     prop.getAnnotation<CreatedDate>() != null -> {}
                     prop.getAnnotation<LastModifiedDate>() != null -> prop.setter.call(existing, LocalDateTime.now())
-                    else -> prop.getter.call(entity)?.let { newValue -> prop.setter.call(existing, newValue) }
+                    else -> {
+                        val newValue = prop.getter.call(entity)
+                        // GenerateSequentialCode 필드가 null로 설정된 경우도 복사하여 재생성 트리거
+                        if (prop.getAnnotation<GenerateSequentialCode>() != null || newValue != null) {
+                            prop.setter.call(existing, newValue)
+                        }
+                    }
                 }
             }
         }
-        return entityManager.merge(existing)
+
+        generateSequentialCodesRecursively(existing)
+
+        val merged = entityManager.merge(existing)
+        return merged
     }
 
-    private fun applyUpdateEntity(entity: E, copyFunc: (E) -> Unit): E {
-        val createdProps = entity::class.memberProperties.filterIsInstance<KMutableProperty1<E, Any?>>().filter {
-            it.getAnnotation<CreatedDate>() != null
+    private fun generateSequentialCodesRecursively(entity: Any) {
+        generateSequentialCodesForEntity(entity)
+
+        entity::class.memberProperties.forEach { prop ->
+            if (prop is KMutableProperty1<*, *>) {
+                prop.isAccessible = true
+                try {
+                    @Suppress("UNCHECKED_CAST")
+                    val value = (prop as KMutableProperty1<Any, Any?>).get(entity)
+                    when (value) {
+                        is Collection<*> -> {
+                            value.filterNotNull().forEach { child ->
+                                if (hasJpaRelationAnnotation(prop)) {
+                                    generateSequentialCodesRecursively(child)
+                                }
+                            }
+                        }
+                        else -> {
+                            if (value != null && hasJpaRelationAnnotation(prop)) {
+                                generateSequentialCodesRecursively(value)
+                            }
+                        }
+                    }
+                } catch (_: Exception) {
+                    // 접근 불가능한 프로퍼티는 무시
+                }
+            }
         }
-        val lastModifiedProps = entity::class.memberProperties.filterIsInstance<KMutableProperty1<E, Any?>>().filter {
-            it.getAnnotation<LastModifiedDate>() != null
-        }
-        @Suppress("UNCHECKED_CAST")
-        val deleteProp = deleteMarkInfo?.field as? KMutableProperty1<E, Any?>
-        val originalCreated = createdProps.associateWith { it.get(entity) }
-        val originalDelete = deleteProp?.get(entity)
-        copyFunc(entity)
-        originalCreated.forEach { (prop, value) -> prop.set(entity, value) }
-        deleteProp?.set(entity, originalDelete)
-        lastModifiedProps.forEach { prop -> prop.set(entity, LocalDateTime.now()) }
-        return entity
     }
 
-    private fun generateSequentialCodes(entity: E) {
+    private fun hasJpaRelationAnnotation(prop: KMutableProperty1<*, *>): Boolean {
+        return prop.annotations.any {
+            it is OneToMany || it is OneToOne || it is ManyToOne || it is ManyToMany
+        }
+    }
+
+    private fun generateSequentialCodesForEntity(entity: Any) {
         entity::class.memberProperties
             .filterIsInstance<KMutableProperty1<Any, Any?>>()
             .filter { it.getAnnotation<GenerateSequentialCode>() != null }
@@ -225,6 +253,28 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
                     field.set(entity, finalCode)
                 }
             }
+    }
+
+    private fun applyUpdateEntity(entity: E, copyFunc: (E) -> Unit): E {
+        val createdProps = entity::class.memberProperties.filterIsInstance<KMutableProperty1<E, Any?>>().filter {
+            it.getAnnotation<CreatedDate>() != null
+        }
+        val lastModifiedProps = entity::class.memberProperties.filterIsInstance<KMutableProperty1<E, Any?>>().filter {
+            it.getAnnotation<LastModifiedDate>() != null
+        }
+        @Suppress("UNCHECKED_CAST")
+        val deleteProp = deleteMarkInfo?.field as? KMutableProperty1<E, Any?>
+        val originalCreated = createdProps.associateWith { it.get(entity) }
+        val originalDelete = deleteProp?.get(entity)
+        copyFunc(entity)
+        originalCreated.forEach { (prop, value) -> prop.set(entity, value) }
+        deleteProp?.set(entity, originalDelete)
+        lastModifiedProps.forEach { prop -> prop.set(entity, LocalDateTime.now()) }
+        return entity
+    }
+
+    private fun generateSequentialCodes(entity: E) {
+        generateSequentialCodesForEntity(entity)
     }
 
     @Transactional
@@ -439,9 +489,30 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
         { fields.forEach { (k, v) -> setParameter(k, v) } }
     )
 
+    @Transactional(readOnly = true)
+    override fun count(): Long = executeCount("TRUE") { }
+
     @Transactional
     @Modifying
     override fun softDelete(entity: E): Int {
+        // 먼저 현재 엔티티의 메모리 객체 업데이트
+        deleteMarkInfo?.let { info ->
+            val deleteMarkField = info.field
+            if (deleteMarkField is KMutableProperty1<*, *>) {
+                deleteMarkField.isAccessible = true
+                @Suppress("UNCHECKED_CAST")
+                val prop = deleteMarkField as KMutableProperty1<E, Any?>
+                val newDeleteMarkValue = when (info.deleteMark) {
+                    DeleteMarkValue.NULL -> null
+                    DeleteMarkValue.NOW -> LocalDateTime.now()
+                    DeleteMarkValue.NOT_NULL -> DeleteMarkValue.getDefaultDeleteMarkValue(info)
+                    else -> info.deleteMarkValue
+                }
+                prop.set(entity, newDeleteMarkValue)
+            }
+        }
+
+        // 자식 엔티티들을 재귀적으로 softDelete
         entity::class.memberProperties
             .filter { prop -> prop.getAnnotation<OneToMany>() != null || prop.getAnnotation<OneToMany>() != null }
             .forEach { prop ->
@@ -454,6 +525,7 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
                     childRepo.softDelete(child)
                 }
             }
+
         @Suppress("UNCHECKED_CAST") val idVal = entityInformation.getId(entity) as ID
         val idAttrs = entityInformation.idAttributeNames.also {
             if (it.isEmpty()) throw IllegalStateException("ID 필드가 없습니다.")
