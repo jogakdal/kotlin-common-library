@@ -26,7 +26,6 @@
 
 ### standard-api-response (`modules/response/standard-api-response`)
 - `com.hunet.common.stdapi.response` : 표준 API 응답 구성, 직렬화, Advice, AutoConfiguration
-- `com.hunet.common.lib.standard_api_response` : 레거시/호환용 forwarder (deprecated)
 
 ### apidoc-core (`modules/apidoc/apidoc-core`)
 - `com.hunet.common.apidoc.core` : 문서화 핵심 헬퍼
@@ -36,7 +35,6 @@
 ### apidoc-annotations (`modules/apidoc/apidoc-annotations`)
 - `com.hunet.common.apidoc.annotations` : Swagger 및 문서 애노테이션 래퍼
 - `com.hunet.common.apidoc.enum` : Enum 관련 문서/직렬화 지원
-- `com.hunet.common.lib.std_api_documentation` : (공유) 레거시 문서 애노테이션/Forwarder
 
 ### jpa-repository-extension (`modules/jpa/jpa-repository-extension`)
 - `com.hunet.common.data.jpa.sequence` : 시퀀스 생성기
@@ -48,9 +46,6 @@
 
 ### test-support (`modules/test/test-support`)
 - `com.hunet.common.test.support` : 통합 테스트 지원 (Controller Test 등)
-
-> NOTE
-> - `com.hunet.common.lib.std_api_documentation`, `com.hunet.common.lib.standard_api_response` 는 레거시 prefix/underscore 패키지로서 마이그레이션용 forwarder 입니다.
 
 ## 빠른 의존성 예 (Gradle Kotlin DSL)
 ```kotlin
@@ -66,7 +61,7 @@ dependencies {
 `<version>` 값은 모듈별로 상이할 수 있으며 아래 "모듈 버전 관리" 참고.
 
 ## 모듈 버전 관리
-`gradle.properties` 에서 각 모듈별 override 속성을 통해 버전을 개별 관리합니다.
+`gradle.properties`에서 각 모듈별 override 속성을 통해 버전을 개별 관리합니다.
 ```properties
 moduleVersion.common-core=1.1.0-SNAPSHOT
 moduleVersion.standard-api-response=1.2.0-SNAPSHOT
@@ -76,7 +71,6 @@ moduleVersion.jpa-repository-extension=1.1.0-SNAPSHOT
 moduleVersion.test-support=1.1.0-SNAPSHOT
 ```
 - 루트 `version` (예: 1.1.0-SNAPSHOT)이 기본이며, 존재하는 `moduleVersion.*` 키가 우선 적용됩니다.
-- 레거시 키(`std-api-annotations`, `std-api-documentation`)는 점진 제거 예정.
 
 ## 빠른 사용 예 (Quick Usage)
 ### 1. Standard API Response
@@ -96,7 +90,7 @@ data class SimplePayload(val message: String) : BasePayload
 ### 2. SoftDelete & Sequence (JPA)
 ```kotlin
 @Entity
-@DeleteMark // com.hunet.common.data.jpa.softdelete.annotation.DeleteMark
+@DeleteMark
 class UserEntity(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,
