@@ -5,7 +5,6 @@ import jakarta.persistence.EntityManager
 import jakarta.persistence.EntityManagerFactory
 import org.springframework.core.io.ClassPathResource
 import java.io.BufferedReader
-import java.io.IOException
 import java.io.InputStreamReader
 import java.util.*
 
@@ -54,11 +53,13 @@ open class DataFeed {
 
     /** 단일 SQL (INSERT/UPDATE/DELETE 등) */
     open fun executeUpsertSql(query: String) {
-        try {
-            executeStatement(query)
-        } catch (e: IOException) {
-            LOG.error("[DataFeed] executeUpsertSql error: {}", e.message, e)
-        }
+        // 기존: IOException만 캐치 -> 미초기화시 skip. 변경: 예외 전파하여 조기 실패.
+        executeStatement(query)
+    }
+
+    /** 행수 반환 버전 (신규) */
+    open fun executeUpsertSqlReturningCount(query: String): Int {
+        return executeStatementReturningCount(query)
     }
 
     // FSM 기반 파서
@@ -184,8 +185,10 @@ open class DataFeed {
     protected open fun executeStatement(sql: String) {
         if (sql.isBlank()) return
         if (!::entityManagerFactory.isInitialized) {
-            LOG.debug("[DataFeed] entityManagerFactory not initialized (no-op mode?); skip: {}", abbreviate(sql))
-            return
+            // 기존: debug skip. 변경: 명시적 실패 유도
+            val abbreviated = abbreviate(sql)
+            LOG.error("[DataFeed] entityManagerFactory NOT initialized. Cannot execute SQL. Aborting. SQL={} ", abbreviated)
+            throw IllegalStateException("DataFeed entityManagerFactory not initialized. Provide a properly configured bean or remove custom DataFeed definition.")
         }
         var em: EntityManager? = null
         val start = System.currentTimeMillis()
@@ -197,14 +200,35 @@ open class DataFeed {
             tx.commit()
             LOG.debug("[DataFeed] executed ({} ms): {}", System.currentTimeMillis() - start, abbreviate(sql))
         } catch (e: Exception) {
-            try {
-                em?.transaction?.let { if (it.isActive) it.rollback() }
-            } catch (_: Exception) {}
+            try { em?.transaction?.let { if (it.isActive) it.rollback() } } catch (_: Exception) {}
             throw e
         } finally {
-            try {
-                em?.close()
-            } catch (_: Exception) {}
+            try { em?.close() } catch (_: Exception) {}
+        }
+    }
+
+    /** 행수 반환 내부 구현 */
+    protected open fun executeStatementReturningCount(sql: String): Int {
+        if (sql.isBlank()) return 0
+        if (!::entityManagerFactory.isInitialized) {
+            LOG.error("[DataFeed] entityManagerFactory NOT initialized. Cannot execute SQL (count mode). SQL={}", abbreviate(sql))
+            throw IllegalStateException("DataFeed entityManagerFactory not initialized.")
+        }
+        var em: EntityManager? = null
+        val start = System.currentTimeMillis()
+        return try {
+            em = entityManagerFactory.createEntityManager()
+            val tx = em.transaction
+            tx.begin()
+            val affected = em.createNativeQuery(sql).executeUpdate()
+            tx.commit()
+            LOG.debug("[DataFeed] executed ({} ms) affectedRows={}: {}", System.currentTimeMillis() - start, affected, abbreviate(sql))
+            affected
+        } catch (e: Exception) {
+            try { em?.transaction?.let { if (it.isActive) it.rollback() } } catch (_: Exception) {}
+            throw e
+        } finally {
+            try { em?.close() } catch (_: Exception) {}
         }
     }
 

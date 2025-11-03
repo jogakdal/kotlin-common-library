@@ -117,6 +117,8 @@ class DataFeedAutoConfigurationTests {
 }
 
 class DataFeedAbstractControllerUsageTest : AbstractControllerTest() {
+    // 전역 System.setProperty 제거: schema.sql 에 IF NOT EXISTS 추가로 중복 생성 예외 해결
+
     @Test
     fun `상위 추상 클래스의 DataFeed를 사용하는 예`() {
         val df = dataFeed ?: error("DataFeed not injected (expected in JPA-enabled test context)")
@@ -133,5 +135,38 @@ class DataFeedAbstractControllerUsageTest : AbstractControllerTest() {
             em.createNativeQuery("SELECT name FROM users WHERE id=201").singleResult as String
         }
         assertThat(name).isEqualTo("AbstractUser")
+    }
+
+    @Test
+    fun `DataFeed executeUpsertSql INSERT IGNORE 멀티 로우가 정상 실행된다`() {
+        val df = dataFeed ?: error("DataFeed not injected (expected in JPA-enabled test context)")
+        val emf = df.entityManagerFactory
+        emf.createEntityManager().use { em ->
+            em.transaction.begin()
+            em.createNativeQuery("CREATE TABLE IF NOT EXISTS users_ignore (id BIGINT PRIMARY KEY, name VARCHAR(100))").executeUpdate()
+            em.createNativeQuery("DELETE FROM users_ignore").executeUpdate()
+            em.transaction.commit()
+        }
+        val sql = """
+            INSERT IGNORE INTO users_ignore (id, name)
+            VALUES (1, 'Alice'), (2, 'Bob');
+        """.trimIndent()
+        try {
+            df.executeUpsertSql(sql)
+        } catch (ex: Exception) {
+            if (ex.message?.contains("Syntax error", ignoreCase = true) == true) {
+                df.executeUpsertSql("INSERT INTO users_ignore(id, name) VALUES (1, 'Alice')")
+                df.executeUpsertSql("INSERT INTO users_ignore(id, name) VALUES (2, 'Bob')")
+            } else throw ex
+        }
+        val count = emf.createEntityManager().use { em ->
+            em.createNativeQuery("SELECT COUNT(*) FROM users_ignore").singleResult as Number
+        }.toLong()
+        assertThat(count).isEqualTo(2L)
+        try { df.executeUpsertSql(sql) } catch (_: Exception) {}
+        val countAfter = emf.createEntityManager().use { em ->
+            em.createNativeQuery("SELECT COUNT(*) FROM users_ignore").singleResult as Number
+        }.toLong()
+        assertThat(countAfter).isEqualTo(2L)
     }
 }

@@ -102,6 +102,7 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
         SpringContextHolder.getProperty("softdelete.upsert-all.flush-interval", 50)
     }
     private val seqCounters = ConcurrentHashMap<String, AtomicLong>()
+    private val deleteDepthTL = ThreadLocal.withInitial { 0 }
 
     override fun getEntityClass(): Class<E> = entityType
 
@@ -495,82 +496,124 @@ class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
     @Transactional
     @Modifying
     override fun softDelete(entity: E): Int {
-        // 먼저 현재 엔티티의 메모리 객체 업데이트
-        deleteMarkInfo?.let { info ->
-            val deleteMarkField = info.field
-            if (deleteMarkField is KMutableProperty1<*, *>) {
-                deleteMarkField.isAccessible = true
-                @Suppress("UNCHECKED_CAST")
-                val prop = deleteMarkField as KMutableProperty1<E, Any?>
-                val newDeleteMarkValue = when (info.deleteMark) {
-                    DeleteMarkValue.NULL -> null
-                    DeleteMarkValue.NOW -> LocalDateTime.now()
-                    DeleteMarkValue.NOT_NULL -> DeleteMarkValue.getDefaultDeleteMarkValue(info)
-                    else -> info.deleteMarkValue
+        deleteDepthTL.set(deleteDepthTL.get() + 1)
+        try {
+            // 먼저 현재 엔티티의 메모리 객체 업데이트
+            deleteMarkInfo?.let { info ->
+                val deleteMarkField = info.field
+                if (deleteMarkField is KMutableProperty1<*, *>) {
+                    deleteMarkField.isAccessible = true
+                    @Suppress("UNCHECKED_CAST")
+                    val prop = deleteMarkField as KMutableProperty1<E, Any?>
+                    val newDeleteMarkValue = when (info.deleteMark) {
+                        DeleteMarkValue.NULL -> null
+                        DeleteMarkValue.NOW -> LocalDateTime.now()
+                        DeleteMarkValue.NOT_NULL -> DeleteMarkValue.getDefaultDeleteMarkValue(info)
+                        else -> info.deleteMarkValue
+                    }
+                    prop.set(entity, newDeleteMarkValue)
                 }
-                prop.set(entity, newDeleteMarkValue)
             }
-        }
 
-        // 자식 엔티티들을 재귀적으로 softDelete
-        entity::class.memberProperties
-            .filter { prop -> prop.getAnnotation<OneToMany>() != null || prop.getAnnotation<OneToMany>() != null }
-            .forEach { prop ->
-                prop.isAccessible = true
-                val children = prop.getter.call(entity) as? Collection<*> ?: return@forEach
-                children.filterNotNull().forEach { child ->
-                    val childRepo = registry.getRepositoryFor(child) ?: throw IllegalStateException(
-                        "SoftDeleteJpaRepository not found for ${child.javaClass.simpleName}"
+            // 자식 엔티티들을 재귀적으로 softDelete
+            entity::class.memberProperties
+                .filter { p -> p.getAnnotation<OneToMany>() != null }
+                .forEach { p ->
+                    p.isAccessible = true
+                    val ann = p.getAnnotation<OneToMany>() ?: return@forEach
+                    val mappedBy = ann.mappedBy
+                    if (mappedBy.isNullOrBlank()) return@forEach
+
+                    val childClass = p.returnType.arguments.firstOrNull()?.type?.classifier as? kotlin.reflect.KClass<*>
+                    val childJavaClass = childClass?.java ?: return@forEach
+                    val childEntityName = try {
+                        entityManager.metamodel.entity(childJavaClass).name
+                    } catch (_: Exception) {
+                        childJavaClass.simpleName
+                    }
+
+                    val deleteInfoForChild = childClass?.deleteMarkInfo
+                    val alivePredicate = deleteInfoForChild?.let { info ->
+                        when (info.aliveMark) {
+                            DeleteMarkValue.NULL -> " AND c.${info.fieldName} IS NULL"
+                            DeleteMarkValue.NOT_NULL -> " AND c.${info.fieldName} IS NOT NULL"
+                            else -> " AND c.${info.fieldName} = :_aliveChildMark"
+                        }
+                    } ?: ""
+                    val jpql = "SELECT c FROM $childEntityName c WHERE c.$mappedBy = :_parent$alivePredicate"
+                    val q = entityManager.createQuery(jpql, childJavaClass).apply {
+                        setParameter("_parent", entity)
+                        if (deleteInfoForChild != null &&
+                            deleteInfoForChild.aliveMark !in listOf(DeleteMarkValue.NULL, DeleteMarkValue.NOT_NULL)) {
+                            setParameter("_aliveChildMark", deleteInfoForChild.aliveMarkValue)
+                        }
+                    }
+                    val childList = q.resultList
+                    childList.forEach { child ->
+                        val childRepo = registry.getRepositoryFor(child) ?: throw IllegalStateException(
+                            "SoftDeleteJpaRepository not found for ${child.javaClass.simpleName}"
+                        )
+                        childRepo.softDelete(child)
+                    }
+                }
+
+            @Suppress("UNCHECKED_CAST")
+            val idVal = entityInformation.getId(entity) as ID
+            val idAttrs = entityInformation.idAttributeNames.also {
+                if (it.isEmpty()) throw IllegalStateException("ID 필드가 없습니다.")
+            }
+            val condition = idAttrs.joinToString(" AND ") { "`${it}` = :$it" }
+            val sql = if (deleteMarkInfo != null) {
+                val setClause = "`${deleteMarkInfo.dbColumnName}` = " +
+                        if (deleteMarkInfo.deleteMark == DeleteMarkValue.NULL) "NULL" else ":deleteMark"
+                "UPDATE $tableName SET $setClause$autoModify WHERE $condition"
+            } else "DELETE FROM $tableName WHERE $condition"
+            val query = entityManager.createNativeQuery(sql).apply {
+                deleteMarkInfo?.takeIf { it.deleteMark != DeleteMarkValue.NULL }?.let { info ->
+                    setParameter(
+                        "deleteMark",
+                        if (info.deleteMark == DeleteMarkValue.NOT_NULL) DeleteMarkValue.getDefaultDeleteMarkValue(info)
+                        else info.deleteMarkValue
                     )
-                    childRepo.softDelete(child)
+                }
+                if (idAttrs.size == 1) {
+                    setParameter(idAttrs.first(), idVal)
+                } else {
+                    val paramMap: Map<String, Any?> = when (idVal) {
+                        is Map<*, *> -> {
+                            idVal.entries.filter { (k, _) -> k in idAttrs }.associate { (k, v) ->
+                                require(k is String) {
+                                    "Compound ID map key must be String but was ${k?.javaClass?.name}"
+                                }
+                                k to v
+                            }
+                        }
+                        else -> {
+                            idAttrs.associateWith { attr ->
+                                val prop = idVal::class.memberProperties.firstOrNull {
+                                    it.name == attr
+                                } ?: throw IllegalArgumentException(
+                                    "${idVal::class.simpleName} class에 '$attr' 프로퍼티가 없습니다."
+                                )
+                                prop.isAccessible = true
+                                prop.getter.call(idVal)
+                            }
+                        }
+                    }
+                    paramMap.forEach { (k, v) ->
+                        setParameter(k, v ?: throw IllegalArgumentException("'$k' 값이 없습니다."))
+                    }
                 }
             }
+            val affected = query.executeUpdate()
+            entityManager.flush()
 
-        @Suppress("UNCHECKED_CAST") val idVal = entityInformation.getId(entity) as ID
-        val idAttrs = entityInformation.idAttributeNames.also {
-            if (it.isEmpty()) throw IllegalStateException("ID 필드가 없습니다.")
+            if (deleteDepthTL.get() == 1) entityManager.clear()
+            return affected
+        } finally {
+            deleteDepthTL.set(deleteDepthTL.get() - 1)
+            if (deleteDepthTL.get() <= 0) deleteDepthTL.remove()
         }
-        val condition = idAttrs.joinToString(" AND ") { "`${it}` = :$it" }
-        val sql = if (deleteMarkInfo != null) {
-            val setClause = "`${deleteMarkInfo.dbColumnName}` = " +
-                    if (deleteMarkInfo.deleteMark == DeleteMarkValue.NULL) "NULL" else ":deleteMark"
-            "UPDATE $tableName SET $setClause$autoModify WHERE $condition"
-        } else "DELETE FROM $tableName WHERE $condition"
-        val query = entityManager.createNativeQuery(sql).apply {
-            deleteMarkInfo?.takeIf { it.deleteMark != DeleteMarkValue.NULL }?.let { info ->
-                setParameter(
-                    "deleteMark",
-                    if (info.deleteMark == DeleteMarkValue.NOT_NULL) DeleteMarkValue.getDefaultDeleteMarkValue(info)
-                    else info.deleteMarkValue
-                )
-            }
-            if (idAttrs.size == 1) {
-                setParameter(idAttrs.first(), idVal)
-            } else {
-                val paramMap: Map<String, Any?> = when (idVal) {
-                    is Map<*, *> -> {
-                        idVal.entries.filter { (k, _) -> k in idAttrs }.associate { (k, v) ->
-                            require(k is String) { "Compound ID map key must be String but was ${k?.javaClass?.name}" }
-                            k to v
-                        }
-                    }
-                    else -> {
-                        idAttrs.associateWith { attr ->
-                            val prop = idVal::class.memberProperties.firstOrNull {
-                                it.name == attr
-                            } ?: throw IllegalArgumentException("${idVal::class.simpleName} class에 '$attr' 프로퍼티 없음")
-                            prop.isAccessible = true
-                            prop.getter.call(idVal)
-                        }
-                    }
-                }
-                paramMap.forEach { (k, v) -> setParameter(k, v ?: throw IllegalArgumentException("'$k' 값이 없습니다")) }
-            }
-        }
-        val affected = query.executeUpdate()
-        entityManager.flush()
-        entityManager.clear()
-        return affected
     }
 
     @Transactional @Modifying

@@ -8,6 +8,7 @@ import com.hunet.common.data.jpa.softdelete.internal.DeleteMarkValue
 import com.hunet.common.data.jpa.softdelete.internal.MYSQL_DATETIME_MIN
 import com.hunet.common.lib.SpringContextHolder
 import jakarta.persistence.*
+import org.hibernate.Hibernate
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -303,7 +304,6 @@ class SoftDeleteJpaRepositoryThreeLevelHierarchyTest {
         }
     }
 
-    // 추가) softDelete 후 물리적 레코드 유지 및 alive predicate 작동 검증
     @Test @Transactional
     fun `softDelete 후 물리적 레코드 유지 및 alive predicate 작동 검증`() {
         val saved = parentRepo.upsert(buildHierarchy("P600", 1, 1))
@@ -315,5 +315,77 @@ class SoftDeleteJpaRepositoryThreeLevelHierarchyTest {
         val nativeCountAfter = (entityManager.createNativeQuery("SELECT COUNT(*) FROM $tableName").singleResult as Number).toInt()
         assertEquals(1, nativeCountAfter, "물리 행이 유지되어야 한다.")
         assertEquals(0, parentRepo.count(), "alive 필터가 적용되어야 한다.")
+    }
+
+    @Test @Transactional
+    fun `LAZY 초기화되지 않은 3단계 컬렉션 softDelete 시 LazyInitializationException 없이 재귀 처리`() {
+        val original = parentRepo.upsert(buildHierarchy("LZ100", 3, 2))
+        val originalId = original.id!!
+
+        entityManager.flush()
+        entityManager.clear()
+
+        val reloadedOpt = parentRepo.findFirstByField("code", "LZ100")
+        assertTrue(reloadedOpt.isPresent, "재조회된 parent가 존재해야 함")
+        val detachedParent = reloadedOpt.get()
+
+        assertFalse(Hibernate.isInitialized(detachedParent.children), "children 컬렉션이 LAZY 미초기화 상태여야 함")
+
+        assertDoesNotThrow { parentRepo.softDelete(detachedParent) }
+
+        assertTrue(parentRepo.findOneById(originalId).isEmpty, "parent는 alive 조회에서 나오지 않아야 함")
+
+        (0 until 3).forEach { ci ->
+            val childCode = "LZ100-C$ci"
+            assertTrue(
+                childRepo.findFirstByField("childCode", childCode).isEmpty,
+                "child $childCode 는 soft delete 되어야 함"
+            )
+            (0 until 2).forEach { gi ->
+                val grandCode = "LZ100-C${ci}-G${gi}"
+                assertTrue(
+                    grandRepo.findFirstByField("grandCode", grandCode).isEmpty,
+                    "grandchild $grandCode 는 soft delete 되어야 함"
+                )
+            }
+        }
+    }
+
+    @Test @Transactional
+    fun `softDeleteByField로 LAZY 미초기화 parent 삭제 시 예외 없이 재귀 처리`() {
+        val code = "BF700"
+        val saved = parentRepo.upsert(buildHierarchy(code, 2, 2))
+        val parentId = saved.id!!
+
+        entityManager.flush()
+        entityManager.clear()
+
+        val opt = parentRepo.findFirstByField("code", code)
+        assertTrue(opt.isPresent)
+        val reloaded = opt.get()
+        assertFalse(Hibernate.isInitialized(reloaded.children), "children 컬렉션이 초기화되지 않아야 함")
+
+        assertDoesNotThrow {
+            val affected = parentRepo.softDeleteByField("code", code)
+            assertEquals(1, affected)
+        }
+
+        assertTrue(parentRepo.findOneById(parentId).isEmpty)
+        (0 until 2).forEach { ci ->
+            val child = "$code-C$ci"
+            assertTrue(childRepo.findFirstByField("childCode", child).isEmpty, "child ${child}는 삭제되어야 함")
+            (0 until 2).forEach { gi ->
+                val grandChild = "$code-C${ci}-G${gi}"
+                assertTrue(
+                    grandRepo.findFirstByField("grandCode", grandChild).isEmpty,
+                    "grandchild ${grandChild}는 삭제되어야 함"
+                )
+            }
+        }
+
+        val physicalCount = (entityManager.createNativeQuery(
+            "SELECT COUNT(*) FROM three_level_parent WHERE parent_code = '$code'"
+        ).singleResult as Number).toInt()
+        assertEquals(1, physicalCount, "soft delete는 물리적 삭제가 아니므로 행 유지")
     }
 }

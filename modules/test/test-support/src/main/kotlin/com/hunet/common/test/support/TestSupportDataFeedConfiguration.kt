@@ -16,6 +16,8 @@ open class TestSupportDataFeedConfiguration {
         override fun executeScriptFromFile(scriptFilePath: String) { /* no-op */ }
         override fun executeUpsertSql(query: String) { /* no-op */ }
         override fun executeStatement(sql: String) { /* no-op */ }
+        override fun executeUpsertSqlReturningCount(query: String): Int = 0
+        protected override fun executeStatementReturningCount(sql: String): Int = 0
     }
 
     @Bean
