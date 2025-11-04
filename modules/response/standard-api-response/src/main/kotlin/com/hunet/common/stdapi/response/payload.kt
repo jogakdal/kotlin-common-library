@@ -1,5 +1,6 @@
 package com.hunet.common.stdapi.response
 
+import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.MapperFeature
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -8,11 +9,8 @@ import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.readValue
-import com.fasterxml.jackson.core.type.TypeReference
 import com.hunet.common.stdapi.response.KeyNormalizationUtil.canonical
-import com.hunet.common.stdapi.response.getByCanonicalKey // 확장 함수 사용 명시적 import
 import io.swagger.v3.oas.annotations.media.Schema
-import java.lang.reflect.ParameterizedType
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
@@ -20,6 +18,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import org.springframework.data.domain.Page
+import java.lang.reflect.ParameterizedType
 import kotlin.reflect.KClass
 
 interface BasePayload {
@@ -115,6 +114,26 @@ open class ErrorDetail(
     @Schema(description = "오류 메시지", required = true)
     val message: String = ""
 )
+
+@Schema
+@Serializable
+open class StatusPayload(
+    @Schema(description = "상태 코드", required = true)
+    val code: String = "OK",
+
+    @Schema(description = "상태 메시지", required = true)
+    val message: String = "성공",
+
+    @Schema(description = "부가 정보")
+    @Contextual
+    val appendix: MutableMap<String, @Contextual Any> = mutableMapOf()
+): BasePayload {
+    fun addAppendix(key: String, value: @Contextual Any) { appendix[key] = value }
+    companion object {
+        fun of(code: String = "OK", message: String = "성공", appendix: Map<String, Any>? = null): StatusPayload =
+            StatusPayload(code = code, message = message, appendix = appendix?.toMutableMap() ?: mutableMapOf())
+    }
+}
 
 @Schema
 @Serializable
