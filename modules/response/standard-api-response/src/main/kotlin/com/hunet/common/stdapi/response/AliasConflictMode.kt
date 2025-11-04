@@ -22,31 +22,20 @@ internal object AliasConflictConfig {
     @Volatile var mode: AliasConflictMode = resolveInitialMode(); internal set
     @Volatile var resolution: AliasConflictResolution = resolveInitialResolution(); internal set
 
-    // 신규 키 (stdapi.response.*) + 기존 키 (standard-api-response.*) 호환 지원
     internal const val PROP_MODE_NEW = "stdapi.response.alias-conflict-mode"
     internal const val ENV_MODE_NEW = "STDAPI_RESPONSE_ALIAS_CONFLICT_MODE"
     internal const val PROP_RESOLUTION_NEW = "stdapi.response.alias-conflict-resolution"
     internal const val ENV_RESOLUTION_NEW = "STDAPI_RESPONSE_ALIAS_CONFLICT_RESOLUTION"
 
-    // 기존 키 (Deprecated forwarder 유지 1 release 예정)
-    internal const val PROP_MODE = "standard-api-response.alias-conflict-mode"
-    internal const val ENV_MODE = "STANDARD_API_RESPONSE_ALIAS_CONFLICT_MODE"
-    internal const val PROP_RESOLUTION = "standard-api-response.alias-conflict-resolution"
-    internal const val ENV_RESOLUTION = "STANDARD_API_RESPONSE_ALIAS_CONFLICT_RESOLUTION"
-
     private fun resolveInitialMode(): AliasConflictMode {
         val raw = System.getProperty(PROP_MODE_NEW)
             ?: System.getenv(ENV_MODE_NEW)
-            ?: System.getProperty(PROP_MODE)
-            ?: System.getenv(ENV_MODE)
             ?: "WARN"
         return runCatching { AliasConflictMode.valueOf(raw.trim().uppercase()) }.getOrElse { AliasConflictMode.WARN }
     }
     private fun resolveInitialResolution(): AliasConflictResolution {
         val raw = System.getProperty(PROP_RESOLUTION_NEW)
             ?: System.getenv(ENV_RESOLUTION_NEW)
-            ?: System.getProperty(PROP_RESOLUTION)
-            ?: System.getenv(ENV_RESOLUTION)
             ?: "FIRST_WIN"
         return runCatching { AliasConflictResolution.valueOf(raw.trim().uppercase()) }
             .getOrElse { AliasConflictResolution.FIRST_WIN }
@@ -55,9 +44,9 @@ internal object AliasConflictConfig {
 
 @Configuration
 class AliasConflictModeConfiguration(
-    @Value("\${stdapi.response.alias-conflict-mode:\${standard-api-response.alias-conflict-mode:WARN}}")
+    @Value("\${stdapi.response.alias-conflict-mode:WARN}")
     private val configuredMode: String,
-    @Value("\${stdapi.response.alias-conflict-resolution:\${standard-api-response.alias-conflict-resolution:FIRST_WIN}}")
+    @Value("\${stdapi.response.alias-conflict-resolution:FIRST_WIN}")
     private val configuredResolution: String
 ) {
     @PostConstruct

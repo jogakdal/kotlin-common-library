@@ -16,6 +16,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
+import kotlin.reflect.KClass
 import kotlin.reflect.KFunction
 import kotlin.reflect.KMutableProperty1
 import kotlin.reflect.KParameter
@@ -74,7 +75,7 @@ class StandardApiResponseAdvice(
                 }
                 if (startNanos != null) {
                     val elapsed = System.nanoTime() - startNanos
-                    injectDuration(body, elapsed)
+                    applyDurationInjection(body, elapsed)
                 } else body
             } else body
         } catch (e: Exception) {
@@ -122,9 +123,41 @@ class StandardApiResponseAdvice(
         return null
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun injectDuration(body: Any?, elapsedNanos: Long): Any? {
+    private fun applyDurationInjection(body: Any?, elapsedNanos: Long): Any? {
         if (body == null) return null
+        val top = injectDurationOnObject(body, elapsedNanos)
+        if (top is StandardResponse<*>) {
+            injectDurationDeep(top.payload, elapsedNanos, mutableSetOf())
+        }
+        return top
+    }
+
+    private fun injectDurationDeep(target: Any?, elapsedNanos: Long, visited: MutableSet<Int>) {
+        if (target == null) return
+        val id = System.identityHashCode(target)
+        if (!visited.add(id)) return
+        injectDurationOnObject(target, elapsedNanos)
+
+        val kClass: KClass<*> = target::class
+        kClass.memberProperties.forEach { prop ->
+            runCatching {
+                val value = (prop as KProperty1<Any, *>).get(target)
+                when (value) {
+                    null -> {}
+                    is BasePayload -> injectDurationDeep(value, elapsedNanos, visited)
+                    is Collection<*> -> value.filterIsInstance<BasePayload>().forEach {
+                        injectDurationDeep(it, elapsedNanos, visited)
+                    }
+                    is Map<*, *> -> value.values.filterIsInstance<BasePayload>().forEach {
+                        injectDurationDeep(it, elapsedNanos, visited)
+                    }
+                }
+            }.onFailure { }
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun injectDurationOnObject(body: Any, elapsedNanos: Long): Any {
         val kClass = body::class
         val allProps = kClass.memberProperties
         val targets = allProps.filter { it.getAnnotation<InjectDuration>() != null }
@@ -133,7 +166,10 @@ class StandardApiResponseAdvice(
         targets.forEach { prop ->
             val value = convertForProperty(prop as KProperty1<Any, *>, elapsedNanos)
             (prop as? KMutableProperty1<Any, Any?>)?.let { m ->
-                try { m.setter.call(body, value); mutated = true } catch (_: Exception) {}
+                try {
+                    m.setter.call(body, value)
+                    mutated = true
+                } catch (_: Exception) { }
             }
         }
         if (mutated) return body

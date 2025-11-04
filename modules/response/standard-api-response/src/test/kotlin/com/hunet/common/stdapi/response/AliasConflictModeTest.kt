@@ -14,8 +14,6 @@ private data class ConflictPayload(
 class AliasConflictModeTest {
     @AfterTest
     fun tearDown() {
-        System.clearProperty(AliasConflictConfig.PROP_MODE)
-        System.clearProperty(AliasConflictConfig.PROP_RESOLUTION)
         clearAliasCaches()
         AliasConflictConfig.mode = AliasConflictMode.WARN
         AliasConflictConfig.resolution = AliasConflictResolution.FIRST_WIN

@@ -7,6 +7,7 @@ import com.hunet.common.apidoc.annotations.SwaggerDescription
 import com.hunet.common.apidoc.enums.DescriptiveEnum
 import com.hunet.common.apidoc.enums.DescriptiveEnum.Companion.DESCRIPTION_MARKER
 import com.hunet.common.apidoc.enums.EnumConstant
+import com.hunet.common.logging.commonLogger
 import com.hunet.common.stdapi.response.BasePayload.Companion.deserializePayload
 import io.swagger.v3.oas.annotations.media.Schema
 import kotlinx.serialization.Contextual
@@ -124,7 +125,7 @@ data class Items<T>(
 ) {
     constructor(page: Page<T>) : this(
         total = page.totalElements,
-        current = page.size.toLong(),
+        current = page.numberOfElements.toLong(),
         list = page.toList()
     )
 
@@ -386,6 +387,9 @@ data class StandardResponse<T : BasePayload> (
 
     companion object {
         @PublishedApi
+        internal val LOG by commonLogger()
+
+        @PublishedApi
         internal fun JsonObject.getCanonical(key: String) = getByCanonicalKey(key)
 
         // callback 함수는 payload, status, version 정보를 StandardCallbackResult 객체로 묶어서 반환해야 한다.
@@ -462,6 +466,7 @@ data class StandardResponse<T : BasePayload> (
                 )
             }
         } catch (e: Exception) {
+            LOG.warn("[stdapi] deserialize(reified) failed: ${e.message}")
             StandardResponse(
                 status = StandardStatus.FAILURE,
                 version = "1.0",
@@ -496,6 +501,7 @@ data class StandardResponse<T : BasePayload> (
                 payload = payload
             )
         } catch (e: Exception) {
+            LOG.warn("[stdapi] deserialize(Class) failed: ${e.message}")
             @Suppress("UNCHECKED_CAST")
             StandardResponse(
                 status = StandardStatus.FAILURE,
@@ -532,6 +538,7 @@ data class StandardResponse<T : BasePayload> (
                 payload = payload
             )
         } catch (e: Exception) {
+            LOG.warn("[stdapi] deserialize(TypeReference) failed: ${e.message}")
             @Suppress("UNCHECKED_CAST")
             StandardResponse(
                 status = StandardStatus.FAILURE,

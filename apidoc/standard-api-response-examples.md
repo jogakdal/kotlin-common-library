@@ -14,7 +14,6 @@
 ```groovy
 dependencies {
     implementation("com.hunet.common:common-core:<version>")
-    implementation("com.hunet.common:apidoc-annotations:<version>")
     implementation("com.hunet.common:standard-api-response:<version>")
 }
 ```
