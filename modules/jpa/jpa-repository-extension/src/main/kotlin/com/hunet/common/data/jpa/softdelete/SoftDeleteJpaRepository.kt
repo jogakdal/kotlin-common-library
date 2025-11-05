@@ -83,7 +83,7 @@ interface SoftDeleteJpaRepository<E, ID: Serializable> : JpaRepository<E, ID> {
 }
 
 @NoRepositoryBean
-class SoftDeleteJpaRepositoryImpl<E : Any, ID: Serializable>(
+class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
     val entityInformation: JpaEntityInformation<E, *>,
     val entityManager: EntityManager
 ) : SimpleJpaRepository<E, ID>(entityInformation, entityManager), SoftDeleteJpaRepository<E, ID> {

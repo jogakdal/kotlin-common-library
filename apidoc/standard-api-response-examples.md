@@ -54,16 +54,9 @@ fun basicFailure(): StandardResponse<ErrorPayload> = StandardResponse.build(call
 ```
 ### 1.2 Java
 ```java
-public class StatusPayload implements BasePayload {
-    private final String code; private final String message;
-    public StatusPayload(String code, String message) { this.code = code; this.message = message; }
-    public String getCode() { return code; }
-    public String getMessage() { return message; }
-}
-
 public StandardResponse<StatusPayload> basicSuccess() {
     return StandardResponse.buildWithCallback(
-        () -> new StandardCallbackResult(new StatusPayload("OK", "성공"), StandardStatus.SUCCESS, "1.0")
+        () -> new StandardCallbackResult(new StatusPayload("OK", "성공", new java.util.LinkedHashMap<>()), StandardStatus.SUCCESS, "1.0")
     );
 }
 
@@ -348,7 +341,7 @@ fun safeParse(raw: String): StandardResponse<BasePayload> = try {
     StandardResponse.deserialize<StatusPayload>(raw)
 } catch (e: Exception) {
     StandardResponse.build(
-        ErrorPayload("DESERIALIZE_FAIL", e.message ?: "fail"),
+        ErrorPayload("E_DESERIALIZE_FAIL", e.message ?: "fail"),
         status = StandardStatus.FAILURE,
         version = "1.0"
     )
@@ -478,7 +471,7 @@ System.out.println(respStatus.getPayload().getCode());
 #### 6.12.2 단일 실패(ErrorPayload)
 JSON:
 ```json
-{"status" :"FAILURE", "version": "1.0", "datetime": "2025-10-21T13:01:45:00Z", "duration": 20, "payload": {"code": "E400", "message": "잘못된 요청"}}
+{"status" :"FAILURE", "version": "1.0", "datetime": "2025-10-21T13:01:45Z", "duration": 20, "payload": {"errors": [{"code": "E400", "message": "잘못된 요청"}]}}
 ```
 Kotlin:
 ```kotlin
@@ -495,11 +488,11 @@ assert errorResp.getStatus() == StandardStatus.FAILURE;
 JSON:
 ```json
 {
-  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45:00Z", "duration": 20,
+  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45Z", "duration": 20,
   "payload": {
     "pageable": {
-      "page": { "total": 10, "size": 2, "current": 1 },
-      "order": { "sorted": true, "by": [ { "field": "id", "dir": "ASC" } ] },
+      "page": { "size": 2, "current": 1, "total": 5 },
+      "order": { "sorted": true, "by": [ { "field": "id", "direction": "asc" } ] },
       "items": {"total": 10, "current": 2, "list": [ { "id": 1, "name": "황용호" }, { "id": 2, "name": "홍용호" } ] }
     }
   }
@@ -520,10 +513,10 @@ System.out.println(pageContainer.getPayload().getPageable().getItems().getList()
 JSON:
 ```json
 {
-  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45:00Z", "duration": 20,
+  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45Z", "duration": 20,
   "payload": {
     "incremental": {
-      "cursor": { "start": 0, "size": 2, "total": 100, "field": "idx" },
+      "cursor": { "field": "idx", "start": 0, "end": 1, "expandable": true },
       "items": { "total": 100, "current": 2, "list": [ { "idx": 0, "text": "log-0" }, { "idx": 1, "text": "log-1" } ] }
     }
   }
@@ -544,9 +537,9 @@ System.out.println(incContainer.getPayload().getIncremental().getCursor().getSta
 JSON:
 ```json
 {
-  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45:00Z", "duration": 20,
+  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45Z", "duration": 20,
   "payload": {
-    "page": { "total": 1, "size": 1, "current": 1 },
+    "page": { "size": 1, "current": 1, "total": 1 },
     "order": null,
     "items": { "total": 1, "current": 1, "list": [ { "id": 1, "name": "황용호" } ] }
   }
@@ -569,9 +562,9 @@ System.out.println(directPage.getPayload().getItems().getList().get(0).getName()
 JSON:
 ```json
 {
-  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45:00Z", "duration": 20,
+  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45Z", "duration": 20,
   "payload": {
-    "cursor": { "start": 10, "size": 1, "total": 10, "field": "idx" },
+    "cursor": { "field": "idx", "start": 10, "end": 10, "expandable": false },
     "order": null,
     "items": { "total": 10, "current": 1, "list": [ { "idx": 10, "text": "first" } ] }
   }
@@ -594,10 +587,33 @@ System.out.println(directInc.getPayload().getItems().getList().get(0).getText())
 JSON:
 ```json
 {
-  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45:00Z", "duration": 20,
+  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45Z", "duration": 20,
   "payload": {
-    "users": { "page": { "total": 2, "size": 2, "current": 1 }, "order": null, "items": { "total": 2, "current": 2, "list": [ { "id": 1, "name": "황용호" }, { "id": 2, "name": "홍용호"   } ] } },
-    "logs": { "cursor": { "start": 10, "size": 2, "total": 200, "field": "idx" }, "order": null, "items": { "total": 200, "current": 2, "list": [ { "idx": 10, "text": "boot" }, { "idx": 11, "text": "ready" } ] } }
+    "users": { 
+      "page": { 
+        "size": 2, "current": 1, "total": 1
+      }, 
+      "order": null, 
+      "items": { 
+        "total": 2, 
+        "current": 2, 
+        "list": [ { "id": 1, "name": "황용호" }, { "id": 2, "name": "홍용호" } ]
+      }
+    },
+    "logs": { 
+      "cursor": { 
+        "field": "idx", 
+        "start": 10, 
+        "end": 11, 
+        "expandable": true
+      }, 
+      "order": null, 
+      "items": { 
+        "total": 200, 
+        "current": 2, 
+        "list": [ { "idx": 10, "text": "boot" }, { "idx": 11, "text": "ready" } ]
+      }
+    }
   }
 }
 ```
@@ -616,11 +632,15 @@ System.out.println(multiListsResp.getPayload().getUsers().getItems().getList().s
 JSON:
 ```json
 {
-  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45:00Z", "duration": 20,
+  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45Z", "duration": 20,
   "payload": {
     "info": { "system": "core-service", "version_text": "v2" },
     "status": { "code": "OK", "message": "정상" },
-    "users": { "page": { "total": 1, "size": 1, "current": 1 }, "order": null, "items": { "total": 1, "current": 1, "list": [ { "id": 100, "name": "황용호" } ] } }
+    "users": { 
+      "page": { "size": 1, "current": 1, "total": 1 }, 
+      "order": null, 
+      "items": { "total": 1, "current": 1, "list": [ { "id": 100, "name": "황용호" } ] }
+    }
   }
 }
 ```
@@ -829,15 +849,11 @@ fun generateReport(): StandardResponse<BasePayload> = StandardResponse.build(cal
 ```
 ### 12.3 수동 duration
 ```kotlin
-// StatusPayload 는 1.1 에서 정의됨
 fun manualDuration(): StandardResponse<StatusPayload> {
     val start = System.nanoTime()
-    val resp = StandardResponse.build(callback = {
-        StandardCallbackResult(StatusPayload("OK", "ready"), StandardStatus.SUCCESS, "1.0")
-    })
+    val payload = StatusPayload("OK", "ready")
     val elapsedMs = (System.nanoTime() - start) / 1_000_000
-    resp.setDuration(elapsedMs) // 라이브러리 지원 시
-    return resp
+    return StandardResponse.build(payload, StandardStatus.SUCCESS, "1.0", elapsedMs)
 }
 ```
 ### 12.4 Generic Helper (timed)
@@ -849,25 +865,40 @@ val userResp = timed("2.2") { StatusPayload("OK", "done") }
 ```
 ### 12.5 Batch 처리 + 누적 오류
 ```kotlin
-fun batch(items: List<String>): StandardResponse<ErrorPayload> = StandardResponse.build(callback = {
-    var ep = ErrorPayload("OK", "모두 성공", emptyList())
+fun batch(items: List<String>): StandardResponse<BasePayload> = StandardResponse.build {
+    val rowErrors = mutableListOf<ErrorDetail>()
     items.forEach { v ->
-        runCatching { insert(v) }.onFailure {
-            ep = if (ep.errors.isEmpty()) {
-                ep.copy(code = "PART_FAIL", message = "일부 실패", errors = ep.errors + ErrorEntry("ROW_FAIL", it.message ?: v))
-            } else {
-                ep.copy(errors = ep.errors + ErrorEntry("ROW_FAIL", it.message ?: v))
-            }
+        runCatching { insert(v) }.onFailure { t ->
+            rowErrors += ErrorDetail("ROW_FAIL", t.message ?: v)
         }
     }
-    val status = if (ep.errors.isNotEmpty()) StandardStatus.FAILURE else StandardStatus.SUCCESS
-    StandardCallbackResult(ep, status, "1.0")
-})
+    if (rowErrors.isEmpty()) {
+        StandardCallbackResult(StatusPayload("OK", "모두 성공"))
+    } else {
+        val primaryCode = if (rowErrors.size < items.size) "PART_FAIL" else "FAIL"
+        val primaryMsg  = if (rowErrors.size < items.size) "일부 실패" else "전체 실패"
+        val ep = ErrorPayload(primaryCode, primaryMsg)
+        ep.addAppendix("total", items.size)
+        ep.addAppendix("failed", rowErrors.size)
+        rowErrors.forEach { e -> ep.addError(e.code, e.message) }
+        StandardCallbackResult(ep, StandardStatus.FAILURE)
+    }
+}
 ```
-```
-// 실패 정책 권고:
-// 1) 첫 실패 발생 시 code/message를 PART_FAIL/"일부 실패" 로 변경
-// 2) 오류 1건이라도 존재하면 status = FAILURE (부분 실패도 클라이언트 재시도 판단이 필요한 경우)
-//    필요시 정책: errors.size > 0 => PARTIAL / errors.size == total => FAILURE 로 세분화 가능 (추가 enum 고려)
-// 현재 예제는 "errors.isNotEmpty()" 기준으로 FAILURE 설정.
+```json
+// Batch 실패 예시 응답
+{
+  "status": "FAILURE",
+  "version": "1.0",
+  "datetime": "2025-10-21T13:01:45Z",
+  "duration": 12,
+  "payload": {
+    "errors": [
+      { "code": "PART_FAIL", "message": "일부 실패" },
+      { "code": "ROW_FAIL", "message": "row1 오류" },
+      { "code": "ROW_FAIL", "message": "row3 오류" }
+    ],
+    "appendix": { "total": 3, "failed": 2 }
+  }
+}
 ```
