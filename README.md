@@ -20,7 +20,7 @@
 - `com.hunet.common.autoconfigure` : 자동 구성 (Spring Boot AutoConfiguration)
 - `com.hunet.common.support` : DataFeed 등 지원 컴포넌트
 - `com.hunet.common.lib` : 범용 유틸/컨텍스트/변수 처리 (VariableProcessor 등)
-- `com.hunet.common.logging` : 로깅 유틸
+- `com.hunet.common.logging` : 로그 유틸
 - `com.hunet.common.util` : 날짜/공통 유틸리티
 - (tests/examples) `com.hunet.common.lib.examples`
 

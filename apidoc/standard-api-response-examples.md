@@ -167,6 +167,58 @@ public StandardResponse<LogsIncrementalContainer> incrementalContainer(long star
     });
 }
 ```
+### 2.3 PageListPayload / IncrementalListPayload (래퍼형)
+```kotlin
+// PageListPayload: 내부에 pageable: PageableList<T> 포함
+val userPagePayload = PageListPayload(
+    items = listOf(UserPayload(10, "황용호")),
+    totalItems = 25,
+    pageSize = 10,
+    currentPage = 1
+)
+val pageResp = StandardResponse.build(userPagePayload)
+
+// IncrementalListPayload: 내부에 incremental: IncrementalList<T,I> 포함
+val logIncPayload = IncrementalListPayload(
+    items = listOf(LogEntryPayload(100, "boot"), LogEntryPayload(101, "ready")),
+    startIndex = 100L,
+    endIndex = 101L,
+    totalItems = 500,
+    cursorField = "idx",
+    expandable = true
+)
+val incResp = StandardResponse.build(logIncPayload)
+```
+
+### 2.4 fromPage / fromPageJava 활용
+```kotlin
+// Spring Data Page<UserEntity> 가 있다고 가정
+val page: org.springframework.data.domain.Page<UserEntity> = loadUserPage()
+val mappedPageList = PageableList.fromPage(page) { e -> UserPayload(e.id, e.name) }
+val mappedPagePayload = PageListPayload.fromPage(page) { e -> UserPayload(e.id, e.name) }
+val respMapped = StandardResponse.build(mappedPagePayload)
+```
+```java
+// Java: PageableList.fromPageJava
+Page<UserEntity> page = loadUserPage();
+PageableList<UserPayload> mapped = PageableList.fromPageJava(page, e -> new UserPayload(e.getId(), e.getName()));
+StandardResponse<PageableList<UserPayload>> resp = StandardResponse.build(mapped);
+```
+
+### 2.5 buildFromTotalJava (커서 인덱스 변환 BiFunction)
+```java
+List<LogEntryPayload> logs = List.of(new LogEntryPayload(200, "start"), new LogEntryPayload(201, "next"));
+IncrementalList<LogEntryPayload, Long> incList = IncrementalList.buildFromTotalJava(
+    logs, 200L, 2L, 1000L, "idx", null, (field, index) -> index
+);
+StandardResponse<IncrementalList<LogEntryPayload, Long>> incResp2 = StandardResponse.build(incList);
+```
+
+### 2.6 itemsAsList 편의 접근
+```kotlin
+val listOnly: List<UserPayload> = pageResp.payload.pageable.items.list // 표준 접근
+val listShortcut: List<UserPayload> = pageResp.payload.pageable.itemsAsList // 동일 결과 (단축 프로퍼티)
+```
 
 ---
 ## 3. 리스트 자체가 페이로드
@@ -424,7 +476,7 @@ val jsonDyn = """
   "version":"1.0",
   "datetime":"2025-09-16T12:15:00Z",
   "duration":3,
-  "typeHint":"STATUS",
+  "typeHint":"STATUS",  // 표준 상위 응답 스키마(StandardResponse) 외 추가 필드
   "payload":{"code":"OK","message":"성공"}
 }
 """.trimIndent()
@@ -664,7 +716,7 @@ System.out.println(compositeResp.getPayload().getInfo().getVersionText());
 |-------------|------------|----------------------|-----------|-----------|-------------|
 | userId      | user_id    | USER_ID              | user-id   | userId    | UserId      |
 | firstName   | first_name | FIRST_NAME           | first-name| firstName | FirstName   |
-| APIURLVersion2 | api_url_version2 | API_URL_VERSION2 | api-url-version2 | apiURLVersion2 | ApiUrlVersion2 |
+| APIURLVersion2 | api_url_version2 | API_URL_VERSION2 | api-url-version2 | apiUrlVersion2 | ApiUrlVersion2 |
 > 변환 순서: 토큰 분해 → 캐시 조합 → 케이스 변환. 한 번 계산된 결과 재사용.
 
 ### 7.2 @ResponseCase vs toJson(case=...) 우선순위
@@ -683,7 +735,7 @@ data class ApiKeyPayload(
 ) : BasePayload
 StandardResponse.build(callback = { StandardCallbackResult(ApiKeyPayload("K-1", 5)) })
   .toJson(case = CaseConvention.KEBAB_CASE)
-// 결과 키: api_key, request-count (NoCaseTransform 대상은 원형 유지 + alias 변형 포함)
+// 결과 키: api_key, request-count (NoCaseTransform: 출력 케이스 변환에서 제외됨)
 ```
 ### 7.4 SCREAMING_SNAKE_CASE / PASCAL_CASE 예
 ```kotlin
@@ -766,139 +818,19 @@ println(complex.payload.entries[0]["k1"]!!.childId) // 1
 |------|------|
 | 서로 다른 property가 동일 canonical | 최초 등록 유지, WARN 로그 |
 | 동일 property에 서로 다른 `@JsonProperty` | 최초 alias 유지, WARN 로그 |
-> WARN 예: `[AliasRegistry] canonical conflict: 'userid' already mapped to field 'userId' (ignored alias 'UserId')`
+> WARN 예: `[AliasRegistry] canonical conflict: 'userid' already mapped to field 'userId' (ignored alias 'UserId')` (예시 로그)
 
 ---
 ## 9. 캐시 & 성능
-- 최초 역직렬화 시 reflection → `serializationMap` / `canonicalAliasToProp` / `skipCaseKeys` 생성 후 KClass 단위 캐싱.
-- 다수 DTO 반복 역직렬화: 1회 비용 이후 상수시간 근사.
-- 구조 변경(핫 리로드 등) 시 `clearAliasCaches()` 호출.
 ```kotlin
-clearAliasCaches() // 캐시 초기화
+clearAliasCaches() // alias/케이스/리플렉션 캐시 초기화 (동적 클래스 재로드 시)
 ```
-> 대형 응답 케이스 변환 비용 우려 시 `stdapi.response.case.enabled=false` 적용 + 경계 레이어 선택적 변환 고려.
+- Alias/Canonical/Case 변환 정보는 최초 분석 후 클래스 단위 캐싱.
+- CaseKeyCache 내부적으로 케이스 변환 결과(토큰 분해 후)를 재사용.
+- 대량 DTO 반복 역직렬화 시 1회 비용 이후 O(1) 근사.
+- 자세한 동작/구성: 사용자 가이드 참조.
 
 ---
-## 10. 트러블슈팅 빠른 점검표
-| 증상 | 원인 | 조치 |
-|------|------|------|
-| 특정 필드 null | 키 철자/alias 미등록 | `@JsonProperty` / `@JsonAlias` 추가 |
-| 케이스 변환 제외 안 됨 | `@NoCaseTransform` 누락 | 어노테이션 추가 |
-| alias 충돌 WARN | 중복 canonical | 고유 alias 재설계 |
-| 초기 성능 저하 | 최초 캐시 빌드 | 정상 (2번째 호출부터 완화) |
-| 예상치 못한 대문자 출력 | PASCAL_CASE 선택 | 다른 CaseConvention 지정 |
-
----
-## 11. 종합 시나리오 (AllInOne)
-```kotlin
-@ResponseCase(CaseConvention.KEBAB_CASE)
-data class AllInOne(
-    @JsonProperty("user_id") @JsonAlias("USER-ID", "UserId") val userId: Long,
-    @JsonProperty("api_key") @NoCaseTransform val apiKey: String,
-    val nested: Wrapper
-) : BasePayload
-val src = """
-{
-    "status": "SUCCESS",
-    "version": "1.0",
-    "datetime": "2025-09-16T00:00:00Z",
-    "duration": 20,
-    "payload": {
-        "USER-ID": 77,
-        "api_key": "K-9",
-        "nested": { 
-            "items-map": { "x": { "child-name": "황용호" } }
-        }
-    }
-}
-"""
-val parsedAll = StandardResponse.deserialize<AllInOne>(src)
-val out = parsedAll.toJson() // kebab-case 출력, api_key 그대로 유지
-```
-
----
-## 12. 확장 Callback 패턴
-### 12.1 Health 체크
-```kotlin
-data class HealthPayload(val ok: Boolean, val failed: List<String>): BasePayload
-
-fun healthCheck(): StandardResponse<HealthPayload> = StandardResponse.build(callback = {
-    val targets = listOf("db", "cache")
-    val failed = targets.filterNot { t -> runCatching { ping(t) }.getOrElse { false } }
-    if (failed.isEmpty()) {
-        StandardCallbackResult(HealthPayload(true, emptyList()), StandardStatus.SUCCESS, "2.0")
-    } else {
-        StandardCallbackResult(HealthPayload(false, failed), StandardStatus.FAILURE, "2.0")
-    }
-})
-```
-### 12.2 예외 매핑 통합
-```kotlin
-data class ReportPayload(val size: Int): BasePayload
-
-fun generateReport(): StandardResponse<BasePayload> = StandardResponse.build(callback = {
-    try {
-        val raw = heavyLoad()
-        StandardCallbackResult(ReportPayload(raw.size), StandardStatus.SUCCESS, "1.1")
-    } catch (e: ValidationException) {
-        StandardCallbackResult(ErrorPayload("VALID", e.message ?: "validation", null), StandardStatus.FAILURE, "1.1")
-    } catch (e: Exception) {
-        StandardCallbackResult(ErrorPayload("UNEXPECTED", e.message ?: "err", null), StandardStatus.FAILURE, "1.1")
-    }
-})
-```
-### 12.3 수동 duration
-```kotlin
-fun manualDuration(): StandardResponse<StatusPayload> {
-    val start = System.nanoTime()
-    val payload = StatusPayload("OK", "ready")
-    val elapsedMs = (System.nanoTime() - start) / 1_000_000
-    return StandardResponse.build(payload, StandardStatus.SUCCESS, "1.0", elapsedMs)
-}
-```
-### 12.4 Generic Helper (timed)
-```kotlin
-inline fun <reified P: BasePayload> timed(version: String = "1.0", block: () -> P): StandardResponse<P> =
-    StandardResponse.build(callback = { StandardCallbackResult(block(), StandardStatus.SUCCESS, version) })
-
-val userResp = timed("2.2") { StatusPayload("OK", "done") }
-```
-### 12.5 Batch 처리 + 누적 오류
-```kotlin
-fun batch(items: List<String>): StandardResponse<BasePayload> = StandardResponse.build {
-    val rowErrors = mutableListOf<ErrorDetail>()
-    items.forEach { v ->
-        runCatching { insert(v) }.onFailure { t ->
-            rowErrors += ErrorDetail("ROW_FAIL", t.message ?: v)
-        }
-    }
-    if (rowErrors.isEmpty()) {
-        StandardCallbackResult(StatusPayload("OK", "모두 성공"))
-    } else {
-        val primaryCode = if (rowErrors.size < items.size) "PART_FAIL" else "FAIL"
-        val primaryMsg  = if (rowErrors.size < items.size) "일부 실패" else "전체 실패"
-        val ep = ErrorPayload(primaryCode, primaryMsg)
-        ep.addAppendix("total", items.size)
-        ep.addAppendix("failed", rowErrors.size)
-        rowErrors.forEach { e -> ep.addError(e.code, e.message) }
-        StandardCallbackResult(ep, StandardStatus.FAILURE)
-    }
-}
-```
-```json
-// Batch 실패 예시 응답
-{
-  "status": "FAILURE",
-  "version": "1.0",
-  "datetime": "2025-10-21T13:01:45Z",
-  "duration": 12,
-  "payload": {
-    "errors": [
-      { "code": "PART_FAIL", "message": "일부 실패" },
-      { "code": "ROW_FAIL", "message": "row1 오류" },
-      { "code": "ROW_FAIL", "message": "row3 오류" }
-    ],
-    "appendix": { "total": 3, "failed": 2 }
-  }
-}
-```
+## 참고 링크
+복잡한 개념 설명(케이스 변환 우선순위, Canonical 규칙 상세, Duration 주입 재귀 범위 등)은 사용자 가이드 문서에 상세히 기술되어 있습니다.
+- 자세한 규칙 및 내부 동작: `standard-api-response-library-guide.md` 참고

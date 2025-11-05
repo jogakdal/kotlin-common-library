@@ -3,7 +3,6 @@ package com.hunet.common.stdapi.response
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.core.type.TypeReference
 import com.hunet.common.apidoc.annotations.Sequence
-import com.hunet.common.apidoc.annotations.SwaggerDescription
 import com.hunet.common.apidoc.enums.DescriptiveEnum
 import com.hunet.common.apidoc.enums.DescriptiveEnum.Companion.DESCRIPTION_MARKER
 import com.hunet.common.apidoc.enums.EnumConstant
@@ -90,13 +89,13 @@ class OrderInfo(
 @Schema
 @Serializable
 class PageInfo(
-    @SwaggerDescription(description = "페이지 사이즈")
+    @Schema(description = "페이지 사이즈")
     val size: Long = 0L,
 
-    @SwaggerDescription(description = "현재 페이지 번호")
+    @Schema(description = "현재 페이지 번호")
     val current: Long = 1L,
 
-    @SwaggerDescription(description = "총 페이지 수")
+    @Schema(description = "총 페이지 수")
     val total: Long = 1L
 ) {
     constructor(page: Page<*>) : this(
@@ -114,13 +113,13 @@ class PageInfo(
 @Schema
 @Serializable
 data class Items<T>(
-    @SwaggerDescription(description = "총 아이템 수")
+    @Schema(description = "총 아이템 수")
     val total: Long? = null,
 
-    @SwaggerDescription(description = "현재 아이템 수")
+    @Schema(description = "현재 아이템 수")
     val current: Long? = null,
 
-    @SwaggerDescription(description = "아이템 리스트")
+    @Schema(description = "아이템 리스트")
     val list: List<T> = listOf()
 ) {
     constructor(page: Page<T>) : this(
