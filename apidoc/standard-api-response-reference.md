@@ -2,7 +2,7 @@
 
 `standard-api-response` 모듈이 제공하는 **표준 응답 구조, 핵심 타입, 어노테이션, 빌더/헬퍼, 역직렬화 규칙, 구성 프로퍼티 및 확장 포인트**를 체계적으로 정리한 공식 레퍼런스입니다. 
 
-이 문서는 *사용 방법* 중심의 가이드가 아니라 **정확한 규칙과 타입 명세(source of truth)** 를 제공합니다. 처음 사용하는 경우 아래 교차 문서를 먼저 읽은 뒤 본 레퍼런스를 참고하세요.
+이 문서는 *사용 방법* 중심의 가이드가 아니라 **정확한 규칙과 타입 명세(source of truth)** 를 제공합니다. 처음 사용하는 경우 아래 교차 문서들을 먼저 읽은 뒤 본 레퍼런스를 참고하세요.
 
 ## 교차 문서 (Cross References)
 | 문서 | 목적 / 차이점                                                           |
@@ -14,7 +14,7 @@
 ---
 ## 1. 개요
 표준 응답은 최상위에 다음 필드를 갖습니다:
-`status / version / datetime / duration / payload`
+`status` / `version` / `datetime` / `duration` / `payload`
 
 `payload`는 **단일 도메인 DTO(BasePayload)** 또는 **표준 리스트 컨테이너(PageableList, IncrementalList)** 혹은 **이들을 조합한 사용자 정의 Payload**가 될 수 있습니다.
 
@@ -25,7 +25,28 @@
 - 페이지/커서(Incremental) 기반 목록 포맷 및 헬퍼
 
 ---
-## 2. 핵심 개념 요약 (Concept Map)
+## 2. 빠른 목차 (TOC)
+1. [개요](#1-개요)
+2. [핵심 개념 요약](#3-핵심-개념-요약-concept-map)
+3. [코어 타입 레퍼런스](#4-코어-타입-레퍼런스)
+4. [리스트 & 커서 구조](#42-리스트--페이지--커서-구조)
+5. [어노테이션](#5-어노테이션-annotations)
+6. [Case Convention](#6-case-convention-적용-규칙)
+7. [Alias & Canonical](#7-alias--canonical-key-매칭-규칙)
+8. [역직렬화 흐름](#8-역직렬화-deserialization-동작)
+9. [Duration 처리](#9-duration-자동-주입-메커니즘)
+10. [빌더 & 생성 패턴](#10-빌더--팩토리-패턴-요약)
+11. [페이지 & 커서 알고리즘 상세](#11-페이지--커서-계산-규칙-algorithm)
+12. [캐시 & 성능](#12-캐시--성능-case--alias)
+13. [구성 프로퍼티](#13-구성-프로퍼티-reference)
+14. [확장 & 커스터마이징](#14-확장--커스터마이징-포인트)
+15. [NullResponse 상수](#15-nullresponse-상수)
+16. [오류/Fallback 시나리오](#16-에러-처리-시나리오-fallback-규칙)
+17. [운영 체크리스트](#17-운영-체크리스트)
+18. [Appendix 패턴 & 샘플](#18-appendix-실전-패턴--샘플)
+
+---
+## 3. 핵심 개념 요약 (Concept Map)
 | 개념 | 요약 |
 |------|------|
 | BasePayload | 모든 payload의 Marker 인터페이스. 케이스/별칭/역직렬화 스캔 대상 루트 |
@@ -39,8 +60,8 @@
 | NullResponse | 의미적 placeholder 기본값 상수 모음 |
 
 ---
-## 3. 코어 타입 레퍼런스
-### 3.1 상태 및 공통 구조
+## 4. 코어 타입 레퍼런스
+### 4.1 상태 및 공통 구조
 ```text
 StandardStatus (enum): NONE, SUCCESS, FAILURE
 OrderDirection (enum): ASC, DESC
@@ -58,7 +79,7 @@ BasePayloadImpl : BasePayload
 - StandardStatus.fromString(text): 매칭 실패 시 SUCCESS.
 </details>
 
-### 3.2 리스트 & 페이지 / 커서 구조
+### 4.2 리스트 & 페이지 / 커서 구조
 ```text
 PageableList<T>(page: PageInfo, order: OrderInfo?, items: Items<T>) : BasePayload
   companion:
@@ -80,7 +101,7 @@ IncrementalList<T,P>(cursor: CursorInfo<P>?, order: OrderInfo?, items: Items<T>)
   itemsAsList: List<T> (@JsonIgnore)
 ```
 
-### 3.3 합성 Payload 헬퍼
+### 4.3 합성 Payload 헬퍼
 ```kotlin
 open class PageListPayload<P: BasePayload>(var pageable: PageableList<P>) : BasePayload {
     companion object { inline fun <P: BasePayload, reified E> fromPage(page: Page<E>, noinline mapper: (E) -> P) }
@@ -88,7 +109,7 @@ open class PageListPayload<P: BasePayload>(var pageable: PageableList<P>) : Base
 open class IncrementalListPayload<P,I>(var incremental: IncrementalList<P,I>) : BasePayload
 ```
 
-### 3.4 에러 구조
+### 4.4 에러 구조
 ```kotlin
 open class ErrorDetail(val code: String, val message: String)
 open class ErrorPayload(
@@ -97,7 +118,7 @@ open class ErrorPayload(
 ) : BasePayload
 ```
 
-### 3.5 Response / Callback / 직렬화 유틸
+### 4.5 Response / Callback / 직렬화 유틸
 ```text
 StandardCallbackResult(payload: BasePayload, status?: StandardStatus, version?: String)
 StandardResponse<T: BasePayload>(status?: StandardStatus = SUCCESS, version: String, datetime: Instant, duration?: Long, payload: T)
@@ -122,7 +143,7 @@ typealias DefaultResponse = StandardResponse<BasePayload>
 ```
 
 ---
-## 4. 어노테이션 (Annotations)
+## 5. 어노테이션 (Annotations)
 | 어노테이션 | 대상 | 목적 | 주요 파라미터 / 기본값 |
 |-----------|------|------|------------------------|
 | `@InjectDuration` | FIELD / PROPERTY | 요청 처리 소요시간 주입 | `unit = MILLISECONDS` |
@@ -130,7 +151,7 @@ typealias DefaultResponse = StandardResponse<BasePayload>
 | `@ResponseCase` | CLASS (Payload) | 기본 CaseConvention 지정 | `value = CaseConvention` |
 
 ---
-## 5. Case Convention 적용 규칙
+## 6. Case Convention 적용 규칙
 1. 적용 위치: `StandardApiResponseAdvice.beforeBodyWrite` (JSON 직렬화 직전)
 2. 결정 우선순위 (높음→낮음):
    1) Query Parameter (`?case=...`) – `stdapi.response.case.query-override=true`
@@ -151,7 +172,7 @@ typealias DefaultResponse = StandardResponse<BasePayload>
    - 무효화: 현재 라이브러리에서 case 캐시는 명시적 무효화 기능 없음 (runtime 영속). `clearAliasCaches()`는 alias 캐시만 초기화하며 case 캐시에 영향 없음.
 
 ---
-## 6. Alias & Canonical Key 매칭 규칙
+## 7. Alias & Canonical Key 매칭 규칙
 | 요소 | 설명 |
 |------|------|
 | `@JsonProperty` | 직렬화 시 대체 필드명 |
@@ -172,7 +193,7 @@ typealias DefaultResponse = StandardResponse<BasePayload>
 2. payload JsonObject 에 alias + canonical 재귀 적용 후 Jackson 변환
 3. 실패 → `ErrorPayload(code="E_DESERIALIZE_FAIL")`로 FAILURE 응답
 
-### 6.1 Canonical 키 생성 규칙
+### 7.1 Canonical 키 생성 규칙
 | 입력 | filter(isLetterOrDigit) | lowercase | canonical 결과 |
 |------|------------------------|-----------|----------------|
 | `User-ID` | `UserID` | `userid` | `userid` |
@@ -182,7 +203,7 @@ typealias DefaultResponse = StandardResponse<BasePayload>
 
 충돌 예시: `user-id`, `user_id`, `UserID` 모두 동일 canonical(`userid`) → 최초 발견 property 우선, 충돌 후보(`conflictCandidates`)에 기록.
 
-### 6.2 SkipCaseKeys 처리 예시
+### 7.2 SkipCaseKeys 처리 예시
 `@NoCaseTransform`이 붙은 property `user_id`에 `@JsonAlias("user-id")`가 추가된 경우:
 | 원본 요소 | 추가되는 skipCaseKeys 항목 |
 |-----------|---------------------------|
@@ -200,12 +221,12 @@ After (변환 기대):
 ```
 > SkipCaseKeys 는 변환 대상에서 제외되므로 alias/variant 형태 그대로 유지.
 
-### 6.3 BEST_MATCH 간단 의사 결정
+### 7.3 BEST_MATCH 간단 의사 결정
 - 충돌 canonical 키 집합 내 후보 property들에 대해 실제 입력 JSON 키 소문자 값이 `propertyAliasLower[property]` 셋에 포함되는 첫 번째 property 선택.
 - 예: 입력 JSON 키 `user-id-extra` / 후보: `userIdExtra`, `userId` → `userIdExtra`가 더 긴 alias 집합 포함하면 해당 property 우선.
 
 ---
-## 7. 역직렬화 (Deserialization) 동작
+## 8. 역직렬화 (Deserialization) 동작
 | 메서드 | 용도 | 특징 |
 |--------|------|------|
 | `deserialize<T>(json)` | Kotlin reified | Canonical + alias 적용, 실패 시 ErrorPayload fallback |
@@ -234,7 +255,7 @@ Edge Case 처리:
 - status 미인식 → `SUCCESS` fallback
 - 제네릭 역직렬화 필요 → `TypeReference` 사용
 
-### 7.1 Jackson ObjectMapper 설정
+### 8.1 Jackson ObjectMapper 설정
 | 설정 항목 | 값 / 상태 | 의미                              |
 |-----------|-----------|---------------------------------|
 | Module | KotlinModule, JavaTimeModule | Kotlin data class/시간 타입 지원      |
@@ -248,7 +269,7 @@ Edge Case 처리:
 > Jackson은 상위 `StandardResponse` 직렬화/역직렬화(문자열 변환) 및 payload 실제 객체 매핑에 사용되며, 최상위 JSON 문자열 파싱은 `kotlinx.serialization(JsonConfig)`로 수행 후 payload 부분만 Jackson 적용.
 
 ---
-## 8. Duration 자동 주입 메커니즘
+## 9. Duration 자동 주입 메커니즘
 | 구성 | 설명 |
 |------|------|
 | Filter | `RequestTimingFilter` – `System.nanoTime()` 시작값 Request Attribute 저장 |
@@ -261,7 +282,7 @@ Edge Case 처리:
 | 최종 결정 | 필터 활성 + Advice 동작 시 Advice 주입 값이 최종 duration으로 override될 수 있음 |
 
 ---
-## 9. 빌더 & 팩토리 패턴 요약
+## 10. 빌더 & 팩토리 패턴 요약
 | 목적 | API | 특징 |
 |------|-----|------|
 | 단순 성공 응답 | `StandardResponse.build(payload)` | status=SUCCESS, version 기본, duration 자동 측정 |
@@ -274,7 +295,7 @@ Edge Case 처리:
 `StandardCallbackResult` 를 통해 Service 경계에서 하나의 반환 타입을 유지하고 Controller 는 단일 빌더 패턴을 사용해 일관성을 확보합니다.
 
 ---
-## 10. 페이지 / 커서 계산 규칙 (Algorithm)
+## 11. 페이지 / 커서 계산 규칙 (Algorithm)
 | 항목 | 규칙 |
 |------|------|
 | 총 페이지 | `(totalItems + pageSize - 1) / pageSize` (`pageSize <= 0` → `totalItems` 1페이지 취급) |
@@ -282,7 +303,7 @@ Edge Case 처리:
 | expandable | `start + howMany < total` 일 때 true |
 | Generic 커서 | `CursorInfo.buildFromTotalGeneric` – 커스텀 인덱스 타입 변환 람다 |
 
-### 10.1 Cursor 계산 상세
+### 11.1 Cursor 계산 상세
 | 단계 | 설명 | 코드 대응 |
 |------|------|----------|
 | 입력 보정 | `safeStart = if(startIndex >= 0) startIndex else 0` | `buildFromTotalGeneric` 내부 |
@@ -301,19 +322,19 @@ Edge Case 표:
 | total == 0 | (0, 5, 0) | 0 | 0 | false |
 | near end | (48, 10, 50) | 48 | 49 | false |
 
-### 10.2 PageInfo 총 페이지 계산 상세
+### 11.2 PageInfo 총 페이지 계산 상세
 - 공식: `(totalItems + pageSize - 1) / pageSize` 단, `pageSize <= 0` → `pageSize = 1`로 간주.
 - 예: totalItems = 101, pageSize = 10 → 11 페이지.
 - page.number (0-base) + 1 → current 페이지.
 
 ---
-## 11. 캐시 & 성능 (Case / Alias)
+## 12. 캐시 & 성능 (Case / Alias)
 | 캐시 대상 | 구현 | 무효화 |
 |----------|------|--------|
 | Case 변환 결과 | 내부 캐시(`Map<CaseConvention, ConcurrentHashMap<String,String>>`) | 런타임 유지 |
 | Alias 메타 | `AliasCache` (KClass → GlobalAliasMaps) | `clearAliasCaches()` 호출 |
 
-### 11.1 Case 캐시 상세
+### 12.1 Case 캐시 상세
 | 항목 | 값 |
 |------|----|
 | 자료구조 | `Map<CaseConvention, ConcurrentHashMap<String,String>>` |
@@ -334,7 +355,7 @@ GlobalAliasMaps 구성:
 - `propertyAliasLower`: property 별 alias(소문자) 전체 세트 – BEST_MATCH 실제 key 비교에 활용
 
 ---
-## 12. 구성 프로퍼티 Reference
+## 13. 구성 프로퍼티 Reference
 | Property | 기본값 | 설명 |
 |----------|--------|------|
 | `stdapi.response.case.enabled` | true | 케이스 변환 on/off |
@@ -346,7 +367,7 @@ GlobalAliasMaps 구성:
 | `stdapi.response.auto-duration-calculation.active` | (없음/false) | true 시 Filter 자동 등록 |
 | `stdapi.response.auto-duration-calculation.filter-order` | Int.MIN_VALUE | Filter 우선순위 |
 
-### 12.1 Alias 충돌 제어
+### 13.1 Alias 충돌 제어
 | 설정 | 환경변수 / 시스템속성 | 값 | 설명 |
 |------|----------------------|----|------|
 | 모드 | `STDAPI_RESPONSE_ALIAS_CONFLICT_MODE` / `stdapi.response.alias-conflict-mode` | WARN, ERROR | ERROR: 충돌 시 즉시 예외 발생 |
@@ -357,7 +378,7 @@ GlobalAliasMaps 구성:
 - WARN 모드: 충돌 로그 경고 후 최초 정의 유지 / ERROR 모드: `IllegalStateException` throw
 
 ---
-## 13. 확장 & 커스터마이징 포인트
+## 14. 확장 & 커스터마이징 포인트
 | 영역 | 방법 | 비고 |
 |------|------|------|
 | 응답 구조 확장 | BasePayload 구현 DTO 사용 | 케이스/alias 자동 적용 |
@@ -369,7 +390,7 @@ GlobalAliasMaps 구성:
 | 강제 직렬화 케이스 | `response.toJson(case = ...)` | 클래스 @ResponseCase 무시하고 인자 우선 |
 
 ---
-## 14. NullResponse 상수
+## 15. NullResponse 상수
 | 항목 | 값 | 용도 |
 |------|----|------|
 | STRING | "null" | 빈 문자열 대신 placeholder |
@@ -381,7 +402,7 @@ GlobalAliasMaps 구성:
 | BIG_DECIMAL | BigDecimal.ZERO | 금액/정밀 수치 기본 |
 
 ---
-## 15. 에러 처리 시나리오 (Fallback 규칙)
+## 16. 에러 처리 시나리오 (Fallback 규칙)
 | 상황 | 결과 |
 |------|------|
 | 역직렬화 payload 구조 오류 | FAILURE + ErrorPayload(E_DESERIALIZE_FAIL) |
@@ -390,10 +411,26 @@ GlobalAliasMaps 구성:
 | duration 필드 누락 | 0L 기본 |
 
 ---
-## [Appendix] 현업 적용 패턴 & 샘플
+## 17. 운영 체크리스트
+### 17.1 점검 항목 표
+| 항목 | 점검 내용 | 권장 조치 |
+|------|----------|-----------|
+| Alias 충돌 모드 변경 | WARN → ERROR 전환 전 테스트 | staging 에서 샘플 JSON 다수 역직렬화 후 예외 여부 확인 |
+| BEST_MATCH 활성화 | 성능 영향(추가 후보 탐색) | 대량 동적 키 입력 발생 여부 모니터, 필요시 FIRST_WIN 유지 |
+| 캐시 초기화 필요 시점 | Payload 구조(필드/alias) 코드 변경 배포 후 | 애플리케이션 재시작(현재 별도 무효화 API 없음) 또는 `clearAliasCaches()` 호출 |
+| Duration 측정 정확도 | 초고속(서브 ms) 요청 다수 | 수동 duration 지정(빌더 인자) 또는 나노 단위 필드 타입(Duration) 사용 |
+| 케이스 변환 오버라이드 | 다중 팀 소비 시 케이스 요구 상이 | Query/Header 오버라이드 문서화 및 API 게이트웨이 표준화 |
+| 로그 모니터링 키워드 | `[stdapi] deserialize(`, `Alias conflict` | 로그 집계 대시보드 필터 추가 |
+| 역직렬화 실패 빈도 | ErrorPayload(E_DESERIALIZE_FAIL) 증가 | 문제 JSON 샘플 수집/분석, alias 추가 또는 DTO 정규화 |
+| 응답 스키마 변경 | 클라이언트 파싱 영향 | 사전 버전 호환 레이어(구 alias 유지) 후 단계적 제거 |
+
+> 운영 체크리스트는 배포 전/후 점검 및 품질 지표 설정에 활용하세요.
+
+---
+## 18. Appendix: 실전 패턴 & 샘플
 > 실 프로젝트 관찰 기반 패턴. 의사결정 참고용 (가이드 문서의 "실 서비스 적용 패턴" 섹션과 상호 보완).
 
-### 계층 패턴 개요
+### 18.1 계층 패턴 개요
 | 구분 | 패턴 | 비고 |
 |------|------|------|
 | Controller → Service → Response | Controller: `StandardResponse.build(callback={ service.method() })` / Service: `StandardCallbackResult` 반환 | status/version 대부분 기본값(SUCCESS/1.0 가정) |
@@ -404,7 +441,8 @@ GlobalAliasMaps 구성:
 | Duration 자동 주입 | `auto-duration-calculation.active=true` + callback 빌드 | 측정 로직 분리 |
 | 빌더 선택 | 기본: 콜백 빌드 / 예외 Advice 경로: 직접 `build(payload=ErrorPayload)` | 일관 패턴 |
 
-### 16.2 Controller 샘플
+### 18.2 Controller/Service 샘플
+Controller:
 ```kotlin
 @GetMapping("/manager/companyCode/{companyCode}/{pageNo}")
 fun getManagerSessionByCompanyCode(
@@ -432,7 +470,7 @@ fun getManagerSessionList(companyCode: String, pageNo: Long, pageSize: Long): St
 }
 ```
 
-### 16.3 비동기 + 즉시 응답
+### 18.3 비동기 + 즉시 응답
 ```kotlin
 @PostMapping("/report/generateReport")
 fun generateReport(@RequestBody req: ForceGenerateReportRequest): StandardResponse<CudResultPayload> {
@@ -449,7 +487,7 @@ fun generateReport(@RequestBody req: ForceGenerateReportRequest): StandardRespon
 }
 ```
 
-### 16.4 공통 예외 처리
+### 18.4 공통 예외 처리
 ```kotlin
 @ExceptionHandler(NoDataException::class)
 fun handle(e: NoDataException) = ResponseEntity(
