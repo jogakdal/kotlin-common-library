@@ -63,6 +63,9 @@ class StandardApiResponseAdvice(
         response: ServerHttpResponse
     ): Any? {
         if (!MediaType.APPLICATION_JSON.includes(selectedContentType)) return body
+        if (request.uri.path.contains("/v3/api-docs") || request.uri.path.contains("/swagger")) {
+            return body
+        }
         val servletRequest = (request as? ServletServerHttpRequest)?.servletRequest
 
         val processed: Any? = try {
