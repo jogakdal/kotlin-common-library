@@ -1,3 +1,4 @@
+@file:Suppress("NonAsciiCharacters", "SpellCheckingInspection")
 package com.hunet.common.data.jpa.sequence
 
 import com.hunet.common.util.getAnnotation
@@ -23,7 +24,7 @@ class SequenceGeneratorMigrationTest {
     )
 
     @Test
-    fun `getAnnotation을 사용한 annotation 검색이 정상 동작한다`() {
+    fun `어노테이션 검색 유틸 정상 동작`() {
         val codeProperty = TestEntity::class.memberProperties.first { it.name == "code" }
         val nameProperty = TestEntity::class.memberProperties.first { it.name == "name" }
 
@@ -37,7 +38,7 @@ class SequenceGeneratorMigrationTest {
     }
 
     @Test
-    fun `applySequentialCode에서 getAnnotation 기반 필터링이 정상 동작한다`() {
+    fun `시퀀스 코드 적용 시 어노테이션 기반 필터링 정상 동작`() {
         val entity = TestEntity()
 
         applySequentialCode(entity, testSequenceGenerator)
@@ -48,7 +49,7 @@ class SequenceGeneratorMigrationTest {
     }
 
     @Test
-    fun `이미 값이 있는 필드는 건드리지 않는다`() {
+    fun `이미 값 있는 필드는 변경되지 않음`() {
         val entity = TestEntity(code = "EXISTING", orderNumber = "", name = "test")
 
         applySequentialCode(entity, testSequenceGenerator)
@@ -58,7 +59,7 @@ class SequenceGeneratorMigrationTest {
     }
 
     @Test
-    fun `prefix expression이 정상 처리된다`() {
+    fun `프리픽스 표현식 정상 처리`() {
         val entity = TestEntity()
 
         applySequentialCode(entity, testSequenceGenerator)
@@ -76,7 +77,7 @@ class SequenceGeneratorMigrationTest {
     }
 
     @Test
-    fun `Java 필드 annotation도 정상 처리된다`() {
+    fun `자바 필드 어노테이션 정상 처리`() {
         val entity = JavaFieldTestEntity()
 
         applySequentialCode(entity, testSequenceGenerator)
@@ -86,7 +87,7 @@ class SequenceGeneratorMigrationTest {
     }
 
     @Test
-    fun `GenerateSequentialCode annotation 속성들이 getAnnotation으로 정상 추출된다`() {
+    fun `시퀀스 코드 생성 어노테이션 속성 정상 추출`() {
         val codeProperty = TestEntity::class.memberProperties.first { it.name == "code" }
         val annotation = codeProperty.getAnnotation<GenerateSequentialCode>()
 

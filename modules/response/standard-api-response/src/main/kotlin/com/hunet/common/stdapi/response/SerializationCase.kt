@@ -10,6 +10,8 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.annotation.JsonAlias
 import com.hunet.common.stdapi.response.KeyNormalizationUtil.canonical
 import com.hunet.common.util.getAnnotation
+import com.hunet.common.util.getDirectAnnotation
+import com.hunet.common.util.hasAnnotation
 import kotlin.reflect.KClass
 import kotlin.reflect.full.isSubclassOf
 import kotlin.reflect.KType
@@ -187,11 +189,12 @@ internal fun collectGlobalAliasMaps(root: KClass<*>): GlobalAliasMaps {
             inspectKType(property.returnType)
         }
 
+        // Java declared field 직접 선언만 우선 확인 (property 루프에서 이미 통합 탐색 수행)
         kClass.java.declaredFields.forEach { field ->
-            val jsonProperty = field.getAnnotation(JsonProperty::class.java)?.value?.takeUnless { it.isBlank() }
-            val aliases = field.getAnnotation(JsonAlias::class.java)?.value?.filterNot { it.isBlank() } ?: emptyList()
+            val jsonProperty = field.getDirectAnnotation<JsonProperty>()?.value?.takeUnless { it.isBlank() }
+            val aliases = field.getDirectAnnotation<JsonAlias>()?.value?.filterNot { it.isBlank() } ?: emptyList()
             val primary = jsonProperty ?: field.name
-            if (field.isAnnotationPresent(NoCaseTransform::class.java)) recordSkipKeys(primary, aliases)
+            if (field.hasAnnotation<NoCaseTransform>()) recordSkipKeys(primary, aliases)
 
             register(field.name, jsonProperty)
             registerCanonical(primary, field.name)
@@ -267,8 +270,8 @@ internal data class GlobalAliasMaps(
 )
 
 fun <T: BasePayload> StandardResponse<T>.toJson(case: CaseConvention? = null, pretty: Boolean = false): String {
-    val payloadAnn = this.payload::class.java.getAnnotation(ResponseCase::class.java)
-    val effective = case ?: payloadAnn?.value ?: CaseConvention.IDENTITY
+    val payloadAnnValue = this.payload::class.getAnnotation<ResponseCase>()?.value
+    val effective = case ?: payloadAnnValue ?: CaseConvention.IDENTITY
     val mapper = Jackson.json
     val root = mapper.valueToTree<JsonNode>(this)
     val global = collectGlobalAliasMaps(this.payload::class)

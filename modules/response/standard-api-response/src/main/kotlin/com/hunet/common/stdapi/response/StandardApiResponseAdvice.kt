@@ -2,6 +2,7 @@ package com.hunet.common.stdapi.response
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.hunet.common.logging.commonLogger
+import com.hunet.common.util.hasAnnotation
 import com.hunet.common.util.getAnnotation
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.beans.factory.annotation.Value
@@ -108,7 +109,8 @@ class StandardApiResponseAdvice(
         if (headerOverride) request?.getHeader(headerName)?.let { hdr ->
             runCatching { CaseConvention.valueOf(hdr.uppercase()) }.getOrNull()?.let { return it }
         }
-        body.payload::class.java.getAnnotation(ResponseCase::class.java)?.value?.let { return it }
+        // 기존: hasAnnotation<ResponseCase>() Boolean 반환을 객체처럼 사용하려던 오류 수정
+        body.payload::class.getAnnotation<ResponseCase>()?.let { ann -> return ann.value }
         return runCatching { CaseConvention.valueOf(defaultCaseName.uppercase()) }.getOrElse { CaseConvention.IDENTITY }
     }
 
@@ -144,6 +146,7 @@ class StandardApiResponseAdvice(
         val kClass: KClass<*> = target::class
         kClass.memberProperties.forEach { prop ->
             runCatching {
+                @Suppress("UNCHECKED_CAST")
                 val value = (prop as KProperty1<Any, *>).get(target)
                 when (value) {
                     null -> {}
@@ -163,7 +166,7 @@ class StandardApiResponseAdvice(
     private fun injectDurationOnObject(body: Any, elapsedNanos: Long): Any {
         val kClass = body::class
         val allProps = kClass.memberProperties
-        val targets = allProps.filter { it.getAnnotation<InjectDuration>() != null }
+        val targets = allProps.filter { it.hasAnnotation<InjectDuration>() }
         if (targets.isEmpty()) return body
         var mutated = false
         targets.forEach { prop ->
@@ -186,7 +189,7 @@ class StandardApiResponseAdvice(
                     val nm = p.name ?: continue
                     val prop = map[nm] as? KProperty1<Any, *> ?: continue
 
-                    args[p] = if (prop.getAnnotation<InjectDuration>() != null) convertForProperty(prop, elapsedNanos)
+                    args[p] = if (prop.hasAnnotation<InjectDuration>()) convertForProperty(prop, elapsedNanos)
                     else prop.get(body)
                 }
                 return runCatching { copyFn.callBy(args) }.getOrElse { body }
