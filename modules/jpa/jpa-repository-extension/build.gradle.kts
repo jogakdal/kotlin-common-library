@@ -12,7 +12,8 @@ dependencies {
     implementation(project(":common-core"))
 
     testImplementation(commonLibs.springBootStarterTest)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testRuntimeOnly(commonLibs.junitPlatformLauncher)
+    testImplementation(commonLibs.h2)
 }
 
 kotlin {

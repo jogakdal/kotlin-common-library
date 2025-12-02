@@ -1,45 +1,82 @@
 [versions]
+# --- Language & Platform ---
 kotlin = "2.1.20"
+# Spring Boot BOM version
 springBoot = "3.4.4"
+# KotlinX
 kotlinxSerialization = "1.8.0"
 kotlinxDatetime = "0.6.0"
+# Docs & Testing
 springRestdocs = "3.0.3"
 epagesRestdocs = "0.19.4"
+# Serialization / JSON
 jackson = "2.18.2"
+# OpenAPI / Swagger
 swaggerAnnotations = "2.2.30"
+# Jakarta Specs
 jakartaAnnotation = "2.1.1"
 jakartaPersistence = "3.1.0"
+# Logging
 slf4j = "2.0.17"
+# Testing libs
+junit = "5.10.3"
+mockito = "5.14.1"
+# Embedded DB
+h2 = "2.2.224"
 
 [libraries]
+# --- Kotlin Std ---
 kotlinStdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib" }
 kotlinReflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
+# KotlinX
 kotlinxSerializationJson = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 kotlinxDatetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
 # Spring BOM
 springBootDependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "springBoot" }
-# Spring starters
+# Spring Starters (no explicit versions due to BOM)
 springBootStarterDataJpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
 springBootStarterWeb = { module = "org.springframework.boot:spring-boot-starter-web" }
 springBootStarterValidation = { module = "org.springframework.boot:spring-boot-starter-validation" }
 springBootStarterTest = { module = "org.springframework.boot:spring-boot-starter-test" }
-# Docs & OpenAPI
+# OpenAPI & Restdocs
 springdocOpenapiUi = { module = "org.springdoc:springdoc-openapi-ui", version = "1.8.0" }
 springRestdocsMockmvc = { module = "org.springframework.restdocs:spring-restdocs-mockmvc", version.ref = "springRestdocs" }
 epagesRestdocsApiSpecMockmvc = { module = "com.epages:restdocs-api-spec-mockmvc", version.ref = "epagesRestdocs" }
-# Jackson
+# Jackson JSON
 jacksonModuleKotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin", version.ref = "jackson" }
 jacksonDatatypeJsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310", version.ref = "jackson" }
-# Swagger
+# Swagger / OpenAPI (Jakarta)
 swaggerAnnotations = { module = "io.swagger.core.v3:swagger-annotations-jakarta", version.ref = "swaggerAnnotations" }
-# Jakarta
+# Jakarta APIs
 jakartaAnnotationApi = { module = "jakarta.annotation:jakarta.annotation-api", version.ref = "jakartaAnnotation" }
 jakartaPersistenceApi = { module = "jakarta.persistence:jakarta.persistence-api", version.ref = "jakartaPersistence" }
 # Spring individual artifacts
 springContext = { module = "org.springframework:spring-context" }
 springDataCommons = { module = "org.springframework.data:spring-data-commons" }
 springTx = { module = "org.springframework:spring-tx" }
+# Logging
 slf4jApi = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+# Spring Boot extras
+springBootAutoconfigure = { module = "org.springframework.boot:spring-boot-autoconfigure", version.ref = "springBoot" }
+springBootConfigProcessor = { module = "org.springframework.boot:spring-boot-configuration-processor", version.ref = "springBoot" }
+# JUnit / Mockito
+junitJupiterApi = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit" }
+junitJupiterEngine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit" }
+mockitoCore = { module = "org.mockito:mockito-core", version.ref = "mockito" }
+mockitoJunitJupiter = { module = "org.mockito:mockito-junit-jupiter", version.ref = "mockito" }
+# Spring Test (non-starter utilities)
+springTest = { module = "org.springframework:spring-test" }
+# Springdoc starter (v2.x)
+springdocStarterWebmvcUi = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version = "2.6.0" }
+# Embedded DB / runtime test helpers
+h2 = { module = "com.h2database:h2", version.ref = "h2" }
+# JUnit Platform Launcher (runtime only)
+junitPlatformLauncher = { module = "org.junit.platform:junit-platform-launcher" }
 
 [bundles]
+# Restdocs bundle
 restdocs = ["springRestdocsMockmvc", "epagesRestdocsApiSpecMockmvc"]
+# Mockito bundle
+mockitoAll = ["mockitoCore", "mockitoJunitJupiter"]
+# JUnit bundle (API + Engine)
+junitAll = ["junitJupiterApi", "junitJupiterEngine"]

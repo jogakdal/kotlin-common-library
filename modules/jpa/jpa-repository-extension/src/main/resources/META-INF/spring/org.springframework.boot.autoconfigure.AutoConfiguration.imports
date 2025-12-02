@@ -1,0 +1,3 @@
+# AutoConfiguration imports for jpa-repository-extension
+com.hunet.common.data.jpa.softdelete.SoftDeleteJpaRepositoryAutoConfiguration
+

@@ -21,15 +21,35 @@ subprojects {
         compilerOptions.freeCompilerArgs.addAll("-Xjsr305=strict")
     }
 
-    tasks.withType<Test>().configureEach { useJUnitPlatform() }
+    tasks.withType<Test>().configureEach {
+        useJUnitPlatform()
+        if (!project.hasProperty("disableMockitoAgent")) {
+            doFirst {
+                val cpFiles = classpath.files
+                val agentJar = cpFiles.firstOrNull { it.name.startsWith("mockito-agent") }
+                    ?: cpFiles.firstOrNull { it.name.startsWith("byte-buddy-agent") }
+                    ?: cpFiles.firstOrNull { it.name.startsWith("mockito-core") }
+                if (agentJar != null) {
+                    val existing = (this as org.gradle.process.JavaForkOptions).jvmArgs ?: emptyList()
+                    if (existing.none { it.contains(agentJar.name) }) {
+                        jvmArgs("-javaagent:${agentJar.absolutePath}")
+                    }
+                    if (existing.none { it == "-XX:+EnableDynamicAgentLoading" }) {
+                        jvmArgs("-XX:+EnableDynamicAgentLoading")
+                    }
+                    println("[test-config] Ensured javaagent (${agentJar.name}) for ${project.path}")
+                }
+            }
+        }
+    }
 }
 
 // --- Snippet Sync (VariableProcessor 예제 기반) ---
-val snippetSource = file("modules/core/common-core/src/test/kotlin/com/hunet/common_library/lib/examples/VariableProcessorQuickStartExample.kt")
-val javaSnippetSource = file("modules/core/common-core/src/test/java/com/hunet/common_library/lib/examples/VariableProcessorJavaExample.java")
+val snippetSource = file("modules/core/common-core/src/test/kotlin/com/hunet/common/lib/examples/VariableProcessorQuickStartExample.kt")
+val javaSnippetSource = file("modules/core/common-core/src/test/java/com/hunet/common/lib/examples/VariableProcessorJavaExample.java")
 val rootReadme = file("README.md")
 val coreReadme = file("modules/core/common-core/README.md")
-val variableProcessExampleFile = file("docs/variable-processor-examples.md")
+val variableProcessExampleFile = file("apidoc/variable-processor-examples.md")
 
 val syncSnippets by tasks.registering {
     group = "documentation"
@@ -93,7 +113,7 @@ val syncSnippets by tasks.registering {
 val updateLibraryGuideVersions by tasks.registering {
     group = "documentation"
     description = "`standard-api-response-library-guide.md` 파일 내 version info 블록을 업데이트합니다."
-    val guideFile = file("docs/standard-api-response-library-guide.md")
+    val guideFile = file("apidoc/standard-api-response-library-guide.md")
     inputs.file(guideFile)
     outputs.file(guideFile)
     doLast {
@@ -104,16 +124,18 @@ val updateLibraryGuideVersions by tasks.registering {
         val rootVersion = project.version.toString()
         fun prop(name: String) = findProperty(name)?.toString()
         val commonCore = prop("moduleVersion.common-core") ?: rootVersion
-        val annotations = prop("moduleVersion.std-api-annotations") ?: rootVersion
-        val stdApi = prop("moduleVersion.standard-api-response") ?: rootVersion
+        val apidocCore = prop("moduleVersion.apidoc-core") ?: prop("moduleVersion.std-api-documentation") ?: rootVersion
+        val apidocAnnotations = prop("moduleVersion.apidoc-annotations") ?: prop("moduleVersion.std-api-annotations") ?: rootVersion
+        val stdApiResp = prop("moduleVersion.standard-api-response") ?: rootVersion
         val nowSeoul = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Seoul"))
         val ts = nowSeoul.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z"))
         val newBlock = """
 ```
 Last updated: $ts
 common-core: $commonCore
-std-api-annotations: $annotations
-standard-api-response: $stdApi
+apidoc-core: $apidocCore
+apidoc-annotations: $apidocAnnotations
+standard-api-response: $stdApiResp
 ```
 """.trim()
         val pattern = Regex("<!-- version-info:start -->[\\s\\S]*?<!-- version-info:end -->")
@@ -126,7 +148,7 @@ standard-api-response: $stdApi
         val updated = pattern.replace(text) { replacement }
         if (updated != text) {
             guideFile.writeText(updated)
-            println("[updateLibraryGuideVersions] updated versions -> common-core=$commonCore, std-api-annotations=$annotations, standard-api-response=$stdApi")
+            println("[updateLibraryGuideVersions] updated versions -> common-core=$commonCore, apidoc-core=$apidocCore, apidoc-annotations=$apidocAnnotations, standard-api-response=$stdApiResp")
         } else {
             println("[updateLibraryGuideVersions] no changes (already up to date)")
         }
