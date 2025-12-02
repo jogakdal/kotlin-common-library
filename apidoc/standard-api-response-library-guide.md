@@ -33,8 +33,8 @@
 | Feature    | 설명                                        | 대표 기능 |
 |------------|-------------------------------------------|-----------|
 | 표준 응답 생성   | 서버에서 모든 응답을 `StandardResponse<T>` 포맷으로 생성 | 빌더/콜백, duration 자동 측정, 페이지·커서 리스트 지원, 상태/오류 표준화 |
-| 표준 응답 역직렬화 | 외부/내부 표준 JSON 문자열을 DTO로 역직렬화              | Canonical Key, Alias/Case 변형 허용, 중첩·컬렉션 지원 |
-| 보조 기능      | 출력 케이스 변환 & Java 상호운용, 성능 최적화             | CaseConvention 변환, `@NoCaseTransform`, 캐시, Java 헬퍼 |
+| 표준 응답 역직렬화 | 외부/내부 표준 JSON 문자열을 DTO로 역직렬화 | Canonical Key, Alias/Case 변형 허용, 중첩·컬렉션 지원 |
+| 보조 기능      | 출력 케이스 변환 & Java 상호 운용, 성능 최적화 | CaseConvention 변환, `@NoCaseTransform`, 캐시, Java 헬퍼 |
 
 ### 1.3 모듈 구성
 | 모듈 | 역할 |
@@ -54,7 +54,7 @@
 > Spring Boot는 선택 사항이며 자동 duration 주입 및 요청 기반 케이스 오버라이드 기능을 사용할 때 필요합니다.
 
 ### 1.5 기능 요약
-- 단일 래퍼 구조: `status` / `version` / `datetime` / `duration` / `payload`
+- 단일 래퍼 구조: `status` / `version` / `datetime` / `duration` / `traceid`, `payload`
 - 성공/실패 상태 & 표준 상태/오류 페이로드(`StatusPayload`, `ErrorPayload` + `ErrorDetail` 리스트)
 - Page / Incremental 리스트 공통 구조
 - 콜백 빌더로 실행 시간 측정 후 duration 자동 주입
@@ -62,6 +62,7 @@
 - Canonical + Alias 매핑 기반 강건한 역직렬화 (케이스/구분자 차이 허용)
 - 응답 키 케이스 변환 (전역/DTO/요청 단위)
 - Java 전용 정적 헬퍼 (`fromPageJava`, `buildFromTotalJava`, `buildWithCallback`)
+- 자바 직렬화 브릿지: `StandardResponseJsonBridge.toJson(resp, case)` 오버로드 제공
 - Java 제네릭 유지 역직렬화를 위한 `TypeReference` 오버로드 (`deserialize(json, typeRef)`) 제공
 - 리플렉션 메타 캐싱으로 성능 최적화 (`clearAliasCaches()`)
 
@@ -90,6 +91,7 @@ StatusPayload 예시:
   "version": "1.0",
   "datetime": "...",
   "duration": 3,
+  "traceid": "7f7c9e2b-5d3b-4e9e-8f11-0b2d2d7c9a01",
   "payload": { "code": "pong", "message": "성공" }
 }
 ```
@@ -100,12 +102,13 @@ ErrorPayload 예시 (최상위 code/message 필드 없음 – 첫 오류를 대�
   "version": "1.0",
   "datetime": "...",
   "duration": 5,
+  "traceid": "7f7c9e2b-5d3b-4e9e-8f11-0b2d2d7c9a01",
   "payload": {
     "errors": [
       { "code": "E400", "message": "잘못된 요청" },
       { "code": "E_FIELD", "message": "필드 오류" }
     ],
-    "appendix": { "traceId": "abc-123" }
+    "appendix": { }
   }
 }
 ```
@@ -138,11 +141,11 @@ dependencies {
 ### 2.3 최신 버전 정보
 <!-- version-info:start -->
 ```
-Last updated: 2025-11-05 13:07:25 KST
+Last updated: 2025-12-03 09:38:57 KST
 common-core: 1.1.0-SNAPSHOT
 apidoc-core: 1.1.0-SNAPSHOT
 apidoc-annotations: 1.1.0-SNAPSHOT
-standard-api-response: 1.2.0-SNAPSHOT
+standard-api-response: 1.3.1-SNAPSHOT
 ```
 <!-- version-info:end -->
 
@@ -192,12 +195,15 @@ class PingController {
   "version": "1.0",
   "datetime": "...",
   "duration": 3,
+  "traceid": "7f7c9e2b-5d3b-4e9e-8f11-0b2d2d7c9a01",
   "payload": { "code": "pong", "message": "성공", "appendix": {} }
 }
 ```
 > StatusPayload의 필드의 기본값은 `code = "OK"`, `messsage = "성공"`, `appendix = mutableMapOf()`입니다.
 > 
 > 빈 맵은 직렬화 시 기본적으로 `{}`로 표현됩니다.
+> 
+> Java 권고: 자바 코드에서는 `StatusPayload.of("OK", "성공", null)` 와 `StandardCallbackResult.of(payload[, status, version])` 팩토리 사용을 권장합니다. appendix에 null을 전달해도 `of(...)`가 빈 맵으로 안전 변환합니다.
 
 ### 2.8 응답 JSON 매핑(역직렬화) Quick Start 및 개요
 
@@ -293,10 +299,11 @@ val user: UserDto? = anyResp.getRealPayload<UserDto>() // 타입 불일치 시 n
   "version": "1.0",
   "datetime": "2025-01-01T00:00:00Z",
   "duration": 12,
+  "traceid": "7f7c9e2b-5d3b-4e9e-8f11-0b2d2d7c9a01",
   "payload": {}
 }
 ```
-> version 기본값은 `1.0`, datetime 은 ISO-8601 UTC(Z) 포맷.
+> version 기본값은 `1.0`, datetime은 ISO-8601 UTC(Z) 포맷, duration은 밀리초 단위 Long, traceid는 UUIDv4 문자열.
 
 ### 3.3 기본 빌드
 ```kotlin
@@ -316,10 +323,10 @@ class BuildExample {
     void buildSamples() {
         StandardResponse<StatusPayload> okResp = StandardResponse.build(new StatusPayload("OK", "정상", null));
         StandardResponse<ErrorPayload> failResp = StandardResponse.build(
-            new ErrorPayload("E500", "서버 오류", null), StandardStatus.FAILURE, "1.2"
+            new ErrorPayload("E500", "서버 오류", null), StandardStatus.FAILURE, "1.2", ""
         );
-        StandardResponse<StatusPayload> timedResp = StandardResponse.buildWithCallback(
-            () -> new StandardCallbackResult(new StatusPayload("OK", "완료", null), StandardStatus.SUCCESS, "2.0")
+        StandardResponse<StatusPayload> timedResp = StandardResponse.<StatusPayload>buildWithCallback(
+            () -> new StandardCallbackResult<>(new StatusPayload("OK", "완료", null), StandardStatus.SUCCESS, "2.0")
         );
     }
 }
@@ -333,11 +340,11 @@ class BuildExample {
 - 지원 주입 타입: Long, Int, Double, String, `java.time.Duration`, `kotlin.time.Duration` (필드 타입에 따라 변환)
 - 재귀 범위: 최상위 `StandardResponse` → `payload` → 중첩 `BasePayload` → 컬렉션(List/Set 등) 요소 중 `BasePayload` → Map 값 중 `BasePayload`.
 
-### 3.5 오류 응답 패턴 (구조 반영)
+### 3.5 오류 응답 패턴
 ```kotlin
 val ep = ErrorPayload("E400", "잘못된 요청")
 ep.addError("E_DETAIL", "세부 오류")
-ep.addAppendix("traceId", traceId)
+
 val resp = StandardResponse.build(ep, StandardStatus.FAILURE, version = "1.0")
 val primary = resp.payload.errors.firstOrNull() // 대표 코드/메시지
 ```
@@ -435,7 +442,7 @@ val resp = StandardResponse.build(pageableList)
 #### 3.6.1.5 Edge Case & 품질 체크
 | 상황 | 점검 포인트 | 해결 |
 |------|-------------|------|
-| total < current | 잘못된 총계 계산 | 총계 재계산 또는 total=0 정책 → 문서화 |
+| total < current | 잘못된 총계 계산 | 총계 재계산 또는 total=0 정책 → 문서화 필요 |
 | sorted=true 이지만 by 빈 리스트 | 정렬 플래그 불일치 | sorted=false 로 교정 또는 by 채우기 |
 | current != list.size | 누락/중복 매핑 | 리스트 변환(map) 후 size 재동기화 |
 | direction 오타 | 클라이언트 파싱 실패 | Enum 사용 강제 / 검증 테스트 추가 |
@@ -446,7 +453,7 @@ val resp = StandardResponse.build(pageableList)
 | 구조 | 직접 타입 사용 | Payload 래퍼 사용 | 선택 기준 |
 |------|---------------|------------------|-----------|
 | 페이지 | `PageableList<T>` | `PageListPayload<T>` | 래퍼 사용 시 추가 메타 필드 확장 용이(`pageable` 아래로 묶임). 단순 페이지 정보만 필요하면 `PageableList` 직접을 payload 로 사용 가능. |
-| 커서(더보기) | `IncrementalList<T>` | `IncrementalListPayload<T>` | 래퍼 사용 시 향후 부가 필드(예: traceId, domain-specific stats) 추가 용이. 경량 리스트만 필요하면 직접 타입 사용. |
+| 커서(더보기) | `IncrementalList<T>` | `IncrementalListPayload<T>` | 래퍼 사용 시 향후 부가 필드(예: 도메인별 통계 등) 추가 용이. 경량 리스트만 필요하면 직접 타입 사용. |
 (권장) 복잡한 도메인에서 다형성/추가 appendix 필요 가능성이 있으면 Payload 래퍼 사용, 단순 조회 API는 직접 리스트 타입 반환으로 직렬화 크기/필드 깊이 최소화.
 
 ---
@@ -571,6 +578,13 @@ data class UserPayload(val userId: Long, val firstName: String, val emailAddress
 val snakeJson = StandardResponse.build(UserPayload(1, "용호", "mail@test.com")).toJson()
 val kebabJson = StandardResponse.build(UserPayload(1, "용호", "mail@test.com")).toJson(case = CaseConvention.KEBAB_CASE)
 ```
+Java 브릿지:
+```java
+StandardResponse<UserPayload> resp = StandardResponse.build(new UserPayload(1, "용호", "jogakdal@gmail.com"));
+String snake = StandardResponseJsonBridge.toJson(resp, CaseConvention.SNAKE_CASE);
+String kebab = StandardResponseJsonBridge.toJson(resp, CaseConvention.KEBAB_CASE);
+```
+
 우선순위 정리:
 - 직접 호출(`resp.toJson()`): 명시적 `case` 인자 > DTO `@ResponseCase` > 기본값(IDENTITY)
 - ControllerAdvice 자동 적용: 쿼리 파라미터(`case`) > 헤더(`X-Response-Case`) > DTO `@ResponseCase` > 전역 default 설정값
@@ -644,26 +658,32 @@ assertTrue(incResp.payload.cursor?.expandable == true)
 ---
 ## 7. 심화 가이드
 ### 7.1 Java 상호 운용성 주의사항
-| 항목 | 설명                                                                      |
-|------|-------------------------------------------------------------------------|
-| 기본 파라미터 | Kotlin 기본값 → Java 사용 시 오버로드 메서드로 모두 명시                                  |
+| 항목 | 설명 |
+|------|------|
+| 기본 파라미터 | Kotlin 기본값 → Java 사용 시 오버로드 메서드로 모두 명시 |
 | reified 한계 | `fromPage()` 등 reified 함수 → `fromPageJava()`, `buildFromTotalJava()` 사용 |
-| 제네릭 안전성 | `StandardResponse<Payload>` 변수 형태로 명확히 선언하여 캐스팅 방지                      |
-| 복합 제네릭 역직렬화 | 내장 `deserialize(json, TypeReference<T>)` 사용 (payload 타입 T 지정)           |
+| 제네릭 안전성 | `StandardResponse<Payload>` 변수 형태로 명확히 선언하여 캐스팅 방지 |
+| 복합 제네릭 역직렬화 | 내장 `deserialize(json, TypeReference<T>)` 사용 (payload 타입 T 지정) |
+
+권고 사항:
+- 생성 편의: `StatusPayload.Companion.of(code, message, appendixNullable)` 사용 → appendix null-safe.
+- 콜백 결과: `StandardCallbackResult.of(payload)` 또는 `of(payload, status, version)` 사용 → Kotlin 기본 인자 차이와 NPE 방지.
 
 ### 7.2 Callback 빌더 패턴
 `StandardResponse.build(callback = { ... })`(Kotlin) / `StandardResponse.buildWithCallback(() -> { ... })`(Java)는 응답 생성 직전 도메인 로직을 람다/함수 블록으로 감싸 **payload + status + version**을 한 번에 선언하도록 하는 패턴입니다.<br>
+- `StandardCallbackResult` 는 제네릭(`StandardCallbackResult<T : BasePayload>`)으로 변경되어 타입 안전성이 강화되었습니다. Java에서는 `Supplier<StandardCallbackResult<T>>` 형태로 사용합니다.
+
 Callback 내부에서 `StandardCallbackResult`를 반환해야 하며, `status` / `version`을 생략하면 기본값(`SUCCESS` / `1.0`)이 적용됩니다.
 
 #### 도입 배경 & 장점
-| 항목 | 설명                                        | 효과 |
-|------|-------------------------------------------|------|
-| Lazy 계산 | 응답 직전까지 도메인 작업 지연                         | 불필요 연산 최소화, duration 측정 정확도 ↑ |
-| 단일 선언 지점 | payload + status + version 한 곳에서 확정       | 가독성/코드 리뷰 용이 |
+| 항목 | 설명 | 효과 |
+|------|------|------|
+| Lazy 계산 | 응답 직전까지 도메인 작업 지연 | 불필요 연산 최소화, duration 측정 정확도 ↑ |
+| 단일 선언 지점 | payload + status + version 한 곳에서 확정 | 가독성/코드 리뷰 용이 |
 | 실패/성공 분기 단순화 | if/else 내부에서 `StandardCallbackResult`만 교체 | 예외 남발/중첩 축소 |
-| 일관된 duration 측정 | 빌더가 callback 전/후 시각 측정                    | 코드 중복 제거, 실측치 반영 |
-| 테스트 용이 | callback 단위 mocking/stub 가능               | 단위 테스트에서 외부 리소스 분리 |
-| Java/Kotlin 일관 인터페이스 | `buildWithCallback` 제공                    | 다국어 코드베이스 통일 |
+| 일관된 duration 측정 | 빌더가 callback 전/후 시각 측정 | 코드 중복 제거, 실측치 반영 |
+| 테스트 용이 | callback 단위 mocking/stub 가능 | 단위 테스트에서 외부 리소스 분리 |
+| Java/Kotlin 일관 인터페이스 | `buildWithCallback` 제공 | 다국어 코드베이스 통일 |
 
 #### 기본 사용 문법
 Kotlin:
@@ -686,16 +706,16 @@ class UserServiceControllerExample {
     private final Repo repo;
     UserServiceControllerExample(Repo repo) { this.repo = repo; }
     public StandardResponse<UserPayload> getUser(long id) {
-        return StandardResponse.buildWithCallback(() -> {
+        return StandardResponse.<UserPayload>buildWithCallback(() -> {
             UserEntity e = repo.findById(id);
             if (e == null) {
-                return new StandardCallbackResult(
+                return new StandardCallbackResult<>(
                     new ErrorPayload("E404", "user not found", null),
                     StandardStatus.FAILURE,
                     "1.0"
                 );
             }
-            return new StandardCallbackResult(
+            return new StandardCallbackResult<>(
                 new UserPayload(e.getId(), e.getName()), StandardStatus.SUCCESS, "1.0"
             );
         });
@@ -708,7 +728,7 @@ Service가 `StandardCallbackResult`를 직접 반환하도록 하여 Controller�
 ```kotlin
 @Service
 class UserService {
-    fun loadUser(id: Long): StandardCallbackResult = run {
+    fun loadUser(id: Long): StandardCallbackResult<BasePayload> = run {
         val e = repo.findById(id)
         if (e == null) StandardCallbackResult(ErrorPayload("E404", "user not found"), StandardStatus.FAILURE)
         else StandardCallbackResult(UserPayload(e.id, e.name))
@@ -860,7 +880,7 @@ class ManagerSessionController(
 | 포인트 | 이유 | 효과 |
 |--------|------|------|
 | 응답 표준화 분리 | Controller는 포맷팅만 담당 | 레이어 책임 명확화, 테스트 단순화 |
-| 에러/성공 동시 처리 | 하나의 return 으로 상태/페이로드 결정 | if/else 분기 감소, 가독성 ↑ |
+| 에러/성공 동시 처리 | 하나의 return 으로 상태/페이로드 결정 | 가독성/코드 리뷰 용이 |
 | 확장 용이성 | appendix 등 메타 추가 위치를 Service로 집중 | Controller 변경 최소화 |
 | 측정 정밀도 | build(callback) 로직 범위만 duration 측정 | 전체 요청 시간과 로직 시간 분리 가능 |
 

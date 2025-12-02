@@ -1,3 +1,4 @@
+@file:Suppress("NonAsciiCharacters", "SpellCheckingInspection")
 package com.hunet.common.stdapi.response
 
 import kotlin.test.Test
@@ -8,8 +9,8 @@ class StatusPayloadTest {
     @Test
     fun `appendix 기본값은 변경 가능해야 한다`() {
         val payload = StatusPayload()
-        payload.addAppendix("traceId", "ABC-123")
-        assertEquals("ABC-123", payload.appendix["traceId"])
+        payload.addAppendix("traceid", "ABC-123")
+        assertEquals("ABC-123", payload.appendix["traceid"])
     }
 
     @Test
@@ -32,7 +33,6 @@ class StatusPayloadTest {
         assertEquals(StandardStatus.SUCCESS, resp.status)
         val real = resp.getRealPayload<StatusPayload>()
         assertTrue(real !== null)
-        real!!
         assertEquals("OK", real.code)
         assertEquals("성공", real.message)
         assertEquals(42L, real.appendix["reqTime"])

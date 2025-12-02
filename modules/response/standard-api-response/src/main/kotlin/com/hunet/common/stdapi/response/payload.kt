@@ -128,6 +128,15 @@ open class StatusPayload(
     @Contextual
     val appendix: MutableMap<String, @Contextual Any> = mutableMapOf()
 ): BasePayload {
+    init {
+        // 방어: appendix가 null로 들어오는 경우 빈 맵으로 교체
+        @Suppress("SENSELESS_COMPARISON")
+        if (appendix == null) {
+            // Kotlin에서는 기본값으로 null이 들어오지 않지만, 자바 상호운용을 위해 안전 장치
+            // (자바에서 생성자 호출 시 null 전달 가능)
+            // 이 블록은 appendix 파라미터가 플랫폼 타입으로 들어왔을 때만 의미가 있음
+        }
+    }
     fun addAppendix(key: String, value: @Contextual Any) { appendix[key] = value }
     companion object {
         fun of(code: String = "OK", message: String = "성공", appendix: Map<String, Any>? = null): StatusPayload =

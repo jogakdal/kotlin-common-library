@@ -1,3 +1,4 @@
+@file:Suppress("NonAsciiCharacters", "SpellCheckingInspection")
 package com.hunet.common.stdapi.response
 
 import com.hunet.common.test.support.AbstractControllerTest

@@ -14,7 +14,7 @@
 ---
 ## 1. 개요
 표준 응답은 최상위에 다음 필드를 갖습니다:
-`status` / `version` / `datetime` / `duration` / `payload`
+`status` / `version` / `datetime` / `duration` / `traceid` / `payload`
 
 `payload`는 **단일 도메인 DTO(BasePayload)** 또는 **표준 리스트 컨테이너(PageableList, IncrementalList)** 혹은 **이들을 조합한 사용자 정의 Payload**가 될 수 있습니다.
 
@@ -50,7 +50,7 @@
 | 개념 | 요약 |
 |------|------|
 | BasePayload | 모든 payload의 Marker 인터페이스. 케이스/별칭/역직렬화 스캔 대상 루트 |
-| StandardResponse | 통합 응답 래퍼 (status, version, datetime, duration, payload) |
+| StandardResponse | 통합 응답 래퍼 (status, version, datetime, duration, traceid, payload) |
 | PageableList / IncrementalList | 페이지 / 커서(더보기) 기반 리스트 표준 구조 |
 | PageListPayload / IncrementalListPayload | 복합 응답 구조를 위한 래퍼 (도메인 전용 래퍼로 대체 가능) |
 | StandardCallbackResult | 콜백 빌더에서 payload / (선택적) status/version 반환용 구조체 |
@@ -120,20 +120,28 @@ open class ErrorPayload(
 
 ### 4.5 Response / Callback / 직렬화 유틸
 ```text
-StandardCallbackResult(payload: BasePayload, status?: StandardStatus, version?: String)
-StandardResponse<T: BasePayload>(status?: StandardStatus = SUCCESS, version: String, datetime: Instant, duration?: Long, payload: T)
+StandardCallbackResult<T: BasePayload>(payload: T, status?: StandardStatus, version?: String)
+  companion:
+    of(payload: T)
+    of(payload: T, status: StandardStatus?, version: String?)
+StandardResponse<T: BasePayload>(status?: StandardStatus = SUCCESS, version: String, datetime: Instant, duration?: Long, traceid?: String = "", payload: T)
   getRealPayload<T>() : T?
   companion:
     build(payload)
     build(payload, status, version)
     build(payload, status, version, duration?)
-    build(callback: () -> StandardCallbackResult) / buildWithCallback(Supplier)
+    build(payload, status, version, duration?, traceid)
+    build(callback: () -> StandardCallbackResult<T>) / buildWithCallback(Supplier<StandardCallbackResult<T>>)
     deserialize<T>(json: String)
     deserialize(json: String, payloadClass: Class<T>)
     deserialize(json: String, typeRef: TypeReference<T>)
 Extension: StandardResponse<T>.toJson(case?, pretty?) : String
+Java Bridge: StandardResponseJsonBridge.toJson(resp, case?)
 Utility: clearAliasCaches()
 ```
+비고(자바 권고):
+- `StandardCallbackResult.of(...)` 사용을 권장합니다. Kotlin 기본 인자 생략과 생성자 차이로 인한 컴파일/런타임 혼선을 줄여줍니다.
+- `StatusPayload.of(code, message, appendixNullable)` 팩토리 사용을 권장합니다. appendix가 null이어도 빈 맵으로 안전 변환합니다.
 
 타입 별칭 (편의):
 ```kotlin
@@ -162,10 +170,10 @@ typealias DefaultResponse = StandardResponse<BasePayload>
 3. 변환 제외: `@NoCaseTransform` 필드 + 해당 alias/variant
 4. 지원 값: `IDENTITY, SNAKE_CASE, SCREAMING_SNAKE_CASE, KEBAB_CASE, CAMEL_CASE, PASCAL_CASE`
 5. 구현 요약: 토큰 분해 → 캐시 재조합(ConcurrentHashMap) → 변환
-6. 최상위(`StandardResponse`의 `status`/`version`/`datetime`/`duration`) 필드는 case 변환/alias 치환 이후에도 canonical 기반 탐색만 사용되며, payload 내부 재귀(alias+canonical) 처리와 구분됨.
+6. 최상위(`StandardResponse`의 `status`/`version`/`datetime`/`duration`/`traceid`) 필드는 case 변환/alias 치환 이후에도 canonical 기반 탐색만 사용되며, payload 내부 재귀(alias+canonical) 처리와 구분됨.
 7. `toJson(case = ...)` 호출 시 케이스 결정 우선순위: 전달된 `case` 인자 > payload 클래스 `@ResponseCase` > `IDENTITY`. 이 메서드는 Spring Advice 경로를 거치지 않고 직접 직렬화된 문자열을 얻을 때 사용하며, 글로벌 기본 케이스(`stdapi.response.case.default`)는 적용되지 않습니다.
 8. 캐시 구조 상세:
-   - 내부 캐시: `Map<CaseConvention, ConcurrentHashMap<String,String>>`
+   - 내부 캐시: `Map<CaseConvention, ConcurrentHashMap<String, String>>`
    - 키: 원본 property/field 명(변환 대상) → 변환 후 문자열
    - 토큰화 정규식: `[A-Z]+(?=[A-Z][a-z0-9])|[A-Z]?[a-z0-9]+|[A-Z]+|[0-9]+`
      - 예: `UserID2Value` → tokens: user, id, 2, value → SNAKE_CASE: `user_id_2_value`
@@ -189,7 +197,7 @@ typealias DefaultResponse = StandardResponse<BasePayload>
 4. Pretty 옵션 시 pretty printer
 
 역직렬화(`StandardResponse.deserialize`):
-1. Kotlinx Json 1차 파싱 & canonical 키 매칭 (상위 필드: `status`/`version`/`datetime`/`duration`은 alias 재귀 없음)
+1. Kotlinx Json 1차 파싱 & canonical 키 매칭 (상위 필드: `status`/`version`/`datetime`/`duration`/`traceid`는 alias 재귀 없음)
 2. payload JsonObject 에 alias + canonical 재귀 적용 후 Jackson 변환
 3. 실패 → `ErrorPayload(code="E_DESERIALIZE_FAIL")`로 FAILURE 응답
 
@@ -215,11 +223,10 @@ Before (SNAKE_CASE 지정):
 ```json
 { "user_id": 1, "user-id": 1 }
 ```
-After (변환 기대):
+After (SkipCaseKeys는 변환 대상에서 제외되므로 alias/variant 형태 그대로 유지):
 ```json
 { "user_id": 1, "user-id": 1 }
 ```
-> SkipCaseKeys 는 변환 대상에서 제외되므로 alias/variant 형태 그대로 유지.
 
 ### 7.3 BEST_MATCH 간단 의사 결정
 - 충돌 canonical 키 집합 내 후보 property들에 대해 실제 입력 JSON 키 소문자 값이 `propertyAliasLower[property]` 셋에 포함되는 첫 번째 property 선택.
@@ -287,7 +294,7 @@ Edge Case 처리:
 |------|-----|------|
 | 단순 성공 응답 | `StandardResponse.build(payload)` | status=SUCCESS, version 기본, duration 자동 측정 |
 | 커스텀 상태/버전 | `build(payload, status, version[, duration])` | duration null → 자동 측정 |
-| 콜백 빌드 | `buildWithCallback(Supplier<StandardCallbackResult>)` | payload + (선택) status/version 동시 제공 |
+| 콜백 빌드 | `buildWithCallback(Supplier<StandardCallbackResult<T>>)` | payload + (선택) status/version 동시 제공 |
 | 페이지 변환 | `PageableList.fromPage`, `PageListPayload.fromPage` | Spring `Page` → 표준 구조 |
 | 커서 리스트 | `IncrementalList.buildFromTotal` | `start/howMany/total` 기반 커서 산출 |
 | Java 호환 | `fromPageJava`, `buildFromTotalJava` | `Function` 기반 매퍼 |
