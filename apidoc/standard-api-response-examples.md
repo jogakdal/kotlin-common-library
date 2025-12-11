@@ -260,6 +260,13 @@ fun directPageable(): StandardResponse<PageableList<ItemPayload>> = StandardResp
     StandardCallbackResult(page)
 })
 ```
+traceid 전달 (PageableList 직접)
+```kotlin
+val page = PageableList.build(listOf(ItemPayload(1, "황용호")), 1, 1, 1, null)
+val tid = java.util.UUID.randomUUID().toString()
+val respWithTrace = StandardResponse.build(page, StandardStatus.SUCCESS, "1.0", 2L, tid)
+```
+
 ### 3.2 Java (IncrementalList 직접)
 ```java
 public StandardResponse<IncrementalList<LogEntryPayload, Long>> directIncremental() {
@@ -271,12 +278,6 @@ public StandardResponse<IncrementalList<LogEntryPayload, Long>> directIncrementa
         return StandardCallbackResult.of(inc, StandardStatus.SUCCESS, "1.0");
     });
 }
-```
-traceid 전달 (PageableList 직접)
-```kotlin
-val page = PageableList.build(listOf(ItemPayload(1, "황용호")), 1, 1, 1, null)
-val tid = java.util.UUID.randomUUID().toString()
-val respWithTrace = StandardResponse.build(page, StandardStatus.SUCCESS, "1.0", 2L, tid)
 ```
 
 ---
@@ -323,7 +324,10 @@ public class UserPayload implements BasePayload {
 public class MultiListsPayload implements BasePayload {
     private final PageableList<UserPayload> users;
     private final IncrementalList<LogEntryPayload, Long> logs;
-    public MultiListsPayload(PageableList<UserPayload> users, IncrementalList<LogEntryPayload, Long> logs) { this.users = users; this.logs = logs; }
+    public MultiListsPayload(PageableList<UserPayload> users, IncrementalList<LogEntryPayload, Long> logs) { 
+        this.users = users; 
+        this.logs = logs; 
+    }
     public PageableList<UserPayload> getUsers() { return users; }
     public IncrementalList<LogEntryPayload, Long> getLogs() { return logs; }
 }

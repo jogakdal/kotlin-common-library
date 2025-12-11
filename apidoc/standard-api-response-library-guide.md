@@ -286,13 +286,13 @@ val user: UserDto? = anyResp.getRealPayload<UserDto>() // 타입 불일치 시 n
 | `@InjectDuration` | duration 자동 주입 표시 |
 | `StandardCallbackResult` | 콜백 빌더 반환 컨테이너 |
 
-#### 3.1.1 ErrorPayload 구조 핵심
+#### 3.1.1 ErrorPayload 구조
 - 최상위에 `code` / `message` 필드가 따로 존재하지 않습니다.
 - 주 오류 식별: `payload.errors.firstOrNull()`
 - 다중 오류 누적: `addError(code, message)` 사용
 - 부가 정보: `appendix` 맵 활용
 
-### 3.2 JSON 구조 (요약)
+### 3.2 JSON 구조
 ```json
 {
   "status": "SUCCESS",
@@ -456,7 +456,33 @@ val resp = StandardResponse.build(pageableList)
 | 커서(더보기) | `IncrementalList<T>` | `IncrementalListPayload<T>` | 래퍼 사용 시 향후 부가 필드(예: 도메인별 통계 등) 추가 용이. 경량 리스트만 필요하면 직접 타입 사용. |
 (권장) 복잡한 도메인에서 다형성/추가 appendix 필요 가능성이 있으면 Payload 래퍼 사용, 단순 조회 API는 직접 리스트 타입 반환으로 직렬화 크기/필드 깊이 최소화.
 
+### 3.8 traceid 필드
+traceid 필드는 분산 시스템에서 요청-응답 간 호출 흐름을 추적하기 위한 고유 식별자입니다. <br>
+API 개발자가 직접 생성/전파할 수도 있지만, 일반적으로 API Gateway 또는 Edge Server에서 최초 요청 시 생성하여 내부 서비스 호출 시 동일 값을 전달하는 패턴이 권장됩니다. <br>
+일반적으로 openTelemetry, zipkin, jaeger 등 분산 추적 시스템과 연동하여 로그 상관 분석 및 성능 모니터링에 활용됩니다.<br>
+대부분 라이브러리 차원에서 자동 생성 및 주입되므로 개발자가 직접 신경 쓸 필요는 없으나, 필요 시 아래 가이드에 따라 구현할 수 있습니다.<br>
+이 라이브러리는 `traceid` 필드를 자동으로 생성하거나 전파, 주입 등의 기능은 제공하지 않으며, openTelemetry 등 외부 라이브러리와 연동하여 사용해야 합니다.
+
+| 항목 | 내용                                                                             |
+|------|--------------------------------------------------------------------------------|
+| 목적 | 요청-응답, 내부 마이크로서비스 호출, 비동기 처리(메시지 큐, 이벤트) 간 **단일 호출 흐름(Correlation)** 추적 용도     |
+| 타입 | `String` (UUID v4 권장). 하이픈 포함 36자 형태: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`   |
+| 필수 여부 | Optional (미포함 시 클라이언트 또는 게이트웨이/서버에서 새 UUID 생성 가능)                              |
+| 값 생성 권장 위치 | 최초 진입 지점(API Gateway, Edge Server, 혹은 첫 REST Controller)                       |
+| 전파 방식 | 동일 값을 하위 서비스 호출 시 **HTTP Header (예: `X-Trace-Id`)** 또는 메시지 메타로 전달 후 응답에 그대로 반영 |
+| 변경 금지 | 동일 호출 체인 내에서는 값 변경/재생성 금지 (단, 없는 경우만 생성)                                       |
+| 보안 | PII/민감정보 포함 금지 (순수 랜덤 UUID). 로그 마스킹 불필요하지만 접근 제어된 저장소에만 보관                     |
+| 사용 범위 | 로그 상관 분석, 디버깅, 성능 측정(여러 구간 Duration 합산), 장애 시 빠른 경로 추적                         |
+| 하위 호환 | 기존 클라이언트는 traceid 부재에도 정상 동작 (Optional 유지)                                     |
+
+##### 생성/전파 예시 흐름
+1. 클라이언트가 요청 시 `X-Trace-Id` 헤더가 없으면 Gateway가 UUID 생성 → 요청 헤더 및 응답 body `traceid` 모두 설정.
+2. 내부 서비스 A가 B를 호출할 때 기존 헤더의 값을 그대로 전달.
+3. 각 서비스는 로깅 프레임워크 MDC 등에 `traceid` 반영 후 처리.
+4. 최종 응답은 원래 값을 `traceid` 필드에 그대로 포함.
+
 ---
+
 ## 4. 역직렬화
 ### 4.1 개요
 두 단계: Wrapper(kotlinx) → payload(Jackson). <br>
@@ -846,6 +872,7 @@ class ManagerSessionController(
   "version": "1.0",
   "datetime": "...",
   "duration": 5,
+  "traceid": "7f7c9e2b-5d3b-4e9e-8f11-0b2d2d7c9a01",
   "payload": {
     "pageable": {
       "page": { "size": 20, "current": 1, "total": 3 },
@@ -863,6 +890,7 @@ class ManagerSessionController(
   "version": "1.0",
   "datetime": "...",
   "duration": 3,
+  "traceid": "7f7c9e2b-5d3b-4e9e-8f11-0b2d2d7c9a01",
   "payload": {
     "errors": [ { "code": "E_EMPTY", "message": "세션이 없습니다" } ],
     "appendix": { "companyCode": "ACME" }
