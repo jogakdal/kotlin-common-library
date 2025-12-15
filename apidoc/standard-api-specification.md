@@ -7,7 +7,7 @@
 > | [standard-api-response-reference.md](standard-api-response-reference.md) | **레퍼런스 매뉴얼**: 모듈 / 내부 타입 세부 설명                                   |
 > | [standard-api-response-examples.md](standard-api-response-examples.md) | 실전 예시 모음: payload 구성, 페이지/커서 처리, 역직렬화, 케이스 변환, Alias/Canonical 등 |
 >
-> 우선순위 충돌 시: **spec > 사용자 가이드 > 예제**. README 는 구현 레벨 참고 문서.
+> 우선순위 충돌 시: **spec > 사용자 가이드 > 예제**. README는 구현 레벨 참고 문서.
 
 ## API 응답 표준 
 
@@ -101,6 +101,8 @@
 - **통화 표현(Currency)**: 최소 단위로 정수형 또는 실수형으로 표현합니다. 예:
 ```json5
 {"amount": 1500}   // 1,500원 (단위: 원)
+```
+```json5
 {"amount": 19.99}  // $19.99 (단위: 달러)
 ```
 
@@ -133,7 +135,7 @@
 
 ```json5
 {
-  ...
+  // ...
   
   "payload": {
     "id": 123,
@@ -183,10 +185,11 @@
 
 >```
 >{
->  "status": <optional: payload의 상태>,
->  "version": <버전 정보>,
->  "datetime": <응답 일시>,
->  "duration": <처리 시간(ms)>,
+>  "status": <payload의 상태, String, recommended>,
+>  "version": <버전 정보, String, recommended>,
+>  "datetime": <응답 일시, ISO 8601 포맷 String, recommended>,
+>  "duration": <처리 시간(ms), Long, optional>,
+>  "traceid": <요청 체인 상 추적을 위한 ID, UUID 형식 String, optional>,
 >  "payload": {
 >    <키_1>: <값_1>,
 >    <키_2>: <값_2>,
@@ -203,6 +206,7 @@
   "version": "1.0.0.5",
   "datetime": "2024-03-25T04:10:27.257626Z",
   "duration": 70,
+  "traceid": "7f7c9e2b-5d3b-4e9e-8f11-0b2d2d7c9a01",
   "payload": {
     "name": "황용호",
     "email": "jogakdal@gmail.com"
@@ -219,6 +223,7 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
 >  "version": <버전 정보>,
 >  "datetime": <응답 일시>,
 >  "duration": <처리 시간>,
+>  "traceid": <추적 키>,
 >  "payload": {
 >    "errors": [    // 다중 오류 표현을 위해 배열 사용
 >      {
@@ -242,6 +247,7 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
   "version": "1.0",
   "datetime": "2024-03-25T04:10:27.257626Z",
   "duration": 70,
+  "traceid": "4c0bb7fa-2c2e-41af-b2f9-2b0f8c0c8d11",
   "payload": {
     "errors": [
       {
@@ -269,6 +275,7 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
   "version": "1.0",
   "datetime": "2024-03-25T04:10:27.257626Z",
   "duration": 70,
+  "traceid": "c84bb1d7-18ad-4f2f-ae4f-9d94d86a9b27",
   "payload": {
     "errors": [
       {
@@ -298,6 +305,7 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
 >  "version": <버전 정보>,
 >  "datetime": <응답 일시>,
 >  "duration": <처리 시간>,
+>  "traceid": <추적 키>,
 >  "payload": {
 >    <키_1>: <값_1>,
 >    ...,
@@ -328,6 +336,7 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
   "version": "1.0",
   "datetime": "2024-03-25T04:10:27.257626Z",
   "duration": 70,
+  "traceid": "c84bb1d7-18ad-4f2f-ae4f-9d94d86a9b27",
   "payload": {
     "company": "hunet",
     "department": "공통플랫폼팀",
@@ -370,6 +379,7 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
 >  "version": <버전 정보>,
 >  "datetime": <응답 일시>,
 >  "duration": <처리 시간>,
+>  "traceid": <추적 키>,
 >  "payload": {
 >    <키_1>: <값_1>,
 >    ...,
@@ -401,6 +411,7 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
   "version": "1.0",
   "datetime": "2024-03-25T04:10:27.257626Z",
   "duration": 70,
+  "traceid": "c84bb1d7-18ad-4f2f-ae4f-9d94d86a9b27",
   "payload": {
     "company": "hunet",
     "department": "공통플랫폼팀",
@@ -441,6 +452,7 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
   "version": "1.0",
   "datetime": "2024-03-25T04:10:27.257626Z",
   "duration": 70,
+  "traceid": "c84bb1d7-18ad-4f2f-ae4f-9d94d86a9b27",
   "payload": {
     "company": "hunet",
     "department": "공통플랫폼팀",
@@ -477,6 +489,7 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
   "version": "1.0",
   "datetime": "2024-03-25T04:10:27.257626Z",
   "duration": 70,
+  "traceid": "c84bb1d7-18ad-4f2f-ae4f-9d94d86a9b27",
   "payload": {
     "company": "hunet",
     "department": "공통플랫폼팀",
@@ -517,6 +530,7 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
   "version": "1.0",
   "datetime": "2024-03-25T04:10:27.257626Z",
   "duration": 70,
+  "traceid": "c84bb1d7-18ad-4f2f-ae4f-9d94d86a9b27",
   "payload": {
     "page": {
       "size": 5,
@@ -553,6 +567,7 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
   "version": "1.0",
   "datetime": "2024-03-25T04:10:27.257626Z",
   "duration": 70,
+  "traceid": "c84bb1d7-18ad-4f2f-ae4f-9d94d86a9b27",
   "payload": {
     "company": "hunet",
     "department": "공통플랫폼팀",
@@ -586,6 +601,7 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
   "version": "1.0",
   "datetime": "2024-03-25T04:10:27.257626Z",
   "duration": 70,
+  "traceid": "c84bb1d7-18ad-4f2f-ae4f-9d94d86a9b27",
   "payload": {
     "company": "hunet",
     "department": "공통플랫폼팀",
@@ -667,6 +683,7 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
   "version": "1.0",
   "datetime": "2025-10-16T09:10:11Z",
   "duration": 42,
+  "traceid": "c84bb1d7-18ad-4f2f-ae4f-9d94d86a9b27",
   "payload": {
     "user": {
       "user_id": 10,
@@ -700,6 +717,7 @@ StandardStatus 는 SUCCESS / FAILURE 로 구성되며, 실패 상황에서 `stat
   "version": "1.0",
   "datetime": "2025-10-16T09:10:11Z",
   "duration": 33,
+  "traceid": "c84bb1d7-18ad-4f2f-ae4f-9d94d86a9b27",
   "payload": {
     "user": {"user_id": 10, "display_name": "황용호"},
     "activity_feed": {

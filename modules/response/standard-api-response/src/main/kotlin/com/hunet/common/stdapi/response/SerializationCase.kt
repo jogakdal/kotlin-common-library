@@ -278,3 +278,14 @@ fun <T: BasePayload> StandardResponse<T>.toJson(case: CaseConvention? = null, pr
     return if (pretty) mapper.writerWithDefaultPrettyPrinter().writeValueAsString(transformed)
     else mapper.writeValueAsString(transformed)
 }
+
+// 자바 접근용 브릿지 메서드
+@Suppress("unused")
+object StandardResponseJsonBridge {
+    @JvmStatic
+    fun <T: BasePayload> toJson(resp: StandardResponse<T>, case: CaseConvention?, pretty: Boolean): String = resp.toJson(case, pretty)
+    @JvmStatic
+    fun <T: BasePayload> toJson(resp: StandardResponse<T>): String = resp.toJson(null, false)
+    @JvmStatic
+    fun <T: BasePayload> toJson(resp: StandardResponse<T>, case: CaseConvention): String = resp.toJson(case, false)
+}
