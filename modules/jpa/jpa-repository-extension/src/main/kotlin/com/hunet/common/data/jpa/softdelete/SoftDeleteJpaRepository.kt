@@ -76,9 +76,12 @@ interface SoftDeleteJpaRepository<E, ID: Serializable> : JpaRepository<E, ID> {
     fun countByCondition(condition: String = ""): Long
     fun findOne(id: ID): Optional<E> = findOneById(id)
     fun findOneById(id: ID): Optional<E>
+
     fun findFirstByField(fieldName: String, fieldValue: Any): Optional<E>
     fun findFirstByFields(fields: Map<String, Any>): Optional<E>
     fun findFirstByCondition(condition: String = ""): Optional<E>
+
+    fun existsAliveById(id: ID): Boolean
 
     fun <R> rowLockById(id: ID, block: (E) -> R): R
     fun <R> rowLockByField(fieldName: String, fieldValue: Any, block: (E) -> R): R
@@ -97,7 +100,7 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
     private val registry: SoftDeleteRepositoryRegistry by lazy { SpringContextHolder.getBean() }
     private val sequenceGenerator: SequenceGenerator by lazy { SpringContextHolder.getBean() }
     val entityType by lazy { entityInformation.javaType }
-    val entityName by lazy { entityManager.metamodel.entity(entityType).name }
+    val entityName: String? by lazy { entityManager.metamodel.entity(entityType).name }
     val tableName: String by lazy { entityInformation.javaType.resolvedTableName }
     private val autoModify: String by lazy {
         entityType.annotatedFields<LastModifiedDate>().mapNotNull { it.getAnnotation<Column>()?.name }
@@ -395,6 +398,21 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
     @Transactional
     @Modifying
     override fun softDeleteById(id: ID) = findOneById(id).orElse(null)?.let(this::softDelete) ?: 0
+
+    // Alive 존재 확인 구현: 자기호출 회피를 위해 독립 쿼리로 조회(read-only)
+    @Transactional(readOnly = true)
+    override fun existsAliveById(id: ID): Boolean {
+        val idAttrs = entityInformation.idAttributeNames.takeIf { it.isNotEmpty() }
+            ?: throw IllegalStateException("Entity ${entityType.simpleName} must have at least one @Id attribute")
+        val whereClause = idAttrs.joinToString(" AND ") { attr -> "e.$attr = :$attr" }
+        val cnt = executeCount(whereClause) {
+            if (idAttrs.size == 1) setParameter(idAttrs.first(), id) else {
+                val paramMap = extractIdParamMap(id as Any, idAttrs)
+                paramMap.forEach { (name, value) -> setParameter(name, value) }
+            }
+        }
+        return cnt > 0
+    }
 
     @Transactional
     override fun <R> rowLockById(id: ID, block: (E) -> R): R {
@@ -779,7 +797,7 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
                 val whereParts = mutableListOf<String>()
                 val params = mutableMapOf<String, Any?>()
                 children.forEachIndexed { idx, c ->
-                    val conds = mutableListOf<String>()
+                    val conditions = mutableListOf<String>()
                     idFields.forEach { f ->
                         f.isAccessible = true
                         val v = try {
@@ -787,11 +805,11 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
                         } catch (_: Exception) { null }
                         if (v != null) {
                             val pname = "_pk_${f.name}_$idx"
-                            conds += "c.${f.name} = :$pname"
+                            conditions += "c.${f.name} = :$pname"
                             params[pname] = v
                         }
                     }
-                    if (conds.isNotEmpty()) whereParts += "(" + conds.joinToString(" AND ") + ")"
+                    if (conditions.isNotEmpty()) whereParts += "(" + conditions.joinToString(" AND ") + ")"
                 }
                 if (whereParts.isNotEmpty()) {
                     val combined = whereParts.joinToString(" OR ")
