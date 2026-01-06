@@ -1,3 +1,4 @@
+@file:Suppress("NonAsciiCharacters", "SpellCheckingInspection")
 package com.hunet.common.stdapi.response
 
 import com.fasterxml.jackson.core.type.TypeReference

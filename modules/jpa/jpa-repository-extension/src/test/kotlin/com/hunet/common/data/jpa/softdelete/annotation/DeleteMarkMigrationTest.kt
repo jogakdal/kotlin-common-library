@@ -1,3 +1,4 @@
+@file:Suppress("NonAsciiCharacters", "SpellCheckingInspection")
 package com.hunet.common.data.jpa.softdelete.annotation
 
 import com.hunet.common.util.getAnnotation

@@ -20,29 +20,23 @@ import org.springframework.data.domain.PageRequest
 import org.springframework.boot.autoconfigure.domain.EntityScan
 import org.springframework.dao.InvalidDataAccessApiUsageException
 
-/*
- 고급 기능 테스트 시나리오:
- 1) UpsertKey 기반 upsert 머지/예외
- 2) updateByField / updateByFields / updateByCondition 동작
- 3) softDeleteByField / softDeleteByFields / softDeleteByCondition + 삭제 후 필터링 확인
- 4) softDeleteById 존재하지 않는 ID 처리
- 5) upsertAll flushInterval 동작 (설정 값 활용)
- 6) 캐스케이드 softDelete (Parent -> Children)
- + 추가: updateById, rowLockById, pagination, countByField, softDelete(entity) 직접 호출, findFirstByFields
- */
-
 @Entity
 @Table(name = "upsert_key_entity")
 class UpsertKeyEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null,
+
     @UpsertKey
     @Column(name = "code", unique = true, nullable = false)
+
     var code: String,
+
     var desc: String? = null,
+
     @DeleteMark(aliveMark = DeleteMarkValue.NULL, deletedMark = DeleteMarkValue.NOW)
     @Column(name = "deleted_at")
-    var deletedAt: LocalDateTime? = null,
+    var deletedAt: LocalDateTime? = null
 )
 
 interface UpsertKeyEntityRepository : SoftDeleteJpaRepository<UpsertKeyEntity, Long>
@@ -50,41 +44,49 @@ interface UpsertKeyEntityRepository : SoftDeleteJpaRepository<UpsertKeyEntity, L
 @Entity
 @Table(name = "parent_entity")
 class ParentEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null,
+
     var title: String? = null,
+
     @DeleteMark(aliveMark = DeleteMarkValue.NULL, deletedMark = DeleteMarkValue.NOW)
     @Column(name = "deleted_at")
     var deletedAt: LocalDateTime? = null,
+
     @OneToMany(mappedBy = "parent", cascade = [CascadeType.ALL], orphanRemoval = true, fetch = FetchType.LAZY)
-    var children: MutableList<ChildEntity> = mutableListOf(),
+    var children: MutableList<ChildEntity> = mutableListOf()
 )
 
 @Entity
 @Table(name = "child_entity")
 class ChildEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null,
+
     var name: String? = null,
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")
     var parent: ParentEntity? = null,
+
     @DeleteMark(aliveMark = DeleteMarkValue.NULL, deletedMark = DeleteMarkValue.NOW)
     @Column(name = "deleted_at")
-    var deletedAt: LocalDateTime? = null,
+    var deletedAt: LocalDateTime? = null
 )
 
 interface ParentEntityRepository : SoftDeleteJpaRepository<ParentEntity, Long>
 interface ChildEntityRepository : SoftDeleteJpaRepository<ChildEntity, Long>
 
 @DataJpaTest
-@EntityScan(basePackageClasses = [UpsertKeyEntity::class, ParentEntity::class, ChildEntity::class]) // 추가
+@EntityScan(basePackageClasses = [UpsertKeyEntity::class, ParentEntity::class, ChildEntity::class])
 @TestPropertySource(properties = ["softdelete.upsert-all.flush-interval=5"]) // flushInterval 테스트용
 @Import(
     SoftDeleteJpaRepositoryAutoConfiguration::class,
     SoftDeleteRepositoryRegistry::class,
     SequenceGeneratorAdvancedTestConfig::class,
-    SpringContextHolder::class,
+    SpringContextHolder::class
 )
 class SoftDeleteJpaRepositoryAdvancedTest {
     @Autowired lateinit var upsertKeyEntityRepository: UpsertKeyEntityRepository
@@ -92,7 +94,7 @@ class SoftDeleteJpaRepositoryAdvancedTest {
     @Autowired lateinit var childEntityRepository: ChildEntityRepository
     @Autowired lateinit var entityManager: EntityManager // 추가
 
-    // 1) UpsertKey 머지 동작
+    // UpsertKey 머지 동작
     @Test
     @Transactional
     fun upsertKeyMergeUpdatesExisting() {
@@ -100,14 +102,14 @@ class SoftDeleteJpaRepositoryAdvancedTest {
         assertNotNull(first.id)
         val idBefore = first.id
         val second = upsertKeyEntityRepository.upsert(UpsertKeyEntity(code = "CODE-1", desc = "v2")) // 같은 code -> merge
-        assertEquals(idBefore, second.id) // 동일 ID 유지
+        assertEquals(idBefore, second.id, "동일 ID가 유지되어야 한다.")
         assertEquals("v2", second.desc)
         // 조회 확인
         val loaded = upsertKeyEntityRepository.findFirstByField("code", "CODE-1").orElse(null)
         assertEquals("v2", loaded?.desc)
     }
 
-    // 1-2) UpsertKey + ID 불일치 예외
+    // UpsertKey + ID 불일치 예외
     @Test
     @Transactional
     fun upsertKeyIdMismatchThrows() {
@@ -118,12 +120,12 @@ class SoftDeleteJpaRepositoryAdvancedTest {
         assertTrue(ex.cause?.message?.contains("업데이트 실패") == true)
     }
 
-    // 2) updateByField / updateByFields / updateByCondition
+    // updateByField / updateByFields / updateByCondition
     @Test
     @Transactional
     fun updateByFieldAndFieldsAndCondition() {
-        val a = upsertKeyEntityRepository.upsert(UpsertKeyEntity(code = "U-A", desc = "A"))
-        val b = upsertKeyEntityRepository.upsert(UpsertKeyEntity(code = "U-B", desc = "B"))
+        upsertKeyEntityRepository.upsert(UpsertKeyEntity(code = "U-A", desc = "A"))
+        upsertKeyEntityRepository.upsert(UpsertKeyEntity(code = "U-B", desc = "B"))
         upsertKeyEntityRepository.updateByField("code", "U-A") { it.desc = "A2" }
         assertEquals("A2", upsertKeyEntityRepository.findFirstByField("code", "U-A").orElse(null)?.desc)
         upsertKeyEntityRepository.updateByFields(mapOf("code" to "U-B")) { it.desc = "B2" }
@@ -132,7 +134,7 @@ class SoftDeleteJpaRepositoryAdvancedTest {
         assertEquals("A3", upsertKeyEntityRepository.findFirstByField("code", "U-A").orElse(null)?.desc)
     }
 
-    // 추가) updateById 단일 엔티티 업데이트
+    // updateById 단일 엔티티 업데이트
     @Test
     @Transactional
     fun updateByIdUpdatesEntity() {
@@ -143,13 +145,13 @@ class SoftDeleteJpaRepositoryAdvancedTest {
         assertEquals("second", reloaded?.desc)
     }
 
-    // 추가) rowLockById 사용
+    // rowLockById 사용
     @Test
     @Transactional
     fun rowLockByIdExecutesBlock() {
         val saved = upsertKeyEntityRepository.upsert(UpsertKeyEntity(code = "LOCK-1", desc = "orig"))
         val id = saved.id!!
-        val ret = upsertKeyEntityRepository.rowLockById(id) {
+        val ret = upsertKeyEntityRepository.rowLockById(id) { _: UpsertKeyEntity ->
             upsertKeyEntityRepository.updateById(id) { it.desc = "locked" }
             "OK"
         }
@@ -158,27 +160,27 @@ class SoftDeleteJpaRepositoryAdvancedTest {
         assertEquals("locked", after?.desc)
     }
 
-    // 3) softDelete 다양한 방식 및 필터링
+    // softDelete 다양한 방식 및 필터링
     @Test
     @Transactional
     fun softDeleteByFieldFieldsCondition() {
-        val e1 = upsertKeyEntityRepository.upsert(UpsertKeyEntity(code = "SD-1", desc = "d1"))
-        val e2 = upsertKeyEntityRepository.upsert(UpsertKeyEntity(code = "SD-2", desc = "d2"))
-        val e3 = upsertKeyEntityRepository.upsert(UpsertKeyEntity(code = "SD-3", desc = "d3"))
+        upsertKeyEntityRepository.upsert(UpsertKeyEntity(code = "SD-1", desc = "d1"))
+        upsertKeyEntityRepository.upsert(UpsertKeyEntity(code = "SD-2", desc = "d2"))
+        upsertKeyEntityRepository.upsert(UpsertKeyEntity(code = "SD-3", desc = "d3"))
         val affectedField = upsertKeyEntityRepository.softDeleteByField("code", "SD-1")
         assertEquals(1, affectedField)
-        assertTrue(upsertKeyEntityRepository.findFirstByField("code", "SD-1").isEmpty) // 필터링됨
+        assertTrue(upsertKeyEntityRepository.findFirstByField("code", "SD-1").isEmpty)
         val affectedFields = upsertKeyEntityRepository.softDeleteByFields(mapOf("code" to "SD-2"))
         assertEquals(1, affectedFields)
         assertTrue(upsertKeyEntityRepository.findFirstByField("code", "SD-2").isEmpty)
         val affectedCond = upsertKeyEntityRepository.softDeleteByCondition("e.code = 'SD-3'")
         assertEquals(1, affectedCond)
         assertTrue(upsertKeyEntityRepository.findFirstByField("code", "SD-3").isEmpty)
-        // 살아있는 개수 = 0
-        assertEquals(0, upsertKeyEntityRepository.countByCondition(""))
+
+        assertEquals(0, upsertKeyEntityRepository.countByCondition(""), "모두 soft-deleted 되어야 함")
     }
 
-    // 추가) 직접 softDelete(entity) 호출
+    // 직접 softDelete(entity) 호출
     @Test
     @Transactional
     fun directSoftDeleteEntity() {
@@ -188,7 +190,7 @@ class SoftDeleteJpaRepositoryAdvancedTest {
         assertTrue(upsertKeyEntityRepository.findFirstByField("code", "SD-DIRECT").isEmpty)
     }
 
-    // 4) softDeleteById 존재하지 않는 ID
+    // softDeleteById 존재하지 않는 ID
     @Test
     @Transactional
     fun softDeleteNonExistentIdReturnsZero() {
@@ -196,7 +198,7 @@ class SoftDeleteJpaRepositoryAdvancedTest {
         assertEquals(0, result)
     }
 
-    // 5) upsertAll flushInterval 동작 (단순 성공 여부 & 전체 저장)
+    // upsertAll flushInterval 동작 (단순 성공 여부 & 전체 저장)
     @Test
     @Transactional
     fun upsertAllFlushInterval() {
@@ -206,11 +208,13 @@ class SoftDeleteJpaRepositoryAdvancedTest {
         assertEquals(12, upsertKeyEntityRepository.countByCondition(""))
     }
 
-    // 추가) pagination & countByField
+    // pagination & countByField
     @Test
     @Transactional
     fun paginationAndCount() {
-        (1..15).forEach { i -> upsertKeyEntityRepository.upsert(UpsertKeyEntity(code = "PG-$i", desc = "d$i")) }
+        (1..15).forEach { i ->
+            upsertKeyEntityRepository.upsert(UpsertKeyEntity(code = "PG-$i", desc = "d$i"))
+        }
         val page1 = upsertKeyEntityRepository.findAllByCondition("", PageRequest.of(0, 10))
         assertEquals(10, page1.content.size)
         assertEquals(15, page1.totalElements)
@@ -221,19 +225,22 @@ class SoftDeleteJpaRepositoryAdvancedTest {
         assertEquals(1, upsertKeyEntityRepository.countByField("code", "PG-1"))
     }
 
-    // 추가) findFirstByFields 복합 조건 테스트
+    // findFirstByFields 복합 조건 테스트
     @Test
     @Transactional
     fun findFirstByFieldsWorks() {
         upsertKeyEntityRepository.upsert(UpsertKeyEntity(code = "MULTI", desc = "X"))
         val found = upsertKeyEntityRepository.findFirstByFields(mapOf("code" to "MULTI", "desc" to "X"))
         assertTrue(found.isPresent)
-        // 삭제 후 다시 조회 -> 빈 값
+
         upsertKeyEntityRepository.softDeleteByField("code", "MULTI")
-        assertTrue(upsertKeyEntityRepository.findFirstByFields(mapOf("code" to "MULTI", "desc" to "X")).isEmpty)
+        assertTrue(
+            upsertKeyEntityRepository.findFirstByFields(mapOf("code" to "MULTI", "desc" to "X")).isEmpty,
+            "soft-delete 후 다시 조회하면 빈 값이어야 함"
+        )
     }
 
-    // 6) 캐스케이드 softDelete (Parent -> Children)
+    // 캐스케이드 softDelete (Parent -> Children)
     @Test
     @Transactional
     fun cascadeSoftDeleteParentChildren() {

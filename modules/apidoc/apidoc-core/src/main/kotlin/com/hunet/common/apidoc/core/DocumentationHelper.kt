@@ -6,7 +6,7 @@ import com.hunet.common.apidoc.annotations.SwaggerDescribable
 import com.hunet.common.apidoc.annotations.SwaggerDescription
 import com.hunet.common.apidoc.enums.DescriptiveEnum
 import com.hunet.common.util.getAnnotation
-import com.hunet.common.util.isExistAnnotation
+import com.hunet.common.util.hasAnnotation
 import io.swagger.v3.oas.annotations.media.Schema
 import org.springframework.restdocs.mockmvc.RestDocumentationResultHandler
 import org.springframework.restdocs.operation.preprocess.Preprocessors
@@ -15,7 +15,6 @@ import org.springframework.restdocs.payload.JsonFieldType
 import org.springframework.restdocs.payload.PayloadDocumentation.fieldWithPath
 import org.springframework.restdocs.payload.PayloadDocumentation.subsectionWithPath
 import org.springframework.restdocs.snippet.Attributes
-import java.lang.reflect.AnnotatedElement
 import java.time.*
 import java.util.*
 import kotlin.reflect.full.memberProperties
@@ -142,7 +141,7 @@ fun buildDescriptors(instance: Any, parentPath: String = ""): List<FieldDescript
         }
     }
     return instance::class.takeIf {
-        it.isExistAnnotation<SwaggerDescribable>() || it.isExistAnnotation<Schema>()
+        it.hasAnnotation<SwaggerDescribable>() || it.hasAnnotation<Schema>()
     }?.memberProperties.orEmpty().mapNotNull { prop ->
         prop.getAnnotation<Schema>()?.let { schemaAnn ->
             Triple(prop, schemaAnn.description, !schemaAnn.required)
@@ -169,7 +168,7 @@ fun buildDescriptors(instance: Any, parentPath: String = ""): List<FieldDescript
                 (value as? Set<*>)?.filterNotNull()?.flatMap { buildDescriptors(it, "$path[]") }.orEmpty() +
                 (value.takeIf {
                     it != null &&
-                            (it::class.isExistAnnotation<SwaggerDescribable>() || it::class.isExistAnnotation<Schema>())
+                            (it::class.hasAnnotation<SwaggerDescribable>() || it::class.hasAnnotation<Schema>())
                 }?.let { buildDescriptors(it, path) }.orEmpty())
         }
     }
@@ -200,5 +199,3 @@ private fun jsonTypeToParamType(type: Any?): SimpleType = when (type) {
     }
     else -> SimpleType.STRING
 }
-
-inline fun <reified A : Annotation> AnnotatedElement.getAnnotation(): A? = this.getAnnotation(A::class.java)

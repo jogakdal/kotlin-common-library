@@ -25,3 +25,6 @@ val <T : Any> KClass<T>.deleteMarkInfo: DeleteMarkInfo?
                 aliveMark = ann.aliveMark
             )
         }
+
+val Class<*>.deleteMarkInfo: DeleteMarkInfo?
+    get() = this.kotlin.deleteMarkInfo

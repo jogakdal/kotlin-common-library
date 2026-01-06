@@ -57,7 +57,6 @@ val syncSnippets by tasks.registering {
     inputs.files(snippetSource, javaSnippetSource)
     outputs.files(variableProcessExampleFile)
     doLast {
-        // --- Kotlin snippet (vp-kotlin-quickstart) ---
         val kText = snippetSource.readText()
         val kRegex = Regex("// snippet:vp-kotlin-quickstart:start(.*?)// snippet:vp-kotlin-quickstart:end", RegexOption.DOT_MATCHES_ALL)
         val kMatch = kRegex.find(kText) ?: error("스니펫 범위를 찾을 수 없습니다 (vp-kotlin-quickstart)")
@@ -72,7 +71,6 @@ val syncSnippets by tasks.registering {
         }
         val kPattern = Regex("<!-- snippet:vp-kotlin-quickstart:start -->(.*?)<!-- snippet:vp-kotlin-quickstart:end -->", RegexOption.DOT_MATCHES_ALL)
 
-        // --- Java snippet (vp-java-quickstart) ---
         val jText = javaSnippetSource.readText()
         val jRegex = Regex("// snippet:vp-java-quickstart:start(.*?)// snippet:vp-java-quickstart:end", RegexOption.DOT_MATCHES_ALL)
         val jMatch = jRegex.find(jText) ?: error("스니펫 범위를 찾을 수 없습니다 (vp-java-quickstart)")
@@ -87,16 +85,13 @@ val syncSnippets by tasks.registering {
         }
         val jPattern = Regex("<!-- snippet:vp-java-quickstart:start -->(.*?)<!-- snippet:vp-java-quickstart:end -->", RegexOption.DOT_MATCHES_ALL)
 
-        // --- Upsert into docs file ---
         var doc = variableProcessExampleFile.readText()
 
-        // Kotlin block: replace if exists, otherwise append with a heading
         val docAfterK = kPattern.replace(doc) { kReplacement }
         doc = if (docAfterK == doc) {
             doc + "\n\n### Kotlin Quick Start\n" + kReplacement + "\n"
         } else docAfterK
 
-        // Java block: replace if exists, otherwise append with a heading
         val docAfterJ = jPattern.replace(doc) { jReplacement }
         val finalDoc = if (docAfterJ == doc) {
             doc + "\n\n### Java Quick Start\n" + jReplacement + "\n"
@@ -109,27 +104,29 @@ val syncSnippets by tasks.registering {
     }
 }
 
-// standard-api-response-library-guide.md 파일 내 version 블록 자동 업데이트
-val updateLibraryGuideVersions by tasks.registering {
+// --- Docs versions auto update (unified) ---
+val updateDocsVersions by tasks.registering {
     group = "documentation"
-    description = "`standard-api-response-library-guide.md` 파일 내 version info 블록을 업데이트합니다."
-    val guideFile = file("apidoc/standard-api-response-library-guide.md")
-    inputs.file(guideFile)
-    outputs.file(guideFile)
+    description = "문서의 최신 버전 정보 블록을 gradle.properties 값으로 동기화합니다."
+    // Files
+    val stdGuide = file("apidoc/standard-api-response-library-guide.md")
+    val softDeleteGuide = file("apidoc/soft-delete-user-guide.md")
+    val softDeleteRef = file("apidoc/soft-delete-reference.md")
+    inputs.files(stdGuide, softDeleteGuide, softDeleteRef)
+    outputs.files(stdGuide, softDeleteGuide, softDeleteRef)
     doLast {
-        if (!guideFile.exists()) {
-            logger.warn("[updateLibraryGuideVersions] guide file not found: ${guideFile.path}")
-            return@doLast
-        }
-        val rootVersion = project.version.toString()
         fun prop(name: String) = findProperty(name)?.toString()
-        val commonCore = prop("moduleVersion.common-core") ?: rootVersion
-        val apidocCore = prop("moduleVersion.apidoc-core") ?: prop("moduleVersion.std-api-documentation") ?: rootVersion
-        val apidocAnnotations = prop("moduleVersion.apidoc-annotations") ?: prop("moduleVersion.std-api-annotations") ?: rootVersion
-        val stdApiResp = prop("moduleVersion.standard-api-response") ?: rootVersion
+        val rootVersion = project.version.toString()
         val nowSeoul = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Seoul"))
         val ts = nowSeoul.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z"))
-        val newBlock = """
+
+        // 1) Update standard-api-response-library-guide.md (existing behavior)
+        if (stdGuide.exists()) {
+            val commonCore = prop("moduleVersion.common-core") ?: rootVersion
+            val apidocCore = prop("moduleVersion.apidoc-core") ?: prop("moduleVersion.std-api-documentation") ?: rootVersion
+            val apidocAnnotations = prop("moduleVersion.apidoc-annotations") ?: prop("moduleVersion.std-api-annotations") ?: rootVersion
+            val stdApiResp = prop("moduleVersion.standard-api-response") ?: rootVersion
+            val newBlock = """
 ```
 Last updated: $ts
 common-core: $commonCore
@@ -138,42 +135,80 @@ apidoc-annotations: $apidocAnnotations
 standard-api-response: $stdApiResp
 ```
 """.trim()
-        val pattern = Regex("<!-- version-info:start -->[\\s\\S]*?<!-- version-info:end -->")
-        val text = guideFile.readText()
-        if (!pattern.containsMatchIn(text)) {
-            logger.warn("[updateLibraryGuideVersions] version marker block이 없습니다; 스킵합니다.")
-            return@doLast
-        }
-        val replacement = "<!-- version-info:start -->\n$newBlock\n<!-- version-info:end -->"
-        val updated = pattern.replace(text) { replacement }
-        if (updated != text) {
-            guideFile.writeText(updated)
-            println("[updateLibraryGuideVersions] updated versions -> common-core=$commonCore, apidoc-core=$apidocCore, apidoc-annotations=$apidocAnnotations, standard-api-response=$stdApiResp")
-        } else {
-            println("[updateLibraryGuideVersions] no changes (already up to date)")
-        }
+            val pattern = Regex("<!-- version-info:start -->[\\s\\S]*?<!-- version-info:end -->")
+            val text = stdGuide.readText()
+            if (pattern.containsMatchIn(text)) {
+                val replacement = "<!-- version-info:start -->\n$newBlock\n<!-- version-info:end -->"
+                val updated = pattern.replace(text) { replacement }
+                if (updated != text) {
+                    stdGuide.writeText(updated)
+                    println("[updateDocsVersions] updated std guide versions")
+                }
+            } else {
+                logger.warn("[updateDocsVersions] version marker block not found in ${stdGuide.path}")
+            }
+        } else logger.warn("[updateDocsVersions] std guide not found: ${stdGuide.path}")
+
+        // 2) Update soft-delete-user-guide.md
+        if (softDeleteGuide.exists()) {
+            val jpaRepoExtVersion = prop("moduleVersion.jpa-repository-extension") ?: rootVersion
+            val newBlock = """
+```
+Last updated: $ts
+jpa-repository-extension: $jpaRepoExtVersion
+```
+""".trim()
+            val pattern = Regex("<!-- version-info:start -->[\\s\\S]*?<!-- version-info:end -->")
+            val text = softDeleteGuide.readText()
+            if (pattern.containsMatchIn(text)) {
+                val replacement = "<!-- version-info:start -->\n$newBlock\n<!-- version-info:end -->"
+                val updated = pattern.replace(text) { replacement }
+                if (updated != text) {
+                    softDeleteGuide.writeText(updated)
+                    println("[updateDocsVersions] updated soft-delete guide version -> $jpaRepoExtVersion")
+                }
+            } else {
+                logger.warn("[updateDocsVersions] version marker block not found in ${softDeleteGuide.path}")
+            }
+        } else logger.warn("[updateDocsVersions] soft-delete guide not found: ${softDeleteGuide.path}")
+
+        // 3) Update soft-delete-reference.md
+        if (softDeleteRef.exists()) {
+            val jpaRepoExtVersion = prop("moduleVersion.jpa-repository-extension") ?: rootVersion
+            val newBlock = """
+```
+Last updated: $ts
+jpa-repository-extension: $jpaRepoExtVersion
+```
+""".trim()
+            val pattern = Regex("<!-- version-info:start -->[\\s\\S]*?<!-- version-info:end -->")
+            val text = softDeleteRef.readText()
+            if (pattern.containsMatchIn(text)) {
+                val replacement = "<!-- version-info:start -->\n$newBlock\n<!-- version-info:end -->"
+                val updated = pattern.replace(text) { replacement }
+                if (updated != text) {
+                    softDeleteRef.writeText(updated)
+                    println("[updateDocsVersions] updated soft-delete reference version -> $jpaRepoExtVersion")
+                }
+            } else {
+                logger.warn("[updateDocsVersions] version marker block not found in ${softDeleteRef.path}")
+            }
+        } else logger.warn("[updateDocsVersions] soft-delete reference not found: ${softDeleteRef.path}")
     }
 }
 
 if (tasks.findByName("docs") == null) {
-    tasks.register("docs") { dependsOn(updateLibraryGuideVersions) }
+    tasks.register("docs") { dependsOn(updateDocsVersions) }
 } else {
-    tasks.named("docs") { dependsOn(updateLibraryGuideVersions) }
+    tasks.named("docs") { dependsOn(updateDocsVersions) }
 }
 
 val existingBuild = tasks.findByName("build")
-val rootBuild: TaskProvider<Task> = if (existingBuild != null) {
-    tasks.named("build")
-} else {
-    tasks.register("build") {
-        group = "build"
-        description = "Aggregate build for all subprojects"
-    }
+val rootBuild: TaskProvider<Task> = if (existingBuild != null) tasks.named("build") else tasks.register("build") {
+    group = "build"
+    description = "Aggregate build for all subprojects"
 }
-
-rootBuild.configure {
-    dependsOn(updateLibraryGuideVersions)
-}
+rootBuild.configure { dependsOn(updateDocsVersions) }
 
 gradle.projectsEvaluated {
     rootBuild.configure {
@@ -181,11 +216,6 @@ gradle.projectsEvaluated {
             if (sub != rootProject && sub.tasks.findByName("build") != null) {
                 dependsOn(sub.path + ":build")
             }
-        }
-    }
-    rootProject.subprojects.find { it.path == ":standard-api-response" }?.let { respProj ->
-        respProj.tasks.matching { it.name == "build" }.configureEach {
-            dependsOn(rootProject.tasks.named("updateLibraryGuideVersions"))
         }
     }
 }

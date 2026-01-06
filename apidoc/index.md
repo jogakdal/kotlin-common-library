@@ -6,6 +6,12 @@
 - [Examples](./standard-api-response-examples.md)
 - [Reference Manual](./standard-api-response-reference.md)
 
+## Soft Delete JPA Repository (소프트 삭제 리포지토리 확장)
+- [User Guide](./soft-delete-user-guide.md)
+- [Reference Manual](./soft-delete-reference.md)
+- [Migration Guide](./soft-delete-migration.md)
+- [Examples](./soft-delete-examples.md)
+
 ## Core Test Utilities
 - AbstractControllerTest (테스트 클래스 베이스)
   - [User Guide](./abstract-controller-test-user-guide.md)

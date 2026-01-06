@@ -1,3 +1,4 @@
+@file:Suppress("NonAsciiCharacters", "SpellCheckingInspection")
 package com.hunet.common.stdapi.response
 
 import com.fasterxml.jackson.annotation.JsonProperty
@@ -27,7 +28,7 @@ class AliasConflictResolutionTest {
         "\"payload\":$fragment}".trimIndent()
 
     @Test
-    fun firstWin_userId_input_maps_to_camel_property() {
+    fun `FIRST_WIN 모드에서 userId 입력은 camel case 프로퍼티로 매핑된다`() {
         AliasConflictConfig.mode = AliasConflictMode.WARN
         AliasConflictConfig.resolution = AliasConflictResolution.FIRST_WIN
         clearAliasCaches()
@@ -38,7 +39,7 @@ class AliasConflictResolutionTest {
     }
 
     @Test
-    fun bestMatch_userId_input_maps_to_camel_property() {
+    fun `BEST_MATCH 모드에서 userId 입력은 camel case 프로퍼티로 매핑된다`() {
         AliasConflictConfig.mode = AliasConflictMode.WARN
         AliasConflictConfig.resolution = AliasConflictResolution.BEST_MATCH
         clearAliasCaches()
@@ -49,7 +50,7 @@ class AliasConflictResolutionTest {
     }
 
     @Test
-    fun bestMatch_user_id_input_prefers_snake_property() {
+    fun `BEST_MATCH 모드에서 user_id 입력은 snake case 프로퍼티를 우선한다`() {
         AliasConflictConfig.mode = AliasConflictMode.WARN
         AliasConflictConfig.resolution = AliasConflictResolution.BEST_MATCH
         clearAliasCaches()

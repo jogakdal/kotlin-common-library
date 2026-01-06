@@ -1,45 +1,49 @@
 package com.hunet.common.data.jpa.softdelete
 
+import com.hunet.common.data.jpa.resolvedTableName
 import com.hunet.common.data.jpa.sequence.GenerateSequentialCode
 import com.hunet.common.data.jpa.sequence.SequenceGenerator
 import com.hunet.common.data.jpa.sequence.spelExpressionParser
 import com.hunet.common.data.jpa.softdelete.annotation.deleteMarkInfo
+import com.hunet.common.data.jpa.softdelete.internal.AlivePredicateBuilder
+import com.hunet.common.data.jpa.softdelete.internal.DeletePredicateBuilder
 import com.hunet.common.data.jpa.softdelete.internal.DeleteMarkInfo
 import com.hunet.common.data.jpa.softdelete.internal.DeleteMarkValue
 import com.hunet.common.lib.SpringContextHolder
 import com.hunet.common.logging.commonLogger
-import com.hunet.common.util.annotatedFields
-import com.hunet.common.util.getAnnotation
-import com.hunet.common.util.isNotEmpty
+import com.hunet.common.util.*
 import jakarta.persistence.*
 import jakarta.persistence.criteria.Predicate
 import org.hibernate.annotations.SQLRestriction
-import org.hibernate.annotations.Where
-import org.springframework.boot.context.properties.EnableConfigurationProperties
-import org.springframework.context.annotation.Configuration
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.LastModifiedDate
 import org.springframework.data.domain.*
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories
 import org.springframework.data.jpa.repository.support.JpaEntityInformation
 import org.springframework.data.jpa.repository.support.SimpleJpaRepository
 import org.springframework.data.repository.NoRepositoryBean
 import org.springframework.expression.spel.support.StandardEvaluationContext
 import org.springframework.transaction.annotation.Transactional
 import java.io.Serializable
+import java.lang.reflect.Field
 import java.time.LocalDateTime
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.reflect.KClass
 import kotlin.reflect.KMutableProperty1
+import kotlin.reflect.KProperty1
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.jvm.isAccessible
 
-@Target(AnnotationTarget.PROPERTY, AnnotationTarget.FIELD) // FIELD 추가하여 Java 필드 사용 가능
+@Target(AnnotationTarget.PROPERTY, AnnotationTarget.FIELD)
 @Retention(AnnotationRetention.RUNTIME)
 annotation class UpsertKey
+
+enum class NullMergePolicy { IGNORE, OVERWRITE }
+enum class DeleteStrategy { RECURSIVE, BULK }
 
 @Suppress("unused")
 @NoRepositoryBean
@@ -72,14 +76,20 @@ interface SoftDeleteJpaRepository<E, ID: Serializable> : JpaRepository<E, ID> {
     fun countByCondition(condition: String = ""): Long
     fun findOne(id: ID): Optional<E> = findOneById(id)
     fun findOneById(id: ID): Optional<E>
+
     fun findFirstByField(fieldName: String, fieldValue: Any): Optional<E>
     fun findFirstByFields(fields: Map<String, Any>): Optional<E>
     fun findFirstByCondition(condition: String = ""): Optional<E>
-    fun <R> rowLockById(id: ID, block: () -> R): R
-    fun <R> rowLockByField(fieldName: String, fieldValue: Any, block: () -> R): R
-    fun <R> rowLockByFields(fields: Map<String, Any>, block: () -> R): R
-    fun <R> rowLockByCondition(condition: String, block: () -> R): R
+
+    fun existsAliveById(id: ID): Boolean
+
+    fun <R> rowLockById(id: ID, block: (E) -> R): R
+    fun <R> rowLockByField(fieldName: String, fieldValue: Any, block: (E) -> R): R
+    fun <R> rowLockByFields(fields: Map<String, Any>, block: (E) -> R): R
+    fun <R> rowLockByCondition(condition: String, block: (E) -> R): R
     fun getEntityClass(): Class<E>
+    // 캐시 missCount 및 cacheSize (테스트/모니터링 용)
+    fun sequentialCodeCacheStats(): Pair<Long, Int>
 }
 
 @NoRepositoryBean
@@ -90,34 +100,100 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
     private val registry: SoftDeleteRepositoryRegistry by lazy { SpringContextHolder.getBean() }
     private val sequenceGenerator: SequenceGenerator by lazy { SpringContextHolder.getBean() }
     val entityType by lazy { entityInformation.javaType }
-    val entityName by lazy { entityManager.metamodel.entity(entityType).name }
-    val tableName by lazy {
-        entityInformation.javaType.getAnnotation(Table::class.java)?.name ?: throw IllegalStateException(
-            "Entity ${entityInformation.javaType.simpleName} must have a @Table annotation with a name"
-        )
-    }
+    val entityName: String? by lazy { entityManager.metamodel.entity(entityType).name }
+    val tableName: String by lazy { entityInformation.javaType.resolvedTableName }
     private val autoModify: String by lazy {
-        entityType.kotlin.annotatedFields<LastModifiedDate>().mapNotNull { it.getAnnotation<Column>()?.name }
+        entityType.annotatedFields<LastModifiedDate>().mapNotNull { it.getAnnotation<Column>()?.name }
             .filter { it.isNotEmpty() }.joinToString(separator = "") { name -> ", `$name` = NOW()" }
     }
-    private val deleteMarkInfo: DeleteMarkInfo? = entityType.kotlin.deleteMarkInfo
+    private val deleteMarkInfo: DeleteMarkInfo? = entityType.deleteMarkInfo
     private val flushInterval: Int by lazy {
         SpringContextHolder.getProperty("softdelete.upsert-all.flush-interval", 50)
     }
     private val seqCounters = ConcurrentHashMap<String, AtomicLong>()
     private val deleteDepthTL = ThreadLocal.withInitial { 0 }
-    private val duplicateAliveFilterWarned = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val duplicateAliveFilterWarned = AtomicBoolean(false)
+    // 캐시/통계: 순차 코드 필드 탐색 결과 및 미스 카운터
+    private fun newIdentitySet(): MutableSet<Any> = Collections.newSetFromMap(IdentityHashMap())
+    private data class SeqFields(
+        val kotlinProps: List<KMutableProperty1<Any, Any?>>, val javaFields: List<Field>
+    )
 
     companion object {
         val LOG by commonLogger()
+        private val sequentialCodeFieldCache = ConcurrentHashMap<KClass<*>, SeqFields>()
+        internal val seqCacheMissCounter = AtomicLong(0)
+    }
+    // Alive predicate 통합 데이터 클래스 및 헬퍼 (단일 정의)
+    private data class AlivePredicateUnified(val fragment: String, val params: Map<String, Any?>)
+    private fun buildAlivePredicateUnified(
+        info: DeleteMarkInfo?,
+        alias: String = "e",
+        paramName: String = "aliveMarkValue"
+    ): AlivePredicateUnified {
+        if (info == null) return AlivePredicateUnified("", emptyMap())
+        return when (info.aliveMark) {
+            DeleteMarkValue.NULL -> AlivePredicateUnified(" AND $alias.${info.fieldName} IS NULL", emptyMap())
+            DeleteMarkValue.NOT_NULL -> AlivePredicateUnified(" AND $alias.${info.fieldName} IS NOT NULL", emptyMap())
+            else -> AlivePredicateUnified(
+                " AND $alias.${info.fieldName} = :$paramName",
+                mapOf(paramName to info.aliveMarkValue)
+            )
+        }
+    }
+    private fun computeDeleteMarkValue(info: DeleteMarkInfo): Any? = when (info.deleteMark) {
+        DeleteMarkValue.NULL -> null
+        DeleteMarkValue.NOW -> LocalDateTime.now()
+        DeleteMarkValue.NOT_NULL -> DeleteMarkValue.getDefaultDeleteMarkValue(info)
+        else -> info.deleteMarkValue
+    }
+    private val strictQueryValidation: Boolean by lazy {
+        try {
+            SpringContextHolder.getProperty("softdelete.query.strict", false)
+        }
+        catch (_: Exception) { false }
+    }
+    // 허용 필드 캐시 (Kotlin/Java property + @Column name)
+    private val allowedFieldNames: Set<String> by lazy {
+        (entityType.kotlin.memberProperties.map { it.name } + entityType.declaredFields.map { it.name } +
+                entityType.collectAnnotationAttributeValues<Column>("name")).toSet()
+    }
+    private val nullMergePolicy: NullMergePolicy by lazy {
+        val raw = try {
+            SpringContextHolder.getProperty("softdelete.upsert.null-merge", "ignore")
+        } catch (_: Exception) { "ignore" }
+
+        when (raw.lowercase()) {
+            "ignore" -> NullMergePolicy.IGNORE
+            "overwrite" -> NullMergePolicy.OVERWRITE
+            else -> {
+                LOG.warn(
+                    "[SoftDeleteJpaRepository] Invalid value '$raw' for softdelete.upsert.null-merge. Using IGNORE."
+                )
+                NullMergePolicy.IGNORE
+            }
+        }
+    }
+    private val deleteStrategy: DeleteStrategy by lazy {
+        val raw = try {
+            SpringContextHolder.getProperty("softdelete.delete.strategy", "recursive")
+        } catch (_: Exception) { "recursive" }
+        when (raw.lowercase()) {
+            "bulk" -> DeleteStrategy.BULK
+            else -> DeleteStrategy.RECURSIVE
+        }
+    }
+    private val usePredicateBuilder: Boolean by lazy {
+        try {
+            SpringContextHolder.getProperty("softdelete.alive-predicate.enabled", false)
+        } catch (_: Exception) { false }
     }
 
+    override fun sequentialCodeCacheStats() = seqCacheMissCounter.get() to sequentialCodeFieldCache.size
     override fun getEntityClass(): Class<E> = entityType
 
     private fun findByUpsertKey(entity: E): E? {
-        val upsertKeyProp = entityType.kotlin.memberProperties.firstOrNull {
-            it.getAnnotation<UpsertKey>() != null
-        }
+        val upsertKeyProp = entityType.kotlin.memberProperties.firstOrNull { it.hasAnnotation<UpsertKey>() }
         if (upsertKeyProp != null) {
             upsertKeyProp.isAccessible = true
             val cb = entityManager.criteriaBuilder
@@ -126,22 +202,23 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
             val predicates = mutableListOf<Predicate>(
                 cb.equal(root.get<Any>(upsertKeyProp.name), upsertKeyProp.getter.call(entity))
             )
-            deleteMarkInfo?.let {
-                val deletePath = root.get<Any>(it.fieldName)
-                val alivePredicate = when (it.aliveMark) {
-                    DeleteMarkValue.NULL -> cb.isNull(deletePath)
-                    DeleteMarkValue.NOT_NULL -> cb.isNotNull(deletePath)
-                    else -> cb.equal(deletePath, it.aliveMarkValue)
+            deleteMarkInfo?.let { info ->
+                val built = buildAlivePredicateUnified(info, alias = root.alias ?: "e", paramName = "_aliveMark")
+                if (built.fragment.isNotBlank()) {
+                    val deletePath = root.get<Any>(info.fieldName)
+                    val alivePredicate = when (info.aliveMark) {
+                        DeleteMarkValue.NULL -> cb.isNull(deletePath)
+                        DeleteMarkValue.NOT_NULL -> cb.isNotNull(deletePath)
+                        else -> cb.equal(deletePath, info.aliveMarkValue)
+                    }
+                    predicates += alivePredicate
                 }
-                predicates += alivePredicate
             }
             cq.where(*predicates.toTypedArray())
             return entityManager.createQuery(cq).resultList.firstOrNull()
         }
 
-        val upsertKeyField = entityType.declaredFields.firstOrNull {
-            it.isAnnotationPresent(UpsertKey::class.java)
-        } ?: return null
+        val upsertKeyField = entityType.declaredFields.firstOrNull { it.hasAnnotation<UpsertKey>() } ?: return null
         upsertKeyField.isAccessible = true
         val fieldValue = upsertKeyField.get(entity)
         val cb = entityManager.criteriaBuilder
@@ -150,12 +227,12 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
         val predicates = mutableListOf<Predicate>(
             cb.equal(root.get<Any>(upsertKeyField.name), fieldValue)
         )
-        deleteMarkInfo?.let {
-            val deletePath = root.get<Any>(it.fieldName)
-            val alivePredicate = when (it.aliveMark) {
+        deleteMarkInfo?.let { info ->
+            val deletePath = root.get<Any>(info.fieldName)
+            val alivePredicate = when (info.aliveMark) {
                 DeleteMarkValue.NULL -> cb.isNull(deletePath)
                 DeleteMarkValue.NOT_NULL -> cb.isNotNull(deletePath)
-                else -> cb.equal(deletePath, it.aliveMarkValue)
+                else -> cb.equal(deletePath, info.aliveMarkValue)
             }
             predicates += alivePredicate
         }
@@ -164,126 +241,232 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
     }
 
     private fun copyAndMerge(entity: E, existing: E): E {
-        entity::class.memberProperties.forEach { prop ->
-            if (prop is KMutableProperty1<*, *>) {
-                prop.isAccessible = true
+        val changedFields = mutableListOf<String>()
+        entity::class.memberProperties.forEach { p ->
+            if (p is KMutableProperty1<*, *>) {
+                p.isAccessible = true
                 when {
-                    prop.getAnnotation<CreatedDate>() != null -> {}
-                    prop.getAnnotation<LastModifiedDate>() != null -> prop.setter.call(existing, LocalDateTime.now())
+                    p.hasAnnotation<CreatedDate>() -> {}
+                    p.hasAnnotation<LastModifiedDate>() -> p.setter.call(existing, LocalDateTime.now())
                     else -> {
-                        val newValue = prop.getter.call(entity)
-                        // GenerateSequentialCode 필드가 null로 설정된 경우도 복사하여 재생성 트리거
-                        if (prop.getAnnotation<GenerateSequentialCode>() != null || newValue != null) {
-                            prop.setter.call(existing, newValue)
+                        val newValue = p.getter.call(entity)
+                        val isSeq = p.hasAnnotation<GenerateSequentialCode>()
+                        val assign = if (isSeq) {
+                            // Sequential code 필드는 null 입력 시 기존 값 유지
+                            newValue != null
+                        } else {
+                            newValue != null || nullMergePolicy == NullMergePolicy.OVERWRITE
                         }
+                        if (assign) {
+                            val oldValue = try { p.getter.call(existing) } catch (_: Exception) { null }
+                            p.setter.call(existing, newValue)
+                            changedFields += "${p.name}:$oldValue -> $newValue".take(256)
+                        } else LOG.debug(
+                            "[SoftDeleteJpaRepository] Skip field '{}' (value=null, seq={}, policy={})",
+                            p.name,
+                            isSeq,
+                            nullMergePolicy
+                        )
                     }
                 }
             }
         }
+        if (changedFields.isNotEmpty() && LOG.isDebugEnabled) {
+            LOG.debug(
+                "[SoftDeleteJpaRepository] " +
+                        "Changed fields for ${entityType.simpleName}: ${changedFields.joinToString(", ")}"
+            )
+        }
 
-        generateSequentialCodesRecursively(existing)
-
-        val merged = entityManager.merge(existing)
-        return merged
+        applySequentialCodes(existing, newIdentitySet())
+        return entityManager.merge(existing)
     }
 
-    private fun generateSequentialCodesRecursively(entity: Any) {
-        generateSequentialCodesForEntity(entity)
+    // 시퀀스 코드 계산 헬퍼
+    private fun computeSequentialCode(holder: Any, ann: GenerateSequentialCode): String {
+        val prefix = if (ann.prefixExpression.isNotBlank()) {
+            spelExpressionParser.parseExpression(ann.prefixExpression)
+                .getValue(StandardEvaluationContext(holder)) as String
+        } else ann.prefixProvider.java.getDeclaredConstructor().newInstance().determinePrefix(holder)
+
+        return (sequenceGenerator.generateKey(prefix, holder) as? String)?.takeIf {
+            it.isNotBlank()
+        } ?: (prefix + seqCounters.computeIfAbsent(prefix) { AtomicLong(0) }.incrementAndGet())
+    }
+
+    // 통합 재귀 순차 코드 적용 (캐싱 + 순환참조 방지)
+    private fun applySequentialCodes(entity: Any, visited: MutableSet<Any>) {
+        if (!visited.add(entity)) {
+            LOG.warn("[SoftDeleteJpaRepository] Circular reference detected: ${entity.javaClass.simpleName}.")
+            return
+        }
+
+        val kClass = entity::class
+        val seqFields = sequentialCodeFieldCache.computeIfAbsent(kClass) {
+            val props = kClass.memberProperties
+                .filter { it is KMutableProperty1<*, *> && it.hasAnnotation<GenerateSequentialCode>() }
+                .map { @Suppress("UNCHECKED_CAST") (it as KMutableProperty1<Any, Any?>) }
+            val jFields = entity.javaClass.declaredFields.filter { it.hasDirectAnnotation<GenerateSequentialCode>() }
+            seqCacheMissCounter.incrementAndGet()
+            LOG.debug(
+                "[SoftDeleteJpaRepository] sequentialCodeCache MISS class=${kClass.simpleName} props=${props.size} " +
+                        "fields=${jFields.size}"
+            )
+            SeqFields(props, jFields)
+        }
+        LOG.debug("[SoftDeleteJpaRepository] sequentialCodeCache HIT class=${kClass.simpleName}")
+
+        seqFields.kotlinProps.forEach { prop ->
+            prop.isAccessible = true
+            val current = (prop.get(entity) as? String).orEmpty()
+            if (current.isBlank()) {
+                val ann = prop.getAnnotation<GenerateSequentialCode>() ?: return@forEach
+                val finalCode = computeSequentialCode(entity, ann)
+                try { prop.setter.call(entity, finalCode) } catch (_: Exception) {}
+            }
+        }
+
+        seqFields.javaFields.forEach { field ->
+            field.isAccessible = true
+            val current = (field.get(entity) as? String).orEmpty()
+            if (current.isBlank()) {
+                val ann = field.getAnnotation<GenerateSequentialCode>() ?: return@forEach
+                val finalCode = computeSequentialCode(entity, ann)
+                try { field.set(entity, finalCode) } catch (_: Exception) {}
+            }
+        }
 
         entity::class.memberProperties.forEach { prop ->
-            if (prop is KMutableProperty1<*, *>) {
+            try {
                 prop.isAccessible = true
-                try {
-                    @Suppress("UNCHECKED_CAST")
-                    val value = (prop as KMutableProperty1<Any, Any?>).get(entity)
-                    when (value) {
-                        is Collection<*> -> {
-                            value.filterNotNull().forEach { child ->
-                                if (hasJpaRelationAnnotation(prop)) {
-                                    generateSequentialCodesRecursively(child)
-                                }
-                            }
-                        }
-                        else -> {
-                            if (value != null && hasJpaRelationAnnotation(prop)) {
-                                generateSequentialCodesRecursively(value)
-                            }
-                        }
+                when (val value = prop.getter.call(entity)) {
+                    is Collection<*> -> value.filterNotNull().forEach { child ->
+                        val recurse = child.javaClass.hasAnnotation<Entity>() || isJpaRelation(prop)
+                        if (recurse) applySequentialCodes(child, visited)
                     }
-                } catch (_: Exception) {
-                    // 접근 불가능한 프로퍼티는 무시
+                    else -> if (value != null) {
+                        val recurse = value.javaClass.hasAnnotation<Entity>() || isJpaRelation(prop)
+                        if (recurse) applySequentialCodes(value, visited)
+                    }
                 }
-            }
+            } catch (_: Exception) { }
         }
     }
 
-    private fun hasJpaRelationAnnotation(prop: KMutableProperty1<*, *>): Boolean {
-        return prop.annotations.any {
-            it is OneToMany || it is OneToOne || it is ManyToOne || it is ManyToMany
-        }
-    }
-
-    private fun generateSequentialCodesForEntity(entity: Any) {
-        entity::class.memberProperties
-            .filterIsInstance<KMutableProperty1<Any, Any?>>()
-            .filter { it.getAnnotation<GenerateSequentialCode>() != null }
-            .forEach { prop ->
-                prop.isAccessible = true
-                val current = (prop.get(entity) as? String).orEmpty()
-                if (current.isBlank()) {
-                    val ann = prop.getAnnotation<GenerateSequentialCode>()!!
-                    val prefix = if (ann.prefixExpression.isNotBlank()) {
-                        spelExpressionParser.parseExpression(ann.prefixExpression)
-                            .getValue(StandardEvaluationContext(entity)) as String
-                    } else ann.prefixProvider.java.getDeclaredConstructor().newInstance().determinePrefix(entity)
-                    val genCandidate = sequenceGenerator.generateKey(prefix, entity) as? String
-                    val finalCode = genCandidate?.takeIf {
-                        it.isNotBlank()
-                    } ?: (prefix + seqCounters.computeIfAbsent(prefix) { AtomicLong(0) }.incrementAndGet())
-                    try { prop.setter.call(entity, finalCode) } catch (_: Exception) {}
-                }
-            }
-
-        entity.javaClass.declaredFields
-            .filter { it.getAnnotation(GenerateSequentialCode::class.java) != null }
-            .forEach { field ->
-                field.isAccessible = true
-                val current = (field.get(entity) as? String).orEmpty()
-                if (current.isBlank()) {
-                    val ann = field.getAnnotation(GenerateSequentialCode::class.java)
-                    val prefix = if (ann.prefixExpression.isNotBlank()) {
-                        spelExpressionParser.parseExpression(ann.prefixExpression)
-                            .getValue(StandardEvaluationContext(entity)) as String
-                    } else ann.prefixProvider.java.getDeclaredConstructor().newInstance().determinePrefix(entity)
-                    val genCandidate = sequenceGenerator.generateKey(prefix, entity) as? String
-                    val finalCode = genCandidate?.takeIf {
-                        it.isNotBlank()
-                    } ?: (prefix + seqCounters.computeIfAbsent(prefix) { AtomicLong(0) }.incrementAndGet())
-                    field.set(entity, finalCode)
-                }
-            }
+    private fun isJpaRelation(prop: KProperty1<*, *>) = prop.annotations.any {
+        it is OneToMany || it is OneToOne || it is ManyToOne || it is ManyToMany
     }
 
     private fun applyUpdateEntity(entity: E, copyFunc: (E) -> Unit): E {
         val createdProps = entity::class.memberProperties.filterIsInstance<KMutableProperty1<E, Any?>>().filter {
-            it.getAnnotation<CreatedDate>() != null
+            it.hasAnnotation<CreatedDate>()
         }
         val lastModifiedProps = entity::class.memberProperties.filterIsInstance<KMutableProperty1<E, Any?>>().filter {
-            it.getAnnotation<LastModifiedDate>() != null
+            it.hasAnnotation<LastModifiedDate>()
         }
         @Suppress("UNCHECKED_CAST")
         val deleteProp = deleteMarkInfo?.field as? KMutableProperty1<E, Any?>
         val originalCreated = createdProps.associateWith { it.get(entity) }
         val originalDelete = deleteProp?.get(entity)
         copyFunc(entity)
-        originalCreated.forEach { (prop, value) -> prop.set(entity, value) }
+        originalCreated.forEach { (prop, value) ->
+            prop.set(entity, value)
+        }
         deleteProp?.set(entity, originalDelete)
-        lastModifiedProps.forEach { prop -> prop.set(entity, LocalDateTime.now()) }
+        lastModifiedProps.forEach { prop ->
+            prop.set(entity, LocalDateTime.now())
+        }
         return entity
     }
 
-    private fun generateSequentialCodes(entity: E) {
-        generateSequentialCodesForEntity(entity)
+    @Transactional
+    @Modifying
+    override fun softDeleteByField(fieldName: String, fieldValue: Any) =
+        findAllByField(fieldName, fieldValue).content.sumOf { softDelete(it) }
+
+    @Transactional
+    @Modifying
+    override fun softDeleteByCondition(condition: String) =
+        findAllByCondition(condition.ifEmpty { "" }).content.sumOf { softDelete(it) }
+
+    @Transactional
+    @Modifying
+    override fun softDeleteByFields(fields: Map<String, Any>) = findAllByFields(fields).content.sumOf {
+        softDelete(it)
+    }
+
+    @Transactional
+    @Modifying
+    override fun softDeleteById(id: ID) = findOneById(id).orElse(null)?.let(this::softDelete) ?: 0
+
+    // Alive 존재 확인 구현: 자기호출 회피를 위해 독립 쿼리로 조회(read-only)
+    @Transactional(readOnly = true)
+    override fun existsAliveById(id: ID): Boolean {
+        val idAttrs = entityInformation.idAttributeNames.takeIf { it.isNotEmpty() }
+            ?: throw IllegalStateException("Entity ${entityType.simpleName} must have at least one @Id attribute")
+        val whereClause = idAttrs.joinToString(" AND ") { attr -> "e.$attr = :$attr" }
+        val cnt = executeCount(whereClause) {
+            if (idAttrs.size == 1) setParameter(idAttrs.first(), id) else {
+                val paramMap = extractIdParamMap(id as Any, idAttrs)
+                paramMap.forEach { (name, value) -> setParameter(name, value) }
+            }
+        }
+        return cnt > 0
+    }
+
+    @Transactional
+    override fun <R> rowLockById(id: ID, block: (E) -> R): R {
+        val idAttrs = entityInformation.idAttributeNames.toList()
+        val whereClause = when {
+            idAttrs.size == 1 -> "e.${idAttrs[0]} = :${idAttrs[0]}"
+            else -> idAttrs.joinToString(" AND ") { "e.$it = :$it" }
+        }
+        val locked = applyPessimisticLock(whereClause) {
+            if (idAttrs.size == 1) setParameter(idAttrs[0], id) else {
+                val paramMap = extractIdParamMap(id as Any, idAttrs)
+                paramMap.forEach { (name, value) ->
+                    setParameter(name, value ?: throw IllegalArgumentException("'$name' 값이 없습니다"))
+                }
+            }
+        }.firstOrNull() ?: throw NoSuchElementException("Row lock 대상(${entityType.simpleName})이 존재하지 않습니다: id=$id")
+        return block(locked)
+    }
+
+    @Transactional
+    override fun <R> rowLockByField(fieldName: String, fieldValue: Any, block: (E) -> R): R {
+        val locked = applyPessimisticLock("e.$fieldName = :fieldValue") {
+            setParameter("fieldValue", fieldValue)
+        }.firstOrNull() ?: throw NoSuchElementException(
+            "Row lock 대상(${entityType.simpleName})이 존재하지 않습니다: $fieldName=$fieldValue"
+        )
+        return block(locked)
+    }
+
+    @Transactional
+    override fun <R> rowLockByFields(fields: Map<String, Any>, block: (E) -> R): R {
+        val where = fields.entries.joinToString(" AND ") { "e.${it.key} = :${it.key}" }
+        val locked = applyPessimisticLock(where) {
+            fields.forEach { (k, v) ->
+                setParameter(k, v)
+            }
+        }.firstOrNull() ?: throw NoSuchElementException(
+            "Row lock 대상(${entityType.simpleName})이 존재하지 않습니다: ${fields.entries.joinToString()}"
+        )
+        return block(locked)
+    }
+
+    @Transactional
+    override fun <R> rowLockByCondition(condition: String, block: (E) -> R): R {
+        val locked = applyPessimisticLock(condition.ifEmpty { "TRUE" }) {
+        }.firstOrNull() ?: throw NoSuchElementException(
+            "Row lock 대상(${entityType.simpleName})이 존재하지 않습니다: condition='${condition.ifEmpty { "TRUE" }}'"
+        )
+        return block(locked)
+    }
+
+    override fun refresh(entity: E): E {
+        entityManager.refresh(entity)
+        return entity
     }
 
     @Transactional
@@ -291,7 +474,10 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
         val result = mutableListOf<E>()
         entities.forEachIndexed { idx, entity ->
             result += upsert(entity)
-            if (idx > 0 && idx % flushInterval == 0) { entityManager.flush(); entityManager.clear() }
+            if (idx > 0 && idx % flushInterval == 0) {
+                entityManager.flush()
+                entityManager.clear()
+            }
         }
         return result
     }
@@ -299,17 +485,16 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
     @Suppress("UNCHECKED_CAST")
     @Transactional
     override fun upsert(entity: E): E {
-        generateSequentialCodes(entity)
+        // UpsertKey 기반 기존 엔티티 탐색 → 머지
         findByUpsertKey(entity)?.let { found ->
             val inputId = entityInformation.getId(entity) as ID?
             val foundId = entityInformation.getId(found) as ID?
             if (inputId != null && foundId != null && inputId != foundId) {
                 throw IllegalStateException("업데이트 실패: 입력 엔티티 ID($inputId)와 DB 엔티티 ID($foundId)가 다릅니다.")
             }
-            val merged = copyAndMerge(entity, found)
-            generateSequentialCodes(merged)
-            return merged
+            return copyAndMerge(entity, found)
         }
+        // ID 기반 기존 엔티티 조회 → 삭제 상태면 새로 persist (이후 코드 생성), 아니면 머지
         val entityId = entityInformation.getId(entity) as ID?
         if (entityId != null && existsById(entityId)) {
             val existing = findById(entityId).orElse(null)
@@ -321,18 +506,17 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
                     else -> curr == info.deleteMarkValue
                 }
                 if (isDeleted) {
+                    // prefixExpression에서 id == null 분기 처리를 위해 persist 이전에 코드 생성 수행
+                    applySequentialCodes(entity as Any, newIdentitySet())
                     entityManager.persist(entity)
-                    generateSequentialCodes(entity)
+                    entityManager.flush()
                     return entity
                 }
             }
-            existing?.let {
-                val merged = copyAndMerge(entity, it)
-                generateSequentialCodes(merged)
-                return merged
-            }
+            existing?.let { return copyAndMerge(entity, it) }
         }
-        generateSequentialCodes(entity)
+        // 완전히 신규 엔티티 → persist 전에 코드 생성
+        applySequentialCodes(entity as Any, newIdentitySet())
         entityManager.persist(entity)
         entityManager.flush()
         return entity
@@ -346,52 +530,46 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
     }
 
     @Transactional
-    override fun updateByField(fieldName: String, fieldValue: Any, copyFunc: (E) -> Unit): List<E> =
+    override fun updateByField(fieldName: String, fieldValue: Any, copyFunc: (E) -> Unit) =
         findAllByField(fieldName, fieldValue).content.map { entity ->
             applyUpdateEntity(entity, copyFunc)
             entityManager.merge(entity)
         }
 
     @Transactional
-    override fun updateByFields(fields: Map<String, Any>, copyFunc: (E) -> Unit): List<E> =
+    override fun updateByFields(fields: Map<String, Any>, copyFunc: (E) -> Unit) =
         findAllByFields(fields).content.map { entity ->
             applyUpdateEntity(entity, copyFunc)
             entityManager.merge(entity)
         }
 
     @Transactional
-    override fun updateByCondition(condition: String, copyFunc: (E) -> Unit): List<E> {
-        val cond = if (condition.isNotEmpty()) condition else ""
-        return findAllByCondition(cond).content.map { entity ->
+    override fun updateByCondition(condition: String, copyFunc: (E) -> Unit) =
+        findAllByCondition(condition.ifEmpty { "" }).content.map { entity ->
             applyUpdateEntity(entity, copyFunc)
             entityManager.merge(entity)
         }
-    }
-
-    private inline fun <reified R> prepareQuery(
-        selectClause: String, whereClause: String, noinline setParams: Query.() -> Unit
-    ): TypedQuery<R> = prepareQuery(selectClause, whereClause, setParams, R::class.java)
 
     private fun <R> prepareQuery(
         selectClause: String, whereClause: String, setParams: Query.() -> Unit, resultClass: Class<R>
     ): TypedQuery<R> {
-        val condition = if (whereClause.isNotEmpty()) "WHERE $whereClause" else ""
-        val deleteClause = deleteMarkInfo?.let {
-            when (it.aliveMark) {
-                DeleteMarkValue.NULL -> " AND e.${it.fieldName} IS NULL"
-                DeleteMarkValue.NOT_NULL -> " AND e.${it.fieldName} IS NOT NULL"
-                else -> " AND e.${it.fieldName} = :aliveMarkValue"
-            }
-        } ?: ""
-
+        val baseCondition = whereClause.ifBlank { "TRUE" }
+        val (aliveFragment, aliveParams) = if (usePredicateBuilder) {
+            val built = AlivePredicateBuilder.build(deleteMarkInfo, alias = "e", paramName = "aliveMarkValue")
+            if (built.params.isNotEmpty()) LOG.debug("[SoftDeleteJpaRepository] alive params: {}", built.params.keys)
+            built.fragment to built.params
+        } else {
+            val unified = buildAlivePredicateUnified(deleteMarkInfo)
+            unified.fragment to unified.params
+        }
+        val finalCondition = "WHERE $baseCondition$aliveFragment".trim()
+        logDuplicateAliveFilterIfNeeded(entityType, deleteMarkInfo)
         return entityManager.createQuery(
-            "$selectClause FROM $entityName e $condition$deleteClause", resultClass
+            "$selectClause FROM $entityName e $finalCondition", resultClass
         ).apply {
             setParams()
-            deleteMarkInfo?.takeIf {
-                it.aliveMark != DeleteMarkValue.NULL && it.aliveMark != DeleteMarkValue.NOT_NULL
-            }?.let {
-                setParameter("aliveMarkValue", it.aliveMarkValue)
+            aliveParams.forEach { (k, v) ->
+                setParameter(k, v)
             }
         }
     }
@@ -416,24 +594,33 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
 
     private fun applyPessimisticLock(whereClause: String, setParams: Query.() -> Unit): List<E> =
         prepareQuery("SELECT e", whereClause, setParams, entityType).run {
-            setLockMode(LockModeType.PESSIMISTIC_WRITE)
+            lockMode = LockModeType.PESSIMISTIC_WRITE
+            // 드라이버에 락 대기 시간 힌트 제공 (기본 2000ms). 일부 DB/H2 환경에서 대기 측정을 안정화
+            try {
+                setHint("javax.persistence.lock.timeout", 2000)
+            }
+            catch (_: Exception) { }
             resultList
         }
 
     @Transactional(readOnly = true)
-    override fun findAllByField(fieldName: String, fieldValue: Any, pageable: Pageable?): Page<E> =
-        executeFind("e.$fieldName = :fieldValue", { setParameter("fieldValue", fieldValue) }, pageable)
+    override fun findAllByField(fieldName: String, fieldValue: Any, pageable: Pageable?): Page<E> {
+        validateFieldNames(listOf(fieldName))
+        return executeFind("e.$fieldName = :fieldValue", { setParameter("fieldValue", fieldValue) }, pageable)
+    }
 
     @Transactional(readOnly = true)
-    override fun findAllByFields(fields: Map<String, Any>, pageable: Pageable?): Page<E> =
-        executeFind(
+    override fun findAllByFields(fields: Map<String, Any>, pageable: Pageable?): Page<E> {
+        validateFieldNames(fields.keys)
+        return executeFind(
             fields.entries.joinToString(" AND ") { "e.${it.key} = :${it.key}" },
             { fields.forEach { (k, v) -> setParameter(k, v) } },
             pageable
         )
+    }
 
     @Transactional(readOnly = true)
-    override fun findAllByCondition(condition: String, pageable: Pageable?): Page<E> =
+    override fun findAllByCondition(condition: String, pageable: Pageable?) =
         executeFind(if (isNotEmpty(condition)) condition else "TRUE", { }, pageable)
 
     @Transactional(readOnly = true)
@@ -451,19 +638,22 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
     }
 
     private fun executeFindFirst(whereClause: String, setParams: Query.() -> Unit): Optional<E> {
-        val fullCondition = (if (whereClause.isNotEmpty()) whereClause else "TRUE") + (deleteMarkInfo?.let {
-            when (it.aliveMark) {
-                DeleteMarkValue.NULL -> " AND (e.${it.fieldName} IS NULL)"
-                DeleteMarkValue.NOT_NULL -> " AND (e.${it.fieldName} IS NOT NULL)"
-                else -> " AND (e.${it.fieldName} = :aliveMarkValue)"
-            }
-        } ?: "")
-        val query = entityManager.createQuery("SELECT e FROM $entityName e WHERE $fullCondition", entityType).apply {
+        val baseCondition = whereClause.ifBlank { "TRUE" }
+        val (aliveFragment, aliveParams) = if (usePredicateBuilder) {
+            val built = AlivePredicateBuilder.build(deleteMarkInfo, alias = "e", paramName = "aliveMarkValue")
+            built.fragment to built.params
+        } else {
+            val unified = buildAlivePredicateUnified(deleteMarkInfo)
+            unified.fragment to unified.params
+        }
+        logDuplicateAliveFilterIfNeeded(entityType, deleteMarkInfo)
+        val query = entityManager.createQuery(
+            "SELECT e FROM $entityName e WHERE $baseCondition$aliveFragment",
+            entityType
+        ).apply {
             setParams()
-            deleteMarkInfo?.takeIf {
-                it.aliveMark != DeleteMarkValue.NULL && it.aliveMark != DeleteMarkValue.NOT_NULL
-            }?.let {
-                setParameter("aliveMarkValue", it.aliveMarkValue)
+            aliveParams.forEach { (k, v) ->
+                setParameter(k, v)
             }
             maxResults = 1
         }
@@ -475,28 +665,28 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
         executeFindFirst("e.$fieldName = :fieldValue") { setParameter("fieldValue", fieldValue) }
 
     @Transactional(readOnly = true)
-    override fun findFirstByFields(fields: Map<String, Any>): Optional<E> {
-        val whereClause = fields.entries.joinToString(" AND ") { "e.${it.key} = :${it.key}" }
-        return executeFindFirst(whereClause) { fields.forEach { (k, v) -> setParameter(k, v) } }
-    }
+    override fun findFirstByFields(fields: Map<String, Any>) =
+        executeFindFirst(fields.entries.joinToString(" AND ") { "e.${it.key} = :${it.key}" }) {
+            fields.forEach { (k, v) ->
+                setParameter(k, v)
+            }
+        }
 
     @Transactional(readOnly = true)
-    override fun findFirstByCondition(condition: String): Optional<E> =
-        executeFindFirst(condition.ifEmpty { "TRUE" }) { }
+    override fun findFirstByCondition(condition: String) = executeFindFirst(condition.ifEmpty { "TRUE" }) { }
 
     @Transactional(readOnly = true)
-    override fun countByCondition(condition: String): Long =
-        executeCount(if (condition.isNotEmpty()) condition else "TRUE", { })
+    override fun countByCondition(condition: String) = executeCount(condition.ifEmpty { "TRUE" }) { }
 
     @Transactional(readOnly = true)
-    override fun countByField(fieldName: String, fieldValue: Any): Long =
-        executeCount("e.$fieldName = :fieldValue", { setParameter("fieldValue", fieldValue) })
+    override fun countByField(fieldName: String, fieldValue: Any) =
+        executeCount("e.$fieldName = :fieldValue") { setParameter("fieldValue", fieldValue) }
 
     @Transactional(readOnly = true)
-    override fun countByFields(fields: Map<String, Any>): Long = executeCount(
-        fields.entries.joinToString(" AND ") { "e.${it.key} = :${it.key}" },
-        { fields.forEach { (k, v) -> setParameter(k, v) } }
-    )
+    override fun countByFields(fields: Map<String, Any>) =
+        executeCount(fields.entries.joinToString(" AND ") { "e.${it.key} = :${it.key}" }) {
+            fields.forEach { (k, v) -> setParameter(k, v) }
+        }
 
     @Transactional(readOnly = true)
     override fun count(): Long = executeCount("TRUE") { }
@@ -506,176 +696,12 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
     override fun softDelete(entity: E): Int {
         deleteDepthTL.set(deleteDepthTL.get() + 1)
         try {
-            // 중복 alive 필터(@Where/@SQLRestriction + deleteMarkInfo) 경고
-            if (deleteMarkInfo != null && !duplicateAliveFilterWarned.get()) {
-                val hasWhere = entityType.getAnnotation(Where::class.java) != null
-                // SQLRestriction은 클래스 또는 필드 레벨 가능. 여기서는 클래스 애노테이션만 간감지
-                val hasSqlRestriction = entityType.getAnnotation(SQLRestriction::class.java) != null
-                if ((hasWhere || hasSqlRestriction) && duplicateAliveFilterWarned.compareAndSet(false, true)) {
-                    LOG.warn(
-                        "[SoftDeleteJpaRepository] 엔티티 '${entityType.simpleName}'에 @Where/@SQLRestriction과 " +
-                                "deleteMarkInfo가 함께 적용되어 있어, 소프트 삭제 이후 조회 시 중복 필터링으로 문제가 발생할 수 있습니다. " +
-                                "한쪽을 제거하거나 향후 벌크 전략 사용을 고려하세요.")
-                }
-            }
+            warnDuplicateAliveFilterIfNeeded()
+            if (deleteStrategy == DeleteStrategy.BULK) softDeleteChildrenBulk(entity)
+            else processChildrenRecursive(entity)
 
-            entity::class.memberProperties
-                .filter { p -> p.getAnnotation<OneToMany>() != null }
-                .forEach { p ->
-                    p.isAccessible = true
-                    val ann = p.getAnnotation<OneToMany>() ?: return@forEach
-                    val mappedBy = ann.mappedBy
-                    if (mappedBy.isBlank()) return@forEach
-
-                    val childClass = p.returnType.arguments.firstOrNull()?.type?.classifier as? kotlin.reflect.KClass<*>
-                    val childJavaClass = childClass?.java ?: return@forEach
-                    val childEntityName = try {
-                        entityManager.metamodel.entity(childJavaClass).name
-                    } catch (_: Exception) { childJavaClass.simpleName }
-
-                    val deleteInfoForChild = childClass.deleteMarkInfo
-                    val aliveCheck = deleteInfoForChild?.let { info ->
-                        when (info.aliveMark) {
-                            DeleteMarkValue.NULL -> " AND c.${info.fieldName} IS NULL"
-                            DeleteMarkValue.NOT_NULL -> " AND c.${info.fieldName} IS NOT NULL"
-                            else -> " AND c.${info.fieldName} = :_aliveChildMark"
-                        }
-                    } ?: ""
-
-                    // parent ID 기반 조회 (단일 PK인 경우). 복합 PK 또는 식별자 추출 실패 시 기존 entity 바인딩 fallback.
-                    @Suppress("UNCHECKED_CAST")
-                    val parentIdAny = try { entityInformation.getId(entity) as Any } catch (_: Exception) { null }
-                    val idAttrs = entityInformation.idAttributeNames
-                    val parentIdAttr = idAttrs.firstOrNull() // 단일 PK 대비 필요
-                    val canUseIdPathSingle = parentIdAny != null && idAttrs.size == 1
-                    val canUseComposite = parentIdAny != null && idAttrs.size > 1
-                    val jpql = when {
-                        canUseIdPathSingle && parentIdAttr != null -> {
-                            "SELECT c FROM $childEntityName c WHERE c.$mappedBy.$parentIdAttr = :_parentId$aliveCheck"
-                        }
-                        canUseComposite -> {
-                            val compositeWhere = idAttrs.joinToString(" AND ") { pk ->
-                                "c.$mappedBy.$pk = :_parent_${pk}"
-                            }
-                            "SELECT c FROM $childEntityName c WHERE $compositeWhere$aliveCheck"
-                        }
-                        else -> "SELECT c FROM $childEntityName c WHERE c.$mappedBy = :_parent$aliveCheck"
-                    }
-
-                    val q = entityManager.createQuery(jpql, childJavaClass).apply {
-                        when {
-                            canUseIdPathSingle && parentIdAttr != null -> setParameter("_parentId", parentIdAny)
-                            canUseComposite -> {
-                                // parentIdAny가 Map 또는 IdClass/EmbeddedId라고 가정하고 필드 추출
-                                val paramMap: Map<String, Any?> = when (parentIdAny) {
-                                    is Map<*, *> -> {
-                                        parentIdAny.entries.filter { (k, _) -> k in idAttrs }.associate { (k, v) ->
-                                            require(k is String) {
-                                                "Compound ID key는 String 타입이어야 합니다.(현재 타입: ${k?.javaClass?.name})"
-                                            }
-                                            k to v
-                                        }
-                                    }
-                                    else -> idAttrs.associateWith { attr ->
-                                        val prop = parentIdAny::class.memberProperties.firstOrNull { it.name == attr }
-                                            ?: throw IllegalArgumentException(
-                                                "Parent composite id 객체에 '$attr' 프로퍼티가 없습니다."
-                                            )
-                                        prop.isAccessible = true
-                                        prop.getter.call(parentIdAny)
-                                    }
-                                }
-                                paramMap.forEach { (k, v) ->
-                                    setParameter(
-                                        "_parent_${k}",
-                                        v ?: throw IllegalArgumentException("'_parent_${k}' 값이 없습니다.")
-                                    )
-                                }
-                            }
-                            else -> setParameter("_parent", entity)
-                        }
-                        if (
-                            deleteInfoForChild != null &&
-                            deleteInfoForChild.aliveMark !in listOf(DeleteMarkValue.NULL, DeleteMarkValue.NOT_NULL)
-                        ) {
-                            setParameter("_aliveChildMark", deleteInfoForChild.aliveMarkValue)
-                        }
-                    }
-                    val childList = q.resultList
-                    childList.forEach { child ->
-                        val childRepo = registry.getRepositoryFor(child) ?: throw IllegalStateException(
-                            "SoftDeleteJpaRepository not found for ${child.javaClass.simpleName}"
-                        )
-                        childRepo.softDelete(child)
-                    }
-                }
-
-            // 부모 deleteMark 메모리 갱신 (자식 처리 후)
-            deleteMarkInfo?.let { info ->
-                val deleteMarkField = info.field
-                if (deleteMarkField is KMutableProperty1<*, *>) {
-                    deleteMarkField.isAccessible = true
-                    @Suppress("UNCHECKED_CAST")
-                    val prop = deleteMarkField as KMutableProperty1<E, Any?>
-                    val newDeleteMarkValue = when (info.deleteMark) {
-                        DeleteMarkValue.NULL -> null
-                        DeleteMarkValue.NOW -> LocalDateTime.now()
-                        DeleteMarkValue.NOT_NULL -> DeleteMarkValue.getDefaultDeleteMarkValue(info)
-                        else -> info.deleteMarkValue
-                    }
-                    prop.set(entity, newDeleteMarkValue)
-                }
-            }
-
-            @Suppress("UNCHECKED_CAST")
-            val idVal = entityInformation.getId(entity) as ID
-            val idAttrs = entityInformation.idAttributeNames.also {
-                if (it.isEmpty()) throw IllegalStateException("ID 필드가 없습니다.")
-            }
-            val condition = idAttrs.joinToString(" AND ") { "`${it}` = :$it" }
-            val sql = if (deleteMarkInfo != null) {
-                val setClause = "`${deleteMarkInfo.dbColumnName}` = " +
-                        if (deleteMarkInfo.deleteMark == DeleteMarkValue.NULL) "NULL" else ":deleteMark"
-
-                "UPDATE $tableName SET $setClause$autoModify WHERE $condition"
-            } else "DELETE FROM $tableName WHERE $condition"
-            val query = entityManager.createNativeQuery(sql).apply {
-                deleteMarkInfo?.takeIf { it.deleteMark != DeleteMarkValue.NULL }?.let { info ->
-                    setParameter(
-                        "deleteMark",
-                        if (info.deleteMark == DeleteMarkValue.NOT_NULL)
-                            DeleteMarkValue.getDefaultDeleteMarkValue(info)
-                        else info.deleteMarkValue
-                    )
-                }
-                if (idAttrs.size == 1) {
-                    setParameter(idAttrs.first(), idVal)
-                } else {
-                    val paramMap: Map<String, Any?> = when (idVal) {
-                        is Map<*, *> -> idVal.entries.filter { (k, _) -> k in idAttrs }.associate { (k, v) ->
-                            require(k is String) {
-                                "Compound ID map key는 반드시 String 타입이어야 합니다. (현재 타입: ${k?.javaClass?.name})"
-                            }
-                            k to v
-                        }
-                        else -> idAttrs.associateWith { attr ->
-                            val prop = idVal::class.memberProperties.firstOrNull {
-                                it.name == attr
-                            } ?: throw IllegalArgumentException(
-                                "${idVal::class.simpleName} class에 '$attr' 프로퍼티가 없습니다."
-                            )
-                            prop.isAccessible = true
-                            prop.getter.call(idVal)
-                        }
-                    }
-                    paramMap.forEach { (k, v) ->
-                        setParameter(k, v ?: throw IllegalArgumentException("'$k' 값이 없습니다."))
-                    }
-                }
-            }
-            val affected = query.executeUpdate()
-            entityManager.flush()
-
+            applyParentDeleteMark(entity)
+            val affected = executeDeleteOrSoftMark(entity)
             if (deleteDepthTL.get() == 1) entityManager.clear()
             return affected
         } finally {
@@ -683,60 +709,220 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
             if (deleteDepthTL.get() <= 0) deleteDepthTL.remove()
         }
     }
-
-    @Transactional @Modifying
-    override fun softDeleteByField(fieldName: String, fieldValue: Any) =
-        findAllByField(fieldName, fieldValue).content.sumOf { softDelete(it) }
-
-    @Transactional @Modifying
-    override fun softDeleteByCondition(condition: String) =
-        findAllByCondition(if (condition.isNotEmpty()) condition else "").content.sumOf { softDelete(it) }
-
-    @Transactional @Modifying
-    override fun softDeleteByFields(fields: Map<String, Any>) =
-        findAllByFields(fields).content.sumOf { softDelete(it) }
-
-    @Transactional @Modifying
-    override fun softDeleteById(id: ID) = findOneById(id).orElse(null)?.let(this::softDelete) ?: 0
-
-    @Transactional
-    override fun <R> rowLockById(id: ID, block: () -> R): R {
-        val idAttrs = entityInformation.idAttributeNames.toList()
-        val whereClause =
-            if (idAttrs.size == 1) "e.${idAttrs[0]} = :${idAttrs[0]}"
-            else idAttrs.joinToString(" AND ") { "e.$it = :$it" }
-        applyPessimisticLock(whereClause) {
-            if (idAttrs.size == 1) setParameter(idAttrs[0], id) else {
-                val paramMap = extractIdParamMap(id as Any, idAttrs)
-                paramMap.forEach { (name, value) ->
-                    setParameter(name, value ?: throw IllegalArgumentException("'$name' 값이 없습니다"))
-                }
+    // 중복 alive 필터 경고
+    private fun warnDuplicateAliveFilterIfNeeded() {
+        if (deleteMarkInfo != null && !duplicateAliveFilterWarned.get()) {
+            if ((entityType.hasAnnotation<SQLRestriction>()) &&
+                duplicateAliveFilterWarned.compareAndSet(false, true)) {
+                LOG.warn(
+                    "[SoftDeleteJpaRepository] 엔티티 '${entityType.simpleName}'에 @SQLRestriction과 " +
+                            "deleteMarkInfo가 함께 적용되어 있어, 소프트 삭제 이후 조회 시 중복 필터링으로 문제가 발생할 수 있습니다. " +
+                            "한쪽을 제거하거나 향후 벌크 전략 사용을 고려하세요."
+                )
             }
         }
-        return block()
     }
 
-    @Transactional
-    override fun <R> rowLockByField(fieldName: String, fieldValue: Any, block: () -> R): R {
-        applyPessimisticLock("e.$fieldName = :fieldValue") { setParameter("fieldValue", fieldValue) }
-        return block()
+    private fun softDeleteChildrenBulk(entity: E) {
+        entity::class.memberProperties.filter { it.hasAnnotation<OneToMany>() }.forEach { p ->
+            p.isAccessible = true
+            val ann = p.getAnnotation<OneToMany>() ?: return@forEach
+            val mappedBy = ann.mappedBy
+            if (mappedBy.isBlank()) return@forEach
+            val childKClass = p.returnType.arguments.firstOrNull()?.type?.classifier as? KClass<*>
+            val childJava = childKClass?.java ?: return@forEach
+            val childEntityName = try {
+                entityManager.metamodel.entity(childJava).name
+            } catch (_: Exception) { childJava.simpleName }
+            val childInfo = childKClass.deleteMarkInfo
+            logDuplicateAliveFilterIfNeeded(childJava, childInfo)
+            val aliveUnified = buildAlivePredicateUnified(childInfo, alias = "c", paramName = "_aliveChildMark")
+            val aliveFragment = aliveUnified.fragment
+            @Suppress("UNCHECKED_CAST")
+            val parentIdVal = try { entityInformation.getId(entity) as Any } catch (_: Exception) { null }
+            val idAttrs = entityInformation.idAttributeNames
+            val canSingle = parentIdVal != null && idAttrs.size == 1
+            val canComposite = parentIdVal != null && idAttrs.size > 1
+            val selectJpql = when {
+                canSingle ->
+                    "SELECT c FROM $childEntityName c WHERE c.$mappedBy.${idAttrs.first()} = :_parentId$aliveFragment"
+                canComposite -> {
+                    val comp = idAttrs.joinToString(" AND ") { pk ->
+                        "c.$mappedBy.$pk = :_parent_${pk}"
+                    }
+                    "SELECT c FROM $childEntityName c WHERE $comp$aliveFragment"
+                }
+                else -> "SELECT c FROM $childEntityName c WHERE c.$mappedBy = :_parent$aliveFragment"
+            }
+            val q = entityManager.createQuery(selectJpql, childJava).apply {
+                when {
+                    canSingle -> setParameter("_parentId", parentIdVal)
+                    canComposite -> {
+                        val paramMap = extractIdParamMap(parentIdVal, idAttrs)
+                        paramMap.forEach { (k, v) ->
+                            setParameter("_parent_$k", v ?: throw IllegalArgumentException("'_parent_$k' 값이 없습니다."))
+                        }
+                    }
+                    else -> setParameter("_parent", entity)
+                }
+                aliveUnified.params.forEach { (k, v) ->
+                    setParameter(k, v)
+                }
+            }
+            val children = q.resultList
+            if (children.isEmpty()) return@forEach
+            val idFields = childJava.declaredFields.filter { it.hasDirectAnnotation<Id>() }
+            val markValue = childInfo?.let { computeDeleteMarkValue(it) }
+            if (idFields.isEmpty()) {
+                children.forEach { c -> registry.getRepositoryFor(c)?.softDelete(c) }
+                return@forEach
+            }
+            if (idFields.size == 1) {
+                val idName = idFields.first().name
+                val ids = children.mapNotNull { c ->
+                    try {
+                        childJava.getDeclaredField(idName).apply { isAccessible = true }.get(c)
+                    } catch (_: Exception) { null }
+                }
+                if (ids.isNotEmpty()) {
+                    val jpql = if (childInfo != null) {
+                        "UPDATE $childEntityName c SET c.${childInfo.fieldName} = :_deleteMark WHERE c.$idName IN :_ids"
+                    } else "DELETE FROM $childEntityName c WHERE c.$idName IN :_ids"
+                    entityManager.createQuery(jpql).apply {
+                        if (childInfo != null) setParameter("_deleteMark", markValue)
+                        setParameter("_ids", ids)
+                    }.executeUpdate()
+                }
+            } else {
+                val whereParts = mutableListOf<String>()
+                val params = mutableMapOf<String, Any?>()
+                children.forEachIndexed { idx, c ->
+                    val conditions = mutableListOf<String>()
+                    idFields.forEach { f ->
+                        f.isAccessible = true
+                        val v = try {
+                            f.get(c)
+                        } catch (_: Exception) { null }
+                        if (v != null) {
+                            val pname = "_pk_${f.name}_$idx"
+                            conditions += "c.${f.name} = :$pname"
+                            params[pname] = v
+                        }
+                    }
+                    if (conditions.isNotEmpty()) whereParts += "(" + conditions.joinToString(" AND ") + ")"
+                }
+                if (whereParts.isNotEmpty()) {
+                    val combined = whereParts.joinToString(" OR ")
+                    val jpql = if (childInfo != null) {
+                        "UPDATE $childEntityName c SET c.${childInfo.fieldName} = :_deleteMark WHERE $combined"
+                    } else "DELETE FROM $childEntityName c WHERE $combined"
+                    entityManager.createQuery(jpql).apply {
+                        if (childInfo != null) setParameter("_deleteMark", markValue)
+                        params.forEach { (k, v) -> setParameter(k, v) }
+                    }.executeUpdate()
+                }
+            }
+            // 손자 재귀 처리
+            children.forEach { gc ->
+                registry.getRepositoryFor(gc)?.softDelete(gc)
+            }
+        }
+    }
+    private fun processChildrenRecursive(entity: E) {
+        entity::class.memberProperties.filter { it.hasAnnotation<OneToMany>() }.forEach { p ->
+            p.isAccessible = true
+            val ann = p.getAnnotation<OneToMany>() ?: return@forEach
+            val mappedBy = ann.mappedBy
+            if (mappedBy.isBlank()) return@forEach
+            val childKClass = p.returnType.arguments.firstOrNull()?.type?.classifier as? KClass<*>
+            val childJava = childKClass?.java ?: return@forEach
+            val childName = try {
+                entityManager.metamodel.entity(childJava).name
+            } catch (_: Exception) { childJava.simpleName }
+            val childInfo = childKClass.deleteMarkInfo
+            val aliveFrag = childInfo?.let { info ->
+                when (info.aliveMark) {
+                    DeleteMarkValue.NULL -> " AND c.${info.fieldName} IS NULL"
+                    DeleteMarkValue.NOT_NULL -> " AND c.${info.fieldName} IS NOT NULL"
+                    else -> " AND c.${info.fieldName} = :_aliveChildMark"
+                }
+            } ?: ""
+            @Suppress("UNCHECKED_CAST")
+            val parentIdVal = try {
+                entityInformation.getId(entity) as Any
+            } catch (_: Exception) { null }
+            val idAttrs = entityInformation.idAttributeNames
+            val parentIdAttr = idAttrs.firstOrNull()
+            val canSingle = parentIdVal != null && idAttrs.size == 1 && parentIdAttr != null
+            val canComposite = parentIdVal != null && idAttrs.size > 1
+            val selectJpql = when {
+                canSingle -> "SELECT c FROM $childName c WHERE c.$mappedBy.$parentIdAttr = :_parentId$aliveFrag"
+                canComposite -> {
+                    val comp = idAttrs.joinToString(" AND ") { pk ->
+                        "c.$mappedBy.$pk = :_parent_${pk}"
+                    }
+                    "SELECT c FROM $childName c WHERE $comp$aliveFrag"
+                }
+                else -> "SELECT c FROM $childName c WHERE c.$mappedBy = :_parent$aliveFrag"
+            }
+            entityManager.createQuery(selectJpql, childJava).apply {
+                when {
+                    canSingle -> setParameter("_parentId", parentIdVal)
+                    canComposite -> {
+                        extractIdParamMap(parentIdVal, idAttrs).forEach { (k, v) ->
+                            setParameter("_parent_$k", v ?: throw IllegalArgumentException("'_parent_$k' 값이 없습니다."))
+                        }
+                    }
+                    else -> setParameter("_parent", entity)
+                }
+                if (childInfo != null &&
+                    childInfo.aliveMark !in listOf(DeleteMarkValue.NULL, DeleteMarkValue.NOT_NULL)) {
+                    setParameter("_aliveChildMark", childInfo.aliveMarkValue)
+                }
+            }.resultList.forEach { c ->
+                registry.getRepositoryFor(c)?.softDelete(c)
+            }
+        }
+    }
+    private fun applyParentDeleteMark(entity: E) {
+        deleteMarkInfo?.let { info ->
+            val f = info.field
+            if (f is KMutableProperty1<*, *>) {
+                f.isAccessible = true
+                @Suppress("UNCHECKED_CAST")
+                (f as KMutableProperty1<E, Any?>).set(entity, computeDeleteMarkValue(info))
+            }
+        }
     }
 
-    @Transactional
-    override fun <R> rowLockByFields(fields: Map<String, Any>, block: () -> R): R {
-        val where = fields.entries.joinToString(" AND ") { "e.${it.key} = :${it.key}" }
-        applyPessimisticLock(where) { fields.forEach { (k, v) -> setParameter(k, v) } }
-        return block()
+    private fun validateFieldNames(fields: Collection<String>) {
+        if (fields.isEmpty()) return
+        val invalid = fields.filterNot { allowedFieldNames.contains(it) }
+        if (invalid.isEmpty()) return
+        if (strictQueryValidation) {
+            throw IllegalArgumentException(
+                "Invalid field name(s) for ${entityType.simpleName}: ${invalid.joinToString()} " +
+                        "(allowed: ${allowedFieldNames.joinToString()})"
+            )
+        } else {
+            LOG.warn(
+                "[SoftDeleteJpaRepository] Invalid field name(s) ignored for ${entityType.simpleName}: " +
+                        "${invalid.joinToString()} (allowed: ${allowedFieldNames.joinToString()})"
+            )
+        }
     }
 
-    @Transactional
-    override fun <R> rowLockByCondition(condition: String, block: () -> R): R {
-        val base = if (condition.isNotEmpty()) condition else "TRUE"
-        applyPessimisticLock(base) { }
-        return block()
+    private fun logDuplicateAliveFilterIfNeeded(entityType: Class<*>, info: DeleteMarkInfo?) {
+        if (info == null) return
+        if (!duplicateAliveFilterWarned.get() &&
+            (entityType.hasAnnotation<SQLRestriction>()) &&
+            duplicateAliveFilterWarned.compareAndSet(false, true)) {
+            LOG.warn(
+                "[SoftDeleteJpaRepository] Entity '${entityType.simpleName}' uses @SQLRestriction along with " +
+                        "deleteMarkInfo. Duplicate alive filtering may occur."
+            )
+        }
     }
-
-    override fun refresh(entity: E): E { entityManager.refresh(entity); return entity }
 
     private fun extractIdParamMap(id: Any, idAttrs: Collection<String>): Map<String, Any?> =
         if (id is Map<*, *>) {
@@ -751,9 +937,66 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
             prop.isAccessible = true
             prop.getter.call(id)
         }
-}
 
-@Configuration
-@EnableConfigurationProperties(SoftDeleteProperties::class)
-@EnableJpaRepositories(repositoryBaseClass = SoftDeleteJpaRepositoryImpl::class)
-class SoftDeleteJpaRepositoryAutoConfiguration
+    private fun executeDeleteOrSoftMark(entity: E): Int {
+        @Suppress("UNCHECKED_CAST")
+        val idVal = entityInformation.getId(entity) as ID
+        val idAttrs = entityInformation.idAttributeNames.also {
+            if (it.isEmpty()) throw IllegalStateException("ID 필드가 없습니다.")
+        }
+        val plan = buildNativeDeletePlan(idVal as Any, deleteMarkInfo, idAttrs)
+        val query = entityManager.createNativeQuery(plan.sql).apply {
+            plan.markParams.forEach { (k, v) -> setParameter(k, v) }
+            plan.idParams.forEach { (k, v) ->
+                setParameter(k, v ?: throw IllegalArgumentException("'$k' 값이 없습니다."))
+            }
+        }
+        val affected = query.executeUpdate()
+        entityManager.flush()
+        return affected
+    }
+
+    private data class NativeDeletePlan(
+        val sql: String,
+        val markParams: Map<String, Any?>,
+        val idParams: Map<String, Any?>
+    )
+
+    private fun buildIdParamMap(idVal: Any, idAttrs: Collection<String>): Map<String, Any?> {
+        return if (idAttrs.size == 1) {
+            mapOf(idAttrs.first() to idVal)
+        } else {
+            extractIdParamMap(idVal, idAttrs)
+        }
+    }
+
+    private fun buildNativeDeletePlan(
+        idVal: Any,
+        info: DeleteMarkInfo?,
+        idAttrs: Collection<String>
+    ): NativeDeletePlan {
+        val condition = idAttrs.joinToString(" AND ") { "`${it}` = :$it" }
+        if (info == null)
+            return NativeDeletePlan(
+                "DELETE FROM $tableName WHERE $condition",
+                emptyMap(),
+                buildIdParamMap(idVal, idAttrs)
+            )
+        val quotedCol = "`${info.dbColumnName}`"
+        val (setClause, markParams) = if (usePredicateBuilder) {
+            val built = DeletePredicateBuilder.buildSetClause(info, quotedCol, "deleteMark")
+            built.fragment to built.params
+        } else {
+            val valuePart = if (info.deleteMark == DeleteMarkValue.NULL) "NULL" else ":deleteMark"
+            val params = if (info.deleteMark == DeleteMarkValue.NULL) emptyMap() else {
+                val value = if (info.deleteMark == DeleteMarkValue.NOT_NULL)
+                    DeleteMarkValue.getDefaultDeleteMarkValue(info)
+                else info.deleteMarkValue
+                mapOf("deleteMark" to value)
+            }
+            "$quotedCol = $valuePart" to params
+        }
+        val sql = "UPDATE $tableName SET $setClause$autoModify WHERE $condition"
+        return NativeDeletePlan(sql, markParams, buildIdParamMap(idVal, idAttrs))
+    }
+}

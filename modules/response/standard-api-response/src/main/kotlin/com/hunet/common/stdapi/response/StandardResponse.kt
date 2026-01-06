@@ -352,14 +352,22 @@ class IncrementalList<T, P>(
     val itemsAsList: List<T> = items.list
 }
 
-data class StandardCallbackResult (
-    val payload: BasePayload,
+data class StandardCallbackResult<T: BasePayload> (
+    val payload: T,
     val status: StandardStatus? = null,
     val version: String? = null
-)
+) {
+    companion object {
+        @JvmStatic
+        fun <T: BasePayload> of(payload: T): StandardCallbackResult<T> = StandardCallbackResult(payload, null, null)
+        @JvmStatic
+        fun <T: BasePayload> of(payload: T, status: StandardStatus?, version: String?): StandardCallbackResult<T> =
+            StandardCallbackResult(payload, status, version)
+    }
+}
 
 @Schema
-data class StandardResponse<T : BasePayload> (
+open class StandardResponse<T : BasePayload> (
     @Sequence(1)
     @Schema(description = "오류 코드")
     val status: StandardStatus? = StandardStatus.SUCCESS,
@@ -379,6 +387,10 @@ data class StandardResponse<T : BasePayload> (
     val duration: Long? = 0L,
 
     @Sequence(5)
+    @Schema(description = "API 호출 추적을 위한 trace id", required = false)
+    val traceid: String = "",
+
+    @Sequence(6)
     @Schema(description = "결과 payload")
     val payload: T
 ) {
@@ -395,10 +407,11 @@ data class StandardResponse<T : BasePayload> (
         @Suppress("UNCHECKED_CAST")
         fun <T : BasePayload> build(
             payload: T? = null,
-            callback: (() -> StandardCallbackResult)? = null,
+            callback: (() -> StandardCallbackResult<T>)? = null,
             status: StandardStatus = StandardStatus.SUCCESS,
             version: String = "1.0",
-            duration: Long? = null
+            duration: Long? = null,
+            traceid: String = ""
         ): StandardResponse<T> = run {
             val startTime = Instant.now()
             val callbackResult =
@@ -412,7 +425,8 @@ data class StandardResponse<T : BasePayload> (
                 version = callbackResult.version ?: version,
                 datetime = endTime,
                 duration = duration ?: Duration.between(startTime, endTime).toMillis(),
-                payload = callbackResult.payload as T
+                payload = callbackResult.payload,
+                traceid = traceid
             )
         }
 
@@ -425,28 +439,42 @@ data class StandardResponse<T : BasePayload> (
             build(payload = payload, callback = null, status = status, version = version, duration = null)
 
         @JvmStatic
-        fun <T: BasePayload> build(payload: T, status: StandardStatus, version: String, duration: Long?) =
-            build(payload = payload, callback = null, status = status, version = version, duration = duration)
+        fun <T: BasePayload> build(
+             payload: T, status: StandardStatus, version: String, duration: Long?, traceid: String
+         ) = build(
+             payload = payload,
+             callback = null,
+             status = status,
+             version = version,
+             duration = duration,
+             traceid = traceid
+         )
 
         @JvmStatic
-        fun <T: BasePayload> buildWithCallback(callback: Supplier<StandardCallbackResult>) =
-            build(
-                payload = null,
-                callback = { callback.get() },
-                status = StandardStatus.SUCCESS,
-                version = "1.0",
-                duration = null
-            )
+        fun <T: BasePayload> buildWithCallback(callback: Supplier<StandardCallbackResult<T>>) = build(
+             payload = null,
+             callback = { callback.get() },
+             status = StandardStatus.SUCCESS,
+             version = "1.0",
+             duration = null,
+             traceid = ""
+         )
 
         @JvmStatic
         fun <T: BasePayload> buildWithCallback(
-            callback: Supplier<StandardCallbackResult>,
-            status: StandardStatus,
-            version: String,
-            duration: Long?
-        ) = build(
-            payload = null, callback = { callback.get() }, status = status, version = version, duration = duration
-        )
+             callback: Supplier<StandardCallbackResult<T>>,
+             status: StandardStatus,
+             version: String,
+             duration: Long?,
+             traceid: String
+         ) = build(
+             payload = null,
+             callback = { callback.get() },
+             status = status,
+             version = version,
+             duration = duration,
+             traceid = traceid
+         )
 
         inline fun <reified T: BasePayload> deserialize(jsonString: String): StandardResponse<T> = try {
             JsonConfig.json.parseToJsonElement(jsonString).jsonObject.let { json ->
@@ -461,6 +489,7 @@ data class StandardResponse<T : BasePayload> (
                         else -> Instant.now()
                     },
                     duration = json.getCanonical("duration")?.jsonPrimitive?.long ?: 0L,
+                    traceid = json.getCanonical("traceid")?.jsonPrimitive?.content ?: "",
                     payload = json.deserializePayload() as T
                 )
             }
@@ -471,6 +500,7 @@ data class StandardResponse<T : BasePayload> (
                 version = "1.0",
                 datetime = Instant.now(),
                 duration = 0L,
+                traceid = "",
                 payload = ErrorPayload(
                     code = "E_DESERIALIZE_FAIL",
                     message = e.message ?: "Deserialization failed"
@@ -491,12 +521,14 @@ data class StandardResponse<T : BasePayload> (
                 else -> Instant.now()
             }
             val duration = json.getCanonical("duration")?.jsonPrimitive?.long ?: 0L
+            val traceid = json.getCanonical("traceid")?.jsonPrimitive?.content ?: ""
             val payload = deserializePayload(json, payloadClass)
             StandardResponse(
                 status = status,
                 version = version,
                 datetime = datetime,
                 duration = duration,
+                traceid = traceid,
                 payload = payload
             )
         } catch (e: Exception) {
@@ -507,6 +539,7 @@ data class StandardResponse<T : BasePayload> (
                 version = "1.0",
                 datetime = Instant.now(),
                 duration = 0L,
+                traceid = "",
                 payload = ErrorPayload(
                     code = "E_DESERIALIZE_FAIL",
                     message = e.message ?: "Deserialization failed"
@@ -528,12 +561,14 @@ data class StandardResponse<T : BasePayload> (
                 else -> Instant.now()
             }
             val duration = json.getCanonical("duration")?.jsonPrimitive?.long ?: 0L
+            val traceid = json.getCanonical("traceid")?.jsonPrimitive?.content ?: ""
             val payload = deserializePayload(json, typeRef)
             StandardResponse(
                 status = status,
                 version = version,
                 datetime = datetime,
                 duration = duration,
+                traceid = traceid,
                 payload = payload
             )
         } catch (e: Exception) {
@@ -544,6 +579,7 @@ data class StandardResponse<T : BasePayload> (
                 version = "1.0",
                 datetime = Instant.now(),
                 duration = 0L,
+                traceid = "",
                 payload = ErrorPayload(
                     code = "E_DESERIALIZE_FAIL",
                     message = e.message ?: "Deserialization failed"

@@ -51,23 +51,53 @@ fun basicFailure(): StandardResponse<ErrorPayload> = StandardResponse.build(call
         version = "1.0"
     )
 })
+
+fun successWithTrace(): StandardResponse<StatusPayload> =
+    StandardResponse.build(StatusPayload("OK", "성공"), StandardStatus.SUCCESS, "1.0", 5L, java.util.UUID.randomUUID().toString())
+```
+응답 예 (traceid 포함):
+```json
+{
+  "status": "SUCCESS",
+  "version": "1.0",
+  "datetime": "2025-12-03T09:40:00Z",
+  "duration": 5,
+  "traceid": "7f7c9e2b-5d3b-4e9e-8f11-0b2d2d7c9a01",
+  "payload": { "code": "OK", "message": "성공" }
+}
 ```
 ### 1.2 Java
 ```java
 public StandardResponse<StatusPayload> basicSuccess() {
     return StandardResponse.buildWithCallback(
-        () -> new StandardCallbackResult(new StatusPayload("OK", "성공", new java.util.LinkedHashMap<>()), StandardStatus.SUCCESS, "1.0")
+        () -> StandardCallbackResult.of(StatusPayload.Companion.of("OK", "성공", null))
     );
 }
 
 public StandardResponse<ErrorPayload> basicFailure() {
     return StandardResponse.buildWithCallback(
-        () -> new StandardCallbackResult(
-            new ErrorPayload("E400", "잘못된 요청", null),
-            StandardStatus.FAILURE,
-            "1.0"
-        )
+            () -> StandardCallbackResult.of(
+                    new ErrorPayload("E400", "잘못된 요청", null), StandardStatus.FAILURE, "1.0"
+            )
     );
+}
+
+public StandardResponse<StatusPayload> successWithTrace() {
+    String tid = java.util.UUID.randomUUID().toString();
+    return StandardResponse.build(
+        StatusPayload.Companion.of("OK", "성공", null), StandardStatus.SUCCESS, "1.0", 5L, tid
+    );
+}
+```
+응답 예 (traceid 포함):
+```json
+{
+  "status": "SUCCESS",
+  "version": "1.0",
+  "datetime": "2025-12-03T09:40:00Z",
+  "duration": 5,
+  "traceid": "b2c62f84-4f5a-4b0a-a2d5-1c6a4fc7b9ef",
+  "payload": { "code": "OK", "message": "성공" }
 }
 ```
 
@@ -115,7 +145,7 @@ public StandardResponse<ItemsPageContainer> pageableContainer() {
                 list, 10, 2, 1,
                 new OrderInfo(true, List.of(new OrderBy("id", OrderDirection.ASC)))
             );
-            return new StandardCallbackResult(new ItemsPageContainer(page), StandardStatus.SUCCESS, "1.0");
+            return StandardCallbackResult.of(new ItemsPageContainer(page), StandardStatus.SUCCESS, "1.0");
         }
     );
 }
@@ -163,7 +193,7 @@ public StandardResponse<LogsIncrementalContainer> incrementalContainer(long star
         IncrementalList<LogEntryPayload, Long> inc = IncrementalList.buildFromTotalJava(
             logs, start, size, 100, "idx", null, (f, i) -> i
         );
-        return new StandardCallbackResult(new LogsIncrementalContainer(inc), StandardStatus.SUCCESS, "1.0");
+        return StandardCallbackResult.of(new LogsIncrementalContainer(inc), StandardStatus.SUCCESS, "1.0");
     });
 }
 ```
@@ -230,6 +260,13 @@ fun directPageable(): StandardResponse<PageableList<ItemPayload>> = StandardResp
     StandardCallbackResult(page)
 })
 ```
+traceid 전달 (PageableList 직접)
+```kotlin
+val page = PageableList.build(listOf(ItemPayload(1, "황용호")), 1, 1, 1, null)
+val tid = java.util.UUID.randomUUID().toString()
+val respWithTrace = StandardResponse.build(page, StandardStatus.SUCCESS, "1.0", 2L, tid)
+```
+
 ### 3.2 Java (IncrementalList 직접)
 ```java
 public StandardResponse<IncrementalList<LogEntryPayload, Long>> directIncremental() {
@@ -238,7 +275,7 @@ public StandardResponse<IncrementalList<LogEntryPayload, Long>> directIncrementa
         IncrementalList<LogEntryPayload, Long> inc = IncrementalList.buildFromTotalJava(
             list, 0, 1, 10, "idx", null, (f, i) -> i
         );
-        return new StandardCallbackResult(inc, StandardStatus.SUCCESS, "1.0");
+        return StandardCallbackResult.of(inc, StandardStatus.SUCCESS, "1.0");
     });
 }
 ```
@@ -287,7 +324,10 @@ public class UserPayload implements BasePayload {
 public class MultiListsPayload implements BasePayload {
     private final PageableList<UserPayload> users;
     private final IncrementalList<LogEntryPayload, Long> logs;
-    public MultiListsPayload(PageableList<UserPayload> users, IncrementalList<LogEntryPayload, Long> logs) { this.users = users; this.logs = logs; }
+    public MultiListsPayload(PageableList<UserPayload> users, IncrementalList<LogEntryPayload, Long> logs) { 
+        this.users = users; 
+        this.logs = logs; 
+    }
     public PageableList<UserPayload> getUsers() { return users; }
     public IncrementalList<LogEntryPayload, Long> getLogs() { return logs; }
 }
@@ -301,7 +341,7 @@ public StandardResponse<MultiListsPayload> multiLists() {
             List.of(new LogEntryPayload(10, "boot"), new LogEntryPayload(11, "ready")),
             10, 2, 200, "idx", null, (f, i) -> i
         );
-        return new StandardCallbackResult(new MultiListsPayload(users, logs), StandardStatus.SUCCESS, "1.0");
+        return StandardCallbackResult.of(new MultiListsPayload(users, logs), StandardStatus.SUCCESS, "1.0");
     });
 }
 ```
@@ -366,11 +406,11 @@ public class CompositePayload implements BasePayload {
 public StandardResponse<CompositePayload> composite() {
     return StandardResponse.buildWithCallback( () -> {
         BasicInfoPayload info = new BasicInfoPayload("core-service", "v2");
-        StatusPayload status = new StatusPayload("OK", "정상");
+        StatusPayload status = StatusPayload.Companion.of("OK", "정상", null);
         PageableList<UserPayload> users = PageableList.build(
             List.of(new UserPayload(100, "황용호")), 1, 1, 1, null
         );
-        return new StandardCallbackResult(new CompositePayload(info, status, users), StandardStatus.SUCCESS, "1.0");
+        return StandardCallbackResult.of(new CompositePayload(info, status, users), StandardStatus.SUCCESS, "1.0");
     });
 }
 ```
@@ -439,13 +479,15 @@ val jsonBasic = """
 {
     "status": "SUCCESS",
     "version": "1.0",
-    "datetime": "2025-09-16T12:10:00Z",
+    "datetime": "2025-12-03T09:45:00Z",
     "duration": 7,
+    "traceid": "9c7f1c1a-6c1b-43e8-9c25-5bb6c8e0f111",
     "payload": { "code": "OK", "message": "성공" }
 }
 """.trimIndent()
 val basicResp = StandardResponse.deserialize<StatusPayload>(jsonBasic)
-println(basicResp.getRealPayload<StatusPayload>()?.message)
+println(basicResp.traceid) // UUID 문자열
+println(basicResp.getRealPayload<StatusPayload>()?.message) // "성공"
 ```
 ### 6.8 Java TypeReference (PageableList)
 ```java
@@ -476,6 +518,7 @@ val jsonDyn = """
   "version":"1.0",
   "datetime":"2025-09-16T12:15:00Z",
   "duration":3,
+  "traceid": "9c7f1c1a-6c1b-43e8-9c25-5bb6c8e0f111",
   "typeHint":"STATUS",  // 표준 상위 응답 스키마(StandardResponse) 외 추가 필드
   "payload":{"code":"OK","message":"성공"}
 }
@@ -487,7 +530,7 @@ val dynResp: StandardResponse<out BasePayload> = if (rawHint != null && rawHint 
     when(rawHint) {
         "STATUS" -> StandardResponse.deserialize<StatusPayload>(jsonDyn)
         "COMPOSITE" -> StandardResponse.deserialize<CompositePayload>(jsonDyn)
-        "LIST" -> StandardResponse.deserialize<PageableList<ItemPayload>>(jsonDyn) // 예시
+        "LIST" -> StandardResponse.deserialize<PageableList<ItemPayload>>(jsonDyn)
         else -> StandardResponse.deserialize<BasePayloadImpl>(jsonDyn)
     }
 } else {
@@ -507,7 +550,14 @@ println("DYN_STATUS=${dynResp.status} class=${dynResp.payload::class.simpleName}
 #### 6.12.1 단일 성공(StatusPayload)
 JSON:
 ```json
-{"status": "SUCCESS", "version": "1.0", "datetime": "2023-08-01T12:00:00Z", "duration": 45, "payload": { "code": "OK", "message": "성공" } }
+{
+  "status": "SUCCESS", 
+  "version": "1.0", 
+  "datetime": "2023-08-01T12:00:00Z", 
+  "duration": 45,
+  "traceid": "9c7f1c1a-6c1b-43e8-9c25-5bb6c8e0f111",
+  "payload": { "code": "OK", "message": "성공" }
+}
 ```
 Kotlin:
 ```kotlin
@@ -523,7 +573,16 @@ System.out.println(respStatus.getPayload().getCode());
 #### 6.12.2 단일 실패(ErrorPayload)
 JSON:
 ```json
-{"status" :"FAILURE", "version": "1.0", "datetime": "2025-10-21T13:01:45Z", "duration": 20, "payload": {"errors": [{"code": "E400", "message": "잘못된 요청"}]}}
+{
+  "status" :"FAILURE", 
+  "version": "1.0", 
+  "datetime": "2025-10-21T13:01:45Z", 
+  "duration": 20,
+  "traceid": "9c7f1c1a-6c1b-43e8-9c25-5bb6c8e0f111",
+  "payload": {
+    "errors": [{"code": "E400", "message": "잘못된 요청"}]
+  }
+}
 ```
 Kotlin:
 ```kotlin
@@ -540,7 +599,11 @@ assert errorResp.getStatus() == StandardStatus.FAILURE;
 JSON:
 ```json
 {
-  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45Z", "duration": 20,
+  "status": "SUCCESS", 
+  "version": "1.0", 
+  "datetime": "2025-10-21T13:01:45Z", 
+  "duration": 20,
+  "traceid": "9c7f1c1a-6c1b-43e8-9c25-5bb6c8e0f111",
   "payload": {
     "pageable": {
       "page": { "size": 2, "current": 1, "total": 5 },
@@ -565,7 +628,11 @@ System.out.println(pageContainer.getPayload().getPageable().getItems().getList()
 JSON:
 ```json
 {
-  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45Z", "duration": 20,
+  "status": "SUCCESS", 
+  "version": "1.0", 
+  "datetime": "2025-10-21T13:01:45Z", 
+  "duration": 20,
+  "traceid": "9c7f1c1a-6c1b-43e8-9c25-5bb6c8e0f111",
   "payload": {
     "incremental": {
       "cursor": { "field": "idx", "start": 0, "end": 1, "expandable": true },
@@ -589,7 +656,11 @@ System.out.println(incContainer.getPayload().getIncremental().getCursor().getSta
 JSON:
 ```json
 {
-  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45Z", "duration": 20,
+  "status": "SUCCESS", 
+  "version": "1.0", 
+  "datetime": "2025-10-21T13:01:45Z", 
+  "duration": 20,
+  "traceid": "9c7f1c1a-6c1b-43e8-9c25-5bb6c8e0f111",
   "payload": {
     "page": { "size": 1, "current": 1, "total": 1 },
     "order": null,
@@ -614,7 +685,11 @@ System.out.println(directPage.getPayload().getItems().getList().get(0).getName()
 JSON:
 ```json
 {
-  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45Z", "duration": 20,
+  "status": "SUCCESS", 
+  "version": "1.0", 
+  "datetime": "2025-10-21T13:01:45Z", 
+  "duration": 20,
+  "traceid": "9c7f1c1a-6c1b-43e8-9c25-5bb6c8e0f111",
   "payload": {
     "cursor": { "field": "idx", "start": 10, "end": 10, "expandable": false },
     "order": null,
@@ -639,7 +714,11 @@ System.out.println(directInc.getPayload().getItems().getList().get(0).getText())
 JSON:
 ```json
 {
-  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45Z", "duration": 20,
+  "status": "SUCCESS", 
+  "version": "1.0", 
+  "datetime": "2025-10-21T13:01:45Z", 
+  "duration": 20,
+  "traceid": "9c7f1c1a-6c1b-43e8-9c25-5bb6c8e0f111",
   "payload": {
     "users": { 
       "page": { 
@@ -684,7 +763,11 @@ System.out.println(multiListsResp.getPayload().getUsers().getItems().getList().s
 JSON:
 ```json
 {
-  "status": "SUCCESS", "version": "1.0", "datetime": "2025-10-21T13:01:45Z", "duration": 20,
+  "status": "SUCCESS", 
+  "version": "1.0", 
+  "datetime": "2025-10-21T13:01:45Z", 
+  "duration": 20,
+  "traceid": "9c7f1c1a-6c1b-43e8-9c25-5bb6c8e0f111",
   "payload": {
     "info": { "system": "core-service", "version_text": "v2" },
     "status": { "code": "OK", "message": "정상" },
@@ -768,6 +851,7 @@ val input = """
     "version": "1.0",
     "datetime": "2025-09-16T00:00:00Z",
     "duration": 1,
+    "traceid": "9c7f1c1a-6c1b-43e8-9c25-5bb6c8e0f111",
     "payload": { "USER-ID": 10, "FIRST-NAME": "용호", "email-address": "jogakdal@gmail.com" }
 }
 """.trimIndent()
@@ -784,6 +868,7 @@ val json = """
     "version": "1.0",
     "datetime": "2025-09-16T00:00:00Z",
     "duration": 1,
+    "traceid": "9c7f1c1a-6c1b-43e8-9c25-5bb6c8e0f111",
     "payload": { "items-map": { "a": { "child-name": "황용호" } } }
 }
 """
@@ -803,6 +888,7 @@ val raw = """
     "version":"1.0",
     "datetime":"2025-09-16T00:00:00Z",
     "duration":2,
+    "traceid": "9c7f1c1a-6c1b-43e8-9c25-5bb6c8e0f111",
     "payload":{
         "entries": [ { "k1": { "CHILD-ID": 1, "label-text": "A" } } ]
     }
