@@ -1,0 +1,52 @@
+package com.hunet.common.excel
+
+/**
+ * Excel 템플릿에 바인딩할 데이터를 제공하는 인터페이스.
+ *
+ * 지연 로딩 방식으로 데이터를 제공하여 대용량 처리 시 메모리 효율성을 높입니다.
+ * - [getValue]: 단일 변수 값 제공 (예: title, date)
+ * - [getItems]: 컬렉션 데이터 제공 (예: employees) - 반복문(jx:each)에 사용
+ * - [getImage]: 이미지 데이터 제공 (예: logo) - 이미지 삽입(jx:image)에 사용
+ */
+interface ExcelDataProvider {
+
+    /**
+     * 단일 변수 값을 반환합니다.
+     *
+     * 템플릿의 `${variableName}` 형태의 플레이스홀더에 바인딩됩니다.
+     *
+     * @param name 변수 이름
+     * @return 변수 값, 존재하지 않으면 null
+     */
+    fun getValue(name: String): Any?
+
+    /**
+     * 컬렉션 데이터의 Iterator를 반환합니다.
+     *
+     * 템플릿의 `jx:each(items="name" var="item")` 반복문에 사용됩니다.
+     * Iterator를 반환하여 대용량 데이터도 스트리밍 방식으로 처리할 수 있습니다.
+     *
+     * @param name 컬렉션 이름
+     * @return 컬렉션의 Iterator, 존재하지 않으면 null
+     */
+    fun getItems(name: String): Iterator<Any>?
+
+    /**
+     * 이미지 데이터를 반환합니다.
+     *
+     * 템플릿의 `jx:image(src="name")` 이미지 삽입에 사용됩니다.
+     *
+     * @param name 이미지 이름
+     * @return 이미지 바이트 배열, 존재하지 않으면 null
+     */
+    fun getImage(name: String): ByteArray? = null
+
+    /**
+     * 사용 가능한 변수/컬렉션/이미지 이름 목록을 반환합니다.
+     *
+     * 디버깅 및 유효성 검사 용도로 사용됩니다. 선택적 구현.
+     *
+     * @return 사용 가능한 이름 목록
+     */
+    fun getAvailableNames(): Set<String> = emptySet()
+}
