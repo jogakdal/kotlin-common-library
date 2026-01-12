@@ -279,18 +279,21 @@ class ExcelGenerator @JvmOverloads constructor(
         } else null
         val dataValidations = backupDataValidations(ByteArrayInputStream(processedBytes))
 
-        // JXLS 처리
+        // 피벗 테이블 정보 추출 및 삭제 (JXLS 처리 전)
+        val (pivotTableInfos, bytesWithoutPivot) = extractAndRemovePivotTables(processedBytes)
+
+        // JXLS 처리 (피벗 테이블 없이)
         val jxlsOutput = ByteArrayOutputStream().also { tempOutput ->
-            ByteArrayInputStream(processedBytes).use { input ->
+            ByteArrayInputStream(bytesWithoutPivot).use { input ->
                 processJxlsWithFormulaErrorDetection(input, tempOutput, context)
             }
         }
 
-        // 후처리 (레이아웃 복원, 데이터 유효성 검사 확장, 피벗 테이블 새로고침 설정)
+        // 후처리 (레이아웃 복원, 데이터 유효성 검사 확장, 피벗 테이블 재생성)
         val resultBytes = jxlsOutput.toByteArray()
             .let { bytes -> layout?.let { restoreLayout(bytes, it) } ?: bytes }
             .let { bytes -> expandDataValidations(bytes, dataValidations) }
-            .let { bytes -> enablePivotTableRefreshOnLoad(bytes) }
+            .let { bytes -> recreatePivotTables(bytes, pivotTableInfos) }
 
         output.write(resultBytes)
         return rowsProcessed
@@ -393,895 +396,390 @@ class ExcelGenerator @JvmOverloads constructor(
     private val logger = org.slf4j.LoggerFactory.getLogger(ExcelGenerator::class.java)
 
     /**
-     * 피벗 캐시 정보를 담는 데이터 클래스
+     * 피벗 테이블 설정 정보
      */
-    private data class PivotCacheInfo(
-        val sheetName: String,
-        val range: CellRangeAddress,
-        val fieldNames: List<String>,
-        val cacheDefPartName: String,
-        val cacheRecordsPartName: String?
+    private data class PivotTableInfo(
+        val pivotTableSheetName: String,       // 피벗 테이블이 위치한 시트
+        val pivotTableLocation: String,        // 피벗 테이블 위치 (예: "I6")
+        val sourceSheetName: String,           // 데이터 소스 시트
+        val sourceRange: CellRangeAddress,     // 원본 데이터 범위
+        val rowLabelFields: List<Int>,         // 행 레이블 필드 인덱스
+        val dataFields: List<DataFieldInfo>,   // 값 필드 정보
+        val pivotTableName: String,            // 피벗 테이블 이름
+        val rowHeaderCaption: String?,         // 행 레이블 헤더 캡션 (예: "직급")
+        val pivotTableXml: String,             // 원본 피벗 테이블 XML
+        val pivotCacheDefXml: String,          // 원본 피벗 캐시 정의 XML
+        val pivotCacheRecordsXml: String?      // 원본 피벗 캐시 레코드 XML
+    )
+
+    private data class DataFieldInfo(
+        val fieldIndex: Int,
+        val function: org.apache.poi.ss.usermodel.DataConsolidateFunction,
+        val name: String?
     )
 
     /**
-     * 피벗 테이블의 데이터 소스 범위를 확장하고 캐시를 초기화합니다.
-     * refreshOnLoad를 설정하여 파일을 열 때 Excel이 캐시를 재구성하도록 합니다.
-     *
-     * 이 방법은 캐시와 피벗 테이블의 아이템 참조를 모두 최소화하여
-     * Excel이 새로고침 시 전체를 재구성하도록 합니다.
+     * 피벗 테이블 정보를 추출하고 워크북에서 제거합니다.
+     * @return Pair<피벗 테이블 정보 목록, 피벗 테이블이 제거된 바이트 배열>
      */
-    private fun enablePivotTableRefreshOnLoad(outputBytes: ByteArray): ByteArray {
-        val tempFile = java.io.File.createTempFile("excel_pivot_", ".xlsx")
-        try {
-            tempFile.writeBytes(outputBytes)
+    private fun extractAndRemovePivotTables(inputBytes: ByteArray): Pair<List<PivotTableInfo>, ByteArray> {
+        val pivotTableInfos = mutableListOf<PivotTableInfo>()
 
-            // 시트별 데이터 범위 계산 (특정 컬럼 범위 내에서)
-            data class SheetDataInfo(
-                val lastRow: Int,
-                val dataRangeLastRows: MutableMap<String, Int> // "A:C" -> lastRow with all columns filled
-            )
-
-            val sheetDataInfo = mutableMapOf<String, SheetDataInfo>()
-            XSSFWorkbook(ByteArrayInputStream(outputBytes)).use { workbook ->
-                workbook.sheets.forEach { sheet ->
-                    val lastRow = sheet.lastRowWithData
-                    sheetDataInfo[sheet.sheetName] = SheetDataInfo(lastRow, mutableMapOf())
-                    logger.debug("시트 '${sheet.sheetName}' 데이터 범위: lastRow=$lastRow")
-                }
+        // 피벗 테이블이 없으면 원본 반환
+        val hasPivotTable = XSSFWorkbook(ByteArrayInputStream(inputBytes)).use { workbook ->
+            workbook.sheets.any { sheet ->
+                (sheet as? XSSFSheet)?.pivotTables?.isNotEmpty() == true
             }
-
-            // 피벗 캐시 정보 수집 및 실제 데이터로 재구성
-            data class PivotCacheData(
-                val sheetName: String,
-                val originalRange: CellRangeAddress,
-                val newRange: CellRangeAddress,
-                val fieldData: List<List<Any?>> // 각 필드별 데이터 (헤더 제외)
-            )
-
-            val pivotCacheDataMap = mutableMapOf<String, PivotCacheData>() // partName -> data
-
-            org.apache.poi.openxml4j.opc.OPCPackage.open(tempFile, org.apache.poi.openxml4j.opc.PackageAccess.READ_WRITE).use { pkg ->
-                val pivotCacheDefPattern = Regex("/xl/pivotCache/pivotCacheDefinition(\\d+)\\.xml")
-                val pivotCacheRecordsPattern = Regex("/xl/pivotCache/pivotCacheRecords(\\d+)\\.xml")
-                val worksheetSourcePattern = Regex("""<worksheetSource\s+ref="([^"]+)"\s+sheet="([^"]+)"""")
-
-                // 먼저 피벗 캐시의 소스 범위와 실제 데이터 수집
-                pkg.parts.toList().forEach { part ->
-                    val partName = part.partName.name
-                    if (!pivotCacheDefPattern.matches(partName)) return@forEach
-
-                    val xmlContent = part.inputStream.bufferedReader().readText()
-                    val sourceMatch = worksheetSourcePattern.find(xmlContent) ?: return@forEach
-                    val currentRef = sourceMatch.groupValues[1]
-                    val sheetName = sourceMatch.groupValues[2]
-                    val originalRange = runCatching { CellRangeAddress.valueOf(currentRef) }.getOrNull() ?: return@forEach
-
-                    // 워크북에서 데이터 읽기
-                    XSSFWorkbook(ByteArrayInputStream(outputBytes)).use { workbook ->
-                        val sheet = workbook.getSheet(sheetName) ?: return@forEach
-                        val dataLastRow = findLastRowWithAllColumns(sheet, originalRange)
-
-                        val newRange = CellRangeAddress(
-                            originalRange.firstRow,
-                            dataLastRow,
-                            originalRange.firstColumn,
-                            originalRange.lastColumn
-                        )
-
-                        // 각 필드별 데이터 수집 (헤더 행 제외)
-                        val fieldCount = originalRange.lastColumn - originalRange.firstColumn + 1
-                        val fieldData = List(fieldCount) { mutableListOf<Any?>() }
-
-                        for (rowNum in originalRange.firstRow + 1..dataLastRow) {
-                            val row = sheet.getRow(rowNum) ?: continue
-                            for (colIdx in 0 until fieldCount) {
-                                val cell = row.getCell(originalRange.firstColumn + colIdx)
-                                fieldData[colIdx].add(getCellValueAsAny(cell))
-                            }
-                        }
-
-                        pivotCacheDataMap[partName] = PivotCacheData(sheetName, originalRange, newRange, fieldData)
-                        logger.debug("피벗 소스 '$sheetName' 범위 ${originalRange.formatAsString()}: 데이터 마지막 행=$dataLastRow, 레코드 수=${fieldData[0].size}")
-                    }
-                }
-
-                // 각 필드별 유니크 값 목록 계산
-                data class CacheFieldInfo(
-                    val cacheNum: String,
-                    val uniqueValuesPerField: List<List<String>>
-                )
-                val cacheFieldInfoMap = mutableMapOf<String, CacheFieldInfo>()
-
-                // 피벗 캐시 정의 및 레코드 수정
-                pkg.parts.toList().forEach { part ->
-                    val partName = part.partName.name
-                    val cacheNumMatch = pivotCacheDefPattern.find(partName)
-
-                    when {
-                        cacheNumMatch != null -> {
-                            val cacheData = pivotCacheDataMap[partName] ?: return@forEach
-                            val cacheNum = cacheNumMatch.groupValues[1]
-
-                            // 각 필드별 유니크 값 계산
-                            val uniqueValuesPerField = cacheData.fieldData.map { field ->
-                                field.mapNotNull { it?.toString() }.distinct()
-                            }
-                            cacheFieldInfoMap[cacheNum] = CacheFieldInfo(cacheNum, uniqueValuesPerField)
-
-                            // 캐시 정의 수정 (sharedItems 채움)
-                            val xmlContent = part.inputStream.bufferedReader().readText()
-                            val modifiedXml = rebuildPivotCacheWithData(
-                                xmlContent,
-                                cacheData.newRange,
-                                cacheData.fieldData
-                            )
-                            part.outputStream.use { it.write(modifiedXml.toByteArray(Charsets.UTF_8)) }
-                            logger.debug("피벗 캐시 범위 확장: ${cacheData.originalRange.formatAsString()} -> ${cacheData.newRange.formatAsString()} (시트: ${cacheData.sheetName})")
-
-                            // 캐시 레코드 업데이트 (인덱스 참조 사용)
-                            val recordsPartName = "/xl/pivotCache/pivotCacheRecords$cacheNum.xml"
-                            val recordsPart = runCatching {
-                                pkg.getPart(org.apache.poi.openxml4j.opc.PackagingURIHelper.createPartName(recordsPartName))
-                            }.getOrNull()
-
-                            if (recordsPart != null) {
-                                val originalRecordsXml = recordsPart.inputStream.bufferedReader().readText()
-                                val recordsXml = buildPivotCacheRecordsWithIndices(cacheData.fieldData, uniqueValuesPerField, originalRecordsXml)
-                                recordsPart.outputStream.use { it.write(recordsXml.toByteArray(Charsets.UTF_8)) }
-                                logger.debug("피벗 캐시 레코드 재구성: ${cacheData.fieldData[0].size}건")
-                            }
-                        }
-                    }
-                }
-
-                // 피벗 테이블 정의 수정 (items 업데이트)
-                val pivotTablePattern = Regex("/xl/pivotTables/pivotTable(\\d+)\\.xml")
-                pkg.parts.toList().forEach { part ->
-                    val partName = part.partName.name
-                    if (!pivotTablePattern.matches(partName)) return@forEach
-
-                    val xmlContent = part.inputStream.bufferedReader().readText()
-
-                    // pivotTable items는 업데이트하지 않음
-                    // refreshOnLoad="true"가 설정되어 있으므로 Excel이 열 때 자동으로 재계산함
-                    // items만 업데이트하고 rowItems/location을 업데이트하지 않으면 오류 발생
-                    logger.debug("피벗 테이블은 refreshOnLoad로 자동 갱신됨")
-                }
-
-                pkg.flush()
-            }
-
-            return tempFile.readBytes()
-        } finally {
-            tempFile.delete()
         }
+
+        if (!hasPivotTable) {
+            logger.debug("피벗 테이블이 없음, 원본 반환")
+            return Pair(emptyList(), inputBytes)
+        }
+
+        // 피벗 테이블 정보 수집 (XML 직접 파싱)
+        org.apache.poi.openxml4j.opc.OPCPackage.open(ByteArrayInputStream(inputBytes)).use { pkg ->
+                // 피벗 캐시 정의에서 소스 정보 추출
+                val cacheSourceMap = mutableMapOf<String, Pair<String, String>>() // cacheId -> (sheet, ref)
+
+                pkg.parts.filter { it.partName.name.contains("/pivotCache/pivotCacheDefinition") }.forEach { part ->
+                    val xml = part.inputStream.bufferedReader().readText()
+
+                    // worksheetSource 파싱: <worksheetSource ref="A5:C6" sheet="Report(세로)"/>
+                    val sheetMatch = Regex("""sheet="([^"]+)"""").find(xml)
+                    val refMatch = Regex("""<worksheetSource[^>]*ref="([^"]+)"""").find(xml)
+
+                    if (sheetMatch != null && refMatch != null) {
+                        val cacheId = part.partName.name // 캐시 식별용
+                        cacheSourceMap[cacheId] = Pair(sheetMatch.groupValues[1], refMatch.groupValues[1])
+                        logger.debug("피벗 캐시 발견: $cacheId -> ${sheetMatch.groupValues[1]}!${refMatch.groupValues[1]}")
+                    }
+                }
+
+                // 피벗 테이블에서 정보 추출
+                pkg.parts.filter { it.partName.name.contains("/pivotTables/pivotTable") }.forEach { part ->
+                    val xml = part.inputStream.bufferedReader().readText()
+
+                    // 피벗 테이블 이름
+                    val nameMatch = Regex("""name="([^"]+)"""").find(xml)
+                    val pivotTableName = nameMatch?.groupValues?.get(1) ?: "PivotTable"
+
+                    // 위치 정보: <location ref="I6:J8"
+                    val locationMatch = Regex("""<location[^>]*ref="([^"]+)"""").find(xml)
+                    val location = locationMatch?.groupValues?.get(1)?.split(":")?.firstOrNull() ?: "A1"
+
+                    // 행 레이블 필드: <rowFields count="1"><field x="1"/></rowFields>
+                    val rowLabelFields = mutableListOf<Int>()
+                    Regex("""<rowFields[^>]*>(.+?)</rowFields>""").find(xml)?.let { rowFieldsMatch ->
+                        Regex("""<field x="(\d+)"""").findAll(rowFieldsMatch.groupValues[1]).forEach {
+                            rowLabelFields.add(it.groupValues[1].toInt())
+                        }
+                    }
+
+                    // 데이터 필드: <dataField name="평균 : 급여" fld="2" subtotal="average"
+                    val dataFields = mutableListOf<DataFieldInfo>()
+                    Regex("""<dataField[^>]+>""").findAll(xml).forEach { match ->
+                        val dataFieldXml = match.value
+                        val fldMatch = Regex("""fld="(\d+)"""").find(dataFieldXml)
+                        val subtotalMatch = Regex("""subtotal="([^"]*)"""").find(dataFieldXml)
+                        val nameAttrMatch = Regex("""name="([^"]+)"""").find(dataFieldXml)
+
+                        val fld = fldMatch?.groupValues?.get(1)?.toIntOrNull() ?: return@forEach
+                        val subtotal = subtotalMatch?.groupValues?.get(1) ?: "sum"
+                        val name = nameAttrMatch?.groupValues?.get(1)
+
+                        val function = when (subtotal) {
+                            "count" -> org.apache.poi.ss.usermodel.DataConsolidateFunction.COUNT
+                            "average" -> org.apache.poi.ss.usermodel.DataConsolidateFunction.AVERAGE
+                            "max" -> org.apache.poi.ss.usermodel.DataConsolidateFunction.MAX
+                            "min" -> org.apache.poi.ss.usermodel.DataConsolidateFunction.MIN
+                            else -> org.apache.poi.ss.usermodel.DataConsolidateFunction.SUM
+                        }
+
+                        dataFields.add(DataFieldInfo(fld, function, name))
+                    }
+
+                    // rowHeaderCaption 추출 (행 레이블 헤더 캡션, 예: "직급")
+                    val rowHeaderCaptionMatch = Regex("""rowHeaderCaption="([^"]+)"""").find(xml)
+                    val rowHeaderCaption = rowHeaderCaptionMatch?.groupValues?.get(1)
+
+                    // 소스 정보는 첫 번째 캐시에서 가져옴 (단순화)
+                    val (sourceSheet, sourceRef) = cacheSourceMap.values.firstOrNull() ?: run {
+                        logger.warn("피벗 테이블 '$pivotTableName' 캐시 소스 정보 없음")
+                        return@forEach
+                    }
+
+                    // 피벗 테이블이 어느 시트에 있는지 확인
+                    val pivotTablePartName = part.partName.name
+                    // /xl/pivotTables/pivotTable1.xml -> 시트 관계에서 찾아야 함
+                    val pivotTableSheetName = findPivotTableSheetName(pkg, pivotTablePartName) ?: sourceSheet
+
+                    pivotTableInfos.add(PivotTableInfo(
+                        pivotTableSheetName = pivotTableSheetName,
+                        pivotTableLocation = location,
+                        sourceSheetName = sourceSheet,
+                        sourceRange = CellRangeAddress.valueOf(sourceRef),
+                        rowLabelFields = rowLabelFields,
+                        dataFields = dataFields,
+                        pivotTableName = pivotTableName,
+                        rowHeaderCaption = rowHeaderCaption,
+                        pivotTableXml = "",
+                        pivotCacheDefXml = "",
+                        pivotCacheRecordsXml = null
+                    ))
+
+                    logger.debug("피벗 테이블 발견: '$pivotTableName' (위치: $pivotTableSheetName!$location, 소스: $sourceSheet!$sourceRef)")
+                }
+            }
+
+        // ZIP 파일로 피벗 관련 파트 및 참조 완전 제거
+        val cleanedBytes = removePivotReferencesFromZip(inputBytes)
+
+        return Pair(pivotTableInfos, cleanedBytes)
     }
 
     /**
-     * 피벗 소스 범위 내의 모든 컬럼에 데이터가 있는 마지막 행을 찾습니다.
-     * 푸터 행(일부 컬럼만 데이터가 있는 행)을 제외하기 위함입니다.
+     * 피벗 테이블을 재생성합니다.
      */
-    private fun findLastRowWithAllColumns(sheet: org.apache.poi.ss.usermodel.Sheet, range: CellRangeAddress): Int {
-        val headerRow = range.firstRow
-        val colStart = range.firstColumn
-        val colEnd = range.lastColumn
-        val colCount = colEnd - colStart + 1
+    private fun recreatePivotTables(inputBytes: ByteArray, pivotTableInfos: List<PivotTableInfo>): ByteArray {
+        if (pivotTableInfos.isEmpty()) {
+            return inputBytes
+        }
 
-        var lastCompleteRow = headerRow // 최소 헤더 행
+        val bytesWithPivotTable = XSSFWorkbook(ByteArrayInputStream(inputBytes)).use { workbook ->
+            pivotTableInfos.forEach { info ->
+                val pivotSheet = workbook.getSheet(info.pivotTableSheetName) as? XSSFSheet
+                val sourceSheet = workbook.getSheet(info.sourceSheetName) as? XSSFSheet
 
-        for (rowNum in headerRow + 1..sheet.lastRowNum) {
-            val row = sheet.getRow(rowNum) ?: break
+                if (pivotSheet == null || sourceSheet == null) {
+                    logger.warn("피벗 테이블 재생성 실패: 시트를 찾을 수 없음 (pivot=${info.pivotTableSheetName}, source=${info.sourceSheetName})")
+                    return@forEach
+                }
 
-            // 해당 범위 내 모든 컬럼에 데이터가 있는지 확인
-            var filledColumns = 0
-            for (colIdx in colStart..colEnd) {
+                // 확장된 데이터 범위 계산
+                val newLastRow = findLastRowWithData(sourceSheet, info.sourceRange)
+                val newSourceRange = CellRangeAddress(
+                    info.sourceRange.firstRow,
+                    newLastRow,
+                    info.sourceRange.firstColumn,
+                    info.sourceRange.lastColumn
+                )
+
+                logger.debug("피벗 테이블 재생성: ${info.pivotTableName} (범위: ${info.sourceRange.formatAsString()} -> ${newSourceRange.formatAsString()})")
+
+                try {
+                    // 피벗 테이블 위치 파싱
+                    val pivotLocation = org.apache.poi.ss.util.CellReference(info.pivotTableLocation)
+
+                    // 피벗 테이블 영역 정리 (기존 피벗 테이블 잔여물 제거)
+                    // 피벗 테이블은 보통 10x10 정도 영역을 차지하므로 여유있게 정리
+                    clearPivotTableArea(pivotSheet, pivotLocation.row, pivotLocation.col.toInt(), 20, 10)
+
+                    // 피벗 테이블 생성
+                    val areaReference = org.apache.poi.ss.util.AreaReference(
+                        "${info.sourceSheetName}!${newSourceRange.formatAsString()}",
+                        workbook.spreadsheetVersion
+                    )
+
+                    val pivotTable = pivotSheet.createPivotTable(areaReference, pivotLocation, sourceSheet)
+
+                    // 행 레이블 필드 추가
+                    info.rowLabelFields.forEach { fieldIdx ->
+                        pivotTable.addRowLabel(fieldIdx)
+                    }
+
+                    // 데이터 필드 추가
+                    info.dataFields.forEach { dataField ->
+                        pivotTable.addColumnLabel(dataField.function, dataField.fieldIndex, dataField.name)
+                    }
+
+                    // rowHeaderCaption 적용 (행 레이블 헤더 캡션)
+                    info.rowHeaderCaption?.let { caption ->
+                        pivotTable.ctPivotTableDefinition.rowHeaderCaption = caption
+                        logger.debug("rowHeaderCaption 적용: '$caption'")
+                    }
+
+                    logger.debug("피벗 테이블 재생성 완료: ${info.pivotTableName}")
+                } catch (e: Exception) {
+                    throw IllegalStateException("피벗 테이블 재생성 실패: ${info.pivotTableName}", e)
+                }
+            }
+
+            workbook.toByteArray()
+        }
+
+        return bytesWithPivotTable
+    }
+
+    /**
+     * 지정된 범위 내에서 데이터가 있는 마지막 행을 찾습니다.
+     */
+    private fun findLastRowWithData(sheet: XSSFSheet, range: CellRangeAddress): Int {
+        var lastRow = range.firstRow
+
+        for (rowNum in range.firstRow + 1..sheet.lastRowNum) {
+            val row = sheet.getRow(rowNum) ?: continue
+
+            var hasData = false
+            for (colIdx in range.firstColumn..range.lastColumn) {
                 val cell = row.getCell(colIdx)
-                if (cell != null && cell.cellType != org.apache.poi.ss.usermodel.CellType.BLANK) {
+                if (cell != null && cell.cellType != CellType.BLANK) {
                     val value = when (cell.cellType) {
-                        org.apache.poi.ss.usermodel.CellType.STRING -> cell.stringCellValue.trim()
-                        org.apache.poi.ss.usermodel.CellType.NUMERIC -> cell.numericCellValue.toString()
+                        CellType.STRING -> cell.stringCellValue.trim()
+                        CellType.NUMERIC -> cell.numericCellValue.toString()
+                        CellType.BOOLEAN -> cell.booleanCellValue.toString()
                         else -> ""
                     }
                     if (value.isNotEmpty()) {
-                        filledColumns++
+                        hasData = true
+                        break
                     }
                 }
             }
 
-            // 모든 컬럼에 데이터가 있으면 이 행까지 포함
-            if (filledColumns == colCount) {
-                lastCompleteRow = rowNum
-            } else if (filledColumns == 0) {
-                // 완전히 빈 행이면 데이터 영역 끝
-                break
-            }
-            // 일부 컬럼만 채워진 행(푸터)은 무시
-        }
-
-        return lastCompleteRow
-    }
-
-    /**
-     * sharedItems를 빈 상태로 만들되, containsBlank 속성을 추가합니다.
-     */
-    private fun clearSharedItemsForRefresh(xml: String): String {
-        val result = StringBuilder()
-        var pos = 0
-
-        while (pos < xml.length) {
-            val sharedItemsStart = xml.indexOf("<sharedItems", pos)
-            if (sharedItemsStart == -1) {
-                result.append(xml.substring(pos))
-                break
-            }
-
-            result.append(xml.substring(pos, sharedItemsStart))
-
-            val tagEnd = xml.indexOf(">", sharedItemsStart)
-            if (tagEnd == -1) {
-                result.append(xml.substring(sharedItemsStart))
-                break
-            }
-
-            if (xml[tagEnd - 1] == '/') {
-                // self-closing
-                result.append("""<sharedItems containsBlank="1"/>""")
-                pos = tagEnd + 1
+            if (hasData) {
+                lastRow = rowNum
             } else {
-                val closingTag = "</sharedItems>"
-                val closingPos = xml.indexOf(closingTag, tagEnd)
-                if (closingPos == -1) {
-                    result.append(xml.substring(sharedItemsStart))
-                    break
-                }
-                result.append("""<sharedItems containsBlank="1"/>""")
-                pos = closingPos + closingTag.length
+                // 빈 행이면 데이터 영역 끝
+                break
             }
         }
 
-        return result.toString()
+        return lastRow
     }
 
     /**
-     * 피벗 테이블의 아이템 참조를 리셋합니다.
-     * 캐시가 비어있으므로 아이템 인덱스 참조(x="0")를 제거하고 missing으로 표시합니다.
-     * 원본 구조는 최대한 보존하여 필드명 등이 유지되도록 합니다.
+     * ZIP 파일에서 피벗 관련 참조를 완전히 제거합니다.
      */
-    private fun resetPivotTableItems(xml: String): String {
-        var result = xml
+    private fun removePivotReferencesFromZip(inputBytes: ByteArray): ByteArray {
+        val output = ByteArrayOutputStream()
 
-        // pivotField 내의 items에서 x="숫자" 참조를 m="1"(missing)으로 변경
-        // 이렇게 하면 필드 구조는 유지되고 Excel이 refreshOnLoad 시 올바르게 재구성함
-        result = result.replace(Regex("""<item\s+x="[^"]*"/>"""), """<item m="1"/>""")
+        java.util.zip.ZipInputStream(ByteArrayInputStream(inputBytes)).use { zis ->
+            java.util.zip.ZipOutputStream(output).use { zos ->
+                var entry = zis.nextEntry
 
-        // rowItems의 <x v="숫자"/>도 처리
-        result = result.replace(Regex("""<x\s+v="[^"]*"/>"""), """<x/>""")
-        result = result.replace(Regex("""<x/>"""), """<x v="0"/>""")
+                while (entry != null) {
+                    val entryName = entry.name
 
-        return result
-    }
-
-    /**
-     * 셀 값을 Any?로 반환
-     */
-    private fun getCellValueAsAny(cell: org.apache.poi.ss.usermodel.Cell?): Any? {
-        if (cell == null) return null
-        return when (cell.cellType) {
-            org.apache.poi.ss.usermodel.CellType.STRING -> cell.stringCellValue
-            org.apache.poi.ss.usermodel.CellType.NUMERIC -> {
-                if (org.apache.poi.ss.usermodel.DateUtil.isCellDateFormatted(cell)) {
-                    cell.dateCellValue
-                } else {
-                    cell.numericCellValue
-                }
-            }
-            org.apache.poi.ss.usermodel.CellType.BOOLEAN -> cell.booleanCellValue
-            org.apache.poi.ss.usermodel.CellType.FORMULA -> {
-                try {
-                    cell.numericCellValue
-                } catch (e: Exception) {
-                    try {
-                        cell.stringCellValue
-                    } catch (e2: Exception) {
-                        null
+                    // 피벗 관련 파일 완전히 스킵
+                    if (entryName.contains("pivotCache") || entryName.contains("pivotTables")) {
+                        logger.debug("피벗 파트 제거: $entryName")
+                        entry = zis.nextEntry
+                        continue
                     }
-                }
-            }
-            else -> null
-        }
-    }
 
-    /**
-     * 피벗 캐시 정의 XML을 재구성합니다.
-     */
-    private fun rebuildPivotCacheDefinition(
-        originalXml: String,
-        newRange: CellRangeAddress,
-        sheetName: String,
-        uniqueValuesLists: List<List<String>>,
-        recordCount: Int
-    ): String {
-        var xml = originalXml
+                    val content = zis.readBytes()
+                    var modifiedContent = content
 
-        // worksheetSource ref 업데이트
-        xml = xml.replace(
-            Regex("""(<worksheetSource\s+ref=")[^"]+("\s+sheet="[^"]+")"""),
-            "$1${newRange.formatAsString()}$2"
-        )
+                    // [Content_Types].xml에서 피벗 관련 타입 제거
+                    if (entryName == "[Content_Types].xml") {
+                        val xml = String(content, Charsets.UTF_8)
+                        // Override 요소만 제거 (한 줄 형태 및 여러 줄 형태 모두 처리)
+                        val cleanedXml = xml
+                            .replace(Regex("""<Override[^>]*pivotCache[^>]*/>\s*"""), "")
+                            .replace(Regex("""<Override[^>]*pivotTable[^>]*/>\s*"""), "")
+                        modifiedContent = cleanedXml.toByteArray(Charsets.UTF_8)
+                        logger.debug("Content_Types에서 피벗 참조 제거")
+                    }
 
-        // refreshOnLoad 추가
-        xml = if (xml.contains("refreshOnLoad=")) {
-            xml.replace(Regex("""refreshOnLoad="[^"]*""""), """refreshOnLoad="true"""")
-        } else {
-            xml.replace("<pivotCacheDefinition ", """<pivotCacheDefinition refreshOnLoad="true" """)
-        }
-
-        // recordCount 업데이트
-        xml = xml.replace(Regex("""recordCount="[^"]*""""), """recordCount="$recordCount"""")
-
-        // 각 cacheField의 sharedItems 업데이트
-        var fieldIndex = 0
-        val cacheFieldPattern = Regex("""<cacheField\s+name="[^"]+"\s+numFmtId="[^"]+">.*?</cacheField>""", RegexOption.DOT_MATCHES_ALL)
-
-        xml = cacheFieldPattern.replace(xml) { match ->
-            val fieldXml = match.value
-            if (fieldIndex < uniqueValuesLists.size) {
-                val uniqueValues = uniqueValuesLists[fieldIndex]
-                fieldIndex++
-                rebuildCacheField(fieldXml, uniqueValues)
-            } else {
-                fieldIndex++
-                fieldXml
-            }
-        }
-
-        return xml
-    }
-
-    /**
-     * 단일 cacheField의 sharedItems를 재구성합니다.
-     */
-    private fun rebuildCacheField(fieldXml: String, uniqueValues: List<String>): String {
-        // cacheField 시작 태그 추출
-        val startTagMatch = Regex("""<cacheField\s+name="[^"]+"\s+numFmtId="[^"]+">""").find(fieldXml)
-            ?: return fieldXml
-        val startTag = startTagMatch.value
-
-        // sharedItems 구성
-        val sharedItems = if (uniqueValues.isEmpty()) {
-            "<sharedItems/>"
-        } else {
-            val items = uniqueValues.joinToString("") { value ->
-                // 숫자인지 확인
-                val numValue = value.toDoubleOrNull()
-                if (numValue != null) {
-                    """<n v="$numValue"/>"""
-                } else {
-                    """<s v="${escapeXml(value)}"/>"""
-                }
-            }
-            """<sharedItems count="${uniqueValues.size}">$items</sharedItems>"""
-        }
-
-        return "$startTag$sharedItems</cacheField>"
-    }
-
-    /**
-     * 피벗 캐시 레코드 XML을 구성합니다.
-     */
-    private fun buildPivotCacheRecords(
-        dataRecords: List<List<Any?>>,
-        uniqueValuesLists: List<List<String>>
-    ): String {
-        val sb = StringBuilder()
-        sb.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""")
-        sb.append("""<pivotCacheRecords xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" """)
-        sb.append("""xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" """)
-        sb.append("""count="${dataRecords.size}">""")
-
-        for (record in dataRecords) {
-            sb.append("<r>")
-            for ((colIdx, value) in record.withIndex()) {
-                if (colIdx < uniqueValuesLists.size) {
-                    val uniqueValues = uniqueValuesLists[colIdx]
-                    val valueStr = value?.toString() ?: ""
-                    val idx = uniqueValues.indexOf(valueStr)
-                    if (idx >= 0) {
-                        sb.append("""<x v="$idx"/>""")
-                    } else {
-                        // 값이 uniqueValues에 없으면 직접 값으로 저장
-                        val numValue = valueStr.toDoubleOrNull()
-                        if (numValue != null) {
-                            sb.append("""<n v="$numValue"/>""")
-                        } else {
-                            sb.append("""<s v="${escapeXml(valueStr)}"/>""")
+                    // 워크시트 관계에서 피벗 참조 제거
+                    if (entryName.contains("worksheets/_rels/") && entryName.endsWith(".rels")) {
+                        val xml = String(content, Charsets.UTF_8)
+                        if (xml.contains("pivotTable")) {
+                            val cleanedXml = xml.replace(Regex("""<Relationship[^>]*pivotTable[^>]*/>\s*"""), "")
+                            // 관계가 모두 제거되면 유효한 빈 rels 파일로 대체
+                            val finalXml = if (!cleanedXml.contains("<Relationship")) {
+                                """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>"""
+                            } else {
+                                cleanedXml
+                            }
+                            modifiedContent = finalXml.toByteArray(Charsets.UTF_8)
+                            logger.debug("워크시트 관계에서 피벗 참조 제거: $entryName")
                         }
                     }
-                }
-            }
-            sb.append("</r>")
-        }
 
-        sb.append("</pivotCacheRecords>")
-        return sb.toString()
-    }
-
-    /**
-     * XML 특수문자 이스케이프
-     */
-    private fun escapeXml(s: String): String {
-        return s.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace("\"", "&quot;")
-            .replace("'", "&apos;")
-    }
-
-    /**
-     * 실제 데이터로 피벗 캐시 정의 XML을 재구성합니다.
-     */
-    private fun rebuildPivotCacheWithData(
-        originalXml: String,
-        newRange: CellRangeAddress,
-        fieldData: List<List<Any?>>
-    ): String {
-        var xml = originalXml
-
-        // 1. worksheetSource ref 업데이트
-        xml = xml.replace(
-            Regex("""(<worksheetSource\s+ref=")[^"]+("\s+sheet="[^"]+")"""),
-            "$1${newRange.formatAsString()}$2"
-        )
-
-        // 2. refreshOnLoad 추가/업데이트
-        xml = if (xml.contains("refreshOnLoad=")) {
-            xml.replace(Regex("""refreshOnLoad="[^"]*""""), """refreshOnLoad="true"""")
-        } else {
-            xml.replace("<pivotCacheDefinition ", """<pivotCacheDefinition refreshOnLoad="true" """)
-        }
-
-        // 3. recordCount 업데이트
-        val recordCount = if (fieldData.isNotEmpty()) fieldData[0].size else 0
-        xml = if (xml.contains("recordCount=")) {
-            xml.replace(Regex("""recordCount="[^"]*""""), """recordCount="$recordCount"""")
-        } else {
-            xml.replace(
-                Regex("""(<pivotCacheDefinition[^>]*)(>)"""),
-                """$1 recordCount="$recordCount"$2"""
-            )
-        }
-
-        // 4. 각 필드의 sharedItems 재구성
-        val result = StringBuilder()
-        var pos = 0
-        var fieldIndex = 0
-        val cacheFieldEndTag = "</cacheField>"
-
-        while (pos < xml.length) {
-            // <cacheField 뒤에 공백이나 >가 오는 경우만 매칭 (cacheFields 제외)
-            val cacheFieldStart = findCacheFieldStart(xml, pos)
-            if (cacheFieldStart == -1) {
-                result.append(xml.substring(pos))
-                break
-            }
-
-            // cacheField 앞부분 추가
-            result.append(xml.substring(pos, cacheFieldStart))
-
-            val cacheFieldEnd = xml.indexOf(cacheFieldEndTag, cacheFieldStart)
-            if (cacheFieldEnd == -1) {
-                result.append(xml.substring(cacheFieldStart))
-                break
-            }
-
-            val cacheFieldXml = xml.substring(cacheFieldStart, cacheFieldEnd + cacheFieldEndTag.length)
-
-            // 현재 필드의 데이터로 sharedItems 재구성
-            if (fieldIndex < fieldData.size) {
-                val uniqueValues = fieldData[fieldIndex]
-                    .mapNotNull { it?.toString() }
-                    .distinct()
-                val rebuiltField = rebuildCacheFieldWithData(cacheFieldXml, uniqueValues)
-                result.append(rebuiltField)
-            } else {
-                result.append(cacheFieldXml)
-            }
-
-            fieldIndex++
-            pos = cacheFieldEnd + cacheFieldEndTag.length
-        }
-
-        return result.toString()
-    }
-
-    /**
-     * 피벗 캐시의 범위만 업데이트하고 refreshOnLoad를 설정합니다.
-     * sharedItems는 비워두고 Excel이 refreshOnLoad로 재구성하도록 합니다.
-     */
-    private fun updatePivotCacheRangeOnly(
-        originalXml: String,
-        newRange: CellRangeAddress,
-        recordCount: Int
-    ): String {
-        var xml = originalXml
-
-        // 1. worksheetSource ref 업데이트
-        xml = xml.replace(
-            Regex("""(<worksheetSource\s+ref=")[^"]+("\s+sheet="[^"]+")"""),
-            "$1${newRange.formatAsString()}$2"
-        )
-
-        // 2. refreshOnLoad 추가/업데이트
-        xml = if (xml.contains("refreshOnLoad=")) {
-            xml.replace(Regex("""refreshOnLoad="[^"]*""""), """refreshOnLoad="true"""")
-        } else {
-            xml.replace("<pivotCacheDefinition ", """<pivotCacheDefinition refreshOnLoad="true" """)
-        }
-
-        // 3. recordCount 업데이트
-        xml = if (xml.contains("recordCount=")) {
-            xml.replace(Regex("""recordCount="[^"]*""""), """recordCount="$recordCount"""")
-        } else {
-            xml.replace(
-                Regex("""(<pivotCacheDefinition[^>]*)(>)"""),
-                """$1 recordCount="$recordCount"$2"""
-            )
-        }
-
-        // 4. 모든 sharedItems를 비움 (Excel이 refreshOnLoad로 재구성)
-        xml = clearAllSharedItems(xml)
-
-        return xml
-    }
-
-    /**
-     * 인덱스 참조를 사용하여 피벗 캐시 레코드 XML을 구성합니다.
-     */
-    private fun buildPivotCacheRecordsWithIndices(
-        fieldData: List<List<Any?>>,
-        uniqueValuesPerField: List<List<String>>,
-        originalXml: String
-    ): String {
-        if (fieldData.isEmpty() || fieldData[0].isEmpty()) {
-            return originalXml
-        }
-
-        val recordCount = fieldData[0].size
-        val fieldCount = fieldData.size
-
-        // 각 필드별 값 -> 인덱스 맵
-        val valueToIndexMaps = uniqueValuesPerField.map { uniqueValues ->
-            uniqueValues.mapIndexed { index, value -> value to index }.toMap()
-        }
-
-        // 원본 XML에서 네임스페이스 선언 추출
-        val nsPattern = Regex("""<pivotCacheRecords\s+([^>]*)>""")
-        val nsMatch = nsPattern.find(originalXml)
-        val namespaceAttrs = nsMatch?.groupValues?.get(1)?.replace(Regex("""count="[^"]*""""), "")?.trim() ?: ""
-
-        val sb = StringBuilder()
-        sb.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""")
-        sb.append("<pivotCacheRecords")
-        if (namespaceAttrs.isNotEmpty()) {
-            sb.append(" $namespaceAttrs")
-        }
-        sb.append(""" count="$recordCount">""")
-
-        // 각 레코드 생성 (인덱스 참조 사용)
-        for (rowIdx in 0 until recordCount) {
-            sb.append("<r>")
-            for (colIdx in 0 until fieldCount) {
-                val value = fieldData[colIdx].getOrNull(rowIdx)?.toString() ?: ""
-                val idx = valueToIndexMaps.getOrNull(colIdx)?.get(value)
-                if (idx != null) {
-                    sb.append("""<x v="$idx"/>""")
-                } else {
-                    sb.append("<m/>")
-                }
-            }
-            sb.append("</r>")
-        }
-
-        sb.append("</pivotCacheRecords>")
-        return sb.toString()
-    }
-
-    /**
-     * 피벗 테이블의 items를 업데이트합니다.
-     */
-    private fun updatePivotTableItems(xml: String, uniqueValuesPerField: List<List<String>>): String {
-        var result = xml
-        var fieldIndex = 0
-
-        // 각 pivotField의 items를 업데이트
-        val pivotFieldPattern = Regex("""<pivotField([^>]*)>(.*?)</pivotField>""", RegexOption.DOT_MATCHES_ALL)
-
-        result = pivotFieldPattern.replace(result) { match ->
-            val attrs = match.groupValues[1]
-            val content = match.groupValues[2]
-
-            if (fieldIndex < uniqueValuesPerField.size) {
-                val uniqueCount = uniqueValuesPerField[fieldIndex].size
-                fieldIndex++
-
-                // items가 있는 경우에만 업데이트
-                if (content.contains("<items")) {
-                    val newItems = buildPivotFieldItems(uniqueCount)
-                    val newContent = content.replace(
-                        Regex("""<items[^>]*>.*?</items>""", RegexOption.DOT_MATCHES_ALL),
-                        newItems
-                    )
-                    "<pivotField$attrs>$newContent</pivotField>"
-                } else {
-                    match.value
-                }
-            } else {
-                fieldIndex++
-                match.value
-            }
-        }
-
-        return result
-    }
-
-    /**
-     * pivotField의 items 요소를 생성합니다.
-     */
-    private fun buildPivotFieldItems(uniqueCount: Int): String {
-        val sb = StringBuilder()
-        sb.append("""<items count="${uniqueCount + 1}">""")
-        for (i in 0 until uniqueCount) {
-            sb.append("""<item x="$i"/>""")
-        }
-        sb.append("""<item t="default"/>""")
-        sb.append("</items>")
-        return sb.toString()
-    }
-
-    /**
-     * 직접 값을 사용하여 피벗 캐시 레코드 XML을 구성합니다.
-     * sharedItems가 비어있으므로 인덱스 참조 대신 직접 값을 사용합니다.
-     */
-    private fun buildPivotCacheRecordsWithDirectValues(fieldData: List<List<Any?>>, originalXml: String): String {
-        if (fieldData.isEmpty() || fieldData[0].isEmpty()) {
-            // 원본 XML 반환 (빈 데이터)
-            return originalXml
-        }
-
-        val recordCount = fieldData[0].size
-        val fieldCount = fieldData.size
-
-        // 원본 XML에서 네임스페이스 선언 추출
-        val nsPattern = Regex("""<pivotCacheRecords\s+([^>]*)>""")
-        val nsMatch = nsPattern.find(originalXml)
-        val namespaceAttrs = nsMatch?.groupValues?.get(1)?.replace(Regex("""count="[^"]*""""), "")?.trim() ?: ""
-
-        val sb = StringBuilder()
-        sb.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""")
-        sb.append("<pivotCacheRecords")
-        if (namespaceAttrs.isNotEmpty()) {
-            sb.append(" $namespaceAttrs")
-        }
-        sb.append(""" count="$recordCount">""")
-
-        // 각 레코드 생성 (직접 값 사용)
-        for (rowIdx in 0 until recordCount) {
-            sb.append("<r>")
-            for (colIdx in 0 until fieldCount) {
-                val value = fieldData[colIdx].getOrNull(rowIdx)
-                when (value) {
-                    null -> sb.append("<m/>")
-                    is Number -> {
-                        val numValue = value.toDouble()
-                        val formatted = if (numValue == numValue.toLong().toDouble()) {
-                            numValue.toLong().toString()
-                        } else {
-                            numValue.toString()
+                    // workbook.xml에서 pivotCaches 제거
+                    if (entryName == "xl/workbook.xml") {
+                        val xml = String(content, Charsets.UTF_8)
+                        if (xml.contains("<pivotCaches")) {
+                            val cleanedXml = xml
+                                .replace(Regex("""<pivotCaches>.*?</pivotCaches>""", RegexOption.DOT_MATCHES_ALL), "")
+                                .replace(Regex("""<pivotCaches/>"""), "")
+                            modifiedContent = cleanedXml.toByteArray(Charsets.UTF_8)
+                            logger.debug("워크북에서 pivotCaches 제거")
                         }
-                        sb.append("""<n v="$formatted"/>""")
                     }
-                    else -> sb.append("""<s v="${escapeXml(value.toString())}"/>""")
+
+                    // workbook.xml.rels에서 피벗 캐시 관계 제거
+                    if (entryName == "xl/_rels/workbook.xml.rels") {
+                        val xml = String(content, Charsets.UTF_8)
+                        if (xml.contains("pivotCache")) {
+                            val cleanedXml = xml.replace(Regex("""<Relationship[^>]*pivotCache[^>]*/>\s*"""), "")
+                            modifiedContent = cleanedXml.toByteArray(Charsets.UTF_8)
+                            logger.debug("워크북 관계에서 피벗 캐시 참조 제거")
+                        }
+                    }
+
+                    // 새 엔트리 작성
+                    val newEntry = java.util.zip.ZipEntry(entryName)
+                    zos.putNextEntry(newEntry)
+                    zos.write(modifiedContent)
+                    zos.closeEntry()
+
+                    entry = zis.nextEntry
                 }
             }
-            sb.append("</r>")
         }
 
-        sb.append("</pivotCacheRecords>")
-        return sb.toString()
+        return output.toByteArray()
     }
 
     /**
-     * 모든 sharedItems를 비웁니다.
+     * 피벗 테이블 영역의 셀 내용을 정리합니다.
      */
-    private fun clearAllSharedItems(xml: String): String {
-        val result = StringBuilder()
-        var pos = 0
-
-        while (pos < xml.length) {
-            val sharedItemsStart = xml.indexOf("<sharedItems", pos)
-            if (sharedItemsStart == -1) {
-                result.append(xml.substring(pos))
-                break
-            }
-
-            // sharedItems 태그 앞부분 추가
-            result.append(xml.substring(pos, sharedItemsStart))
-
-            // self-closing 태그인지 확인
-            val tagEnd = xml.indexOf(">", sharedItemsStart)
-            if (tagEnd == -1) {
-                result.append(xml.substring(sharedItemsStart))
-                break
-            }
-
-            if (xml[tagEnd - 1] == '/') {
-                // self-closing: <sharedItems/>
-                result.append("<sharedItems/>")
-                pos = tagEnd + 1
-            } else {
-                // 닫는 태그 찾기
-                val closingTag = "</sharedItems>"
-                val closingPos = xml.indexOf(closingTag, tagEnd)
-                if (closingPos == -1) {
-                    result.append(xml.substring(sharedItemsStart))
-                    break
-                }
-                // 빈 sharedItems로 대체
-                result.append("<sharedItems/>")
-                pos = closingPos + closingTag.length
+    private fun clearPivotTableArea(sheet: XSSFSheet, startRow: Int, startCol: Int, rows: Int, cols: Int) {
+        for (rowIdx in startRow until startRow + rows) {
+            val row = sheet.getRow(rowIdx) ?: continue
+            for (colIdx in startCol until startCol + cols) {
+                val cell = row.getCell(colIdx)
+                cell?.setBlank()
             }
         }
-
-        return result.toString()
     }
 
     /**
-     * <cacheField 태그의 시작 위치를 찾습니다.
-     * <cacheFields와 구분하기 위해 <cacheField 뒤에 공백이나 >가 오는 경우만 매칭합니다.
+     * 피벗 테이블이 위치한 시트 이름을 찾습니다.
      */
-    private fun findCacheFieldStart(xml: String, startPos: Int): Int {
-        var pos = startPos
-        while (pos < xml.length) {
-            val idx = xml.indexOf("<cacheField", pos)
-            if (idx == -1) return -1
+    private fun findPivotTableSheetName(pkg: org.apache.poi.openxml4j.opc.OPCPackage, pivotTablePartName: String): String? {
+        // 워크북에서 시트 이름 목록 추출
+        val workbookPart = pkg.parts.find { it.partName.name == "/xl/workbook.xml" }
+        val sheetNames = mutableListOf<String>()
 
-            // <cacheField 뒤의 문자 확인
-            val nextCharPos = idx + "<cacheField".length
-            if (nextCharPos < xml.length) {
-                val nextChar = xml[nextCharPos]
-                // 공백이나 >가 오면 실제 <cacheField> 태그
-                if (nextChar == ' ' || nextChar == '>') {
-                    return idx
+        workbookPart?.let {
+            val xml = it.inputStream.bufferedReader().readText()
+            Regex("""<sheet[^>]*name="([^"]+)"[^>]*r:id="(rId\d+)"""").findAll(xml).forEach { match ->
+                sheetNames.add(match.groupValues[1])
+            }
+        }
+
+        // 각 시트의 관계에서 피벗 테이블 참조 찾기
+        for ((index, sheetName) in sheetNames.withIndex()) {
+            val sheetRelsPartName = "/xl/worksheets/_rels/sheet${index + 1}.xml.rels"
+            val relsPart = pkg.parts.find { it.partName.name == sheetRelsPartName }
+
+            relsPart?.let {
+                val relsXml = it.inputStream.bufferedReader().readText()
+                // pivotTablePartName: /xl/pivotTables/pivotTable1.xml
+                // Target in rels: ../pivotTables/pivotTable1.xml
+                val pivotFileName = pivotTablePartName.substringAfterLast("/")
+                if (relsXml.contains(pivotFileName)) {
+                    return sheetName
                 }
             }
-            // <cacheFields 등인 경우 다음 위치에서 계속 검색
-            pos = idx + 1
-        }
-        return -1
-    }
-
-    /**
-     * 단일 cacheField의 sharedItems를 실제 데이터로 재구성합니다.
-     */
-    private fun rebuildCacheFieldWithData(fieldXml: String, uniqueValues: List<String>): String {
-        // cacheField 시작 태그 추출 (name과 numFmtId 속성 포함)
-        val startTagEnd = fieldXml.indexOf(">")
-        if (startTagEnd == -1) return fieldXml
-
-        val startTag = fieldXml.substring(0, startTagEnd + 1)
-
-        // 숫자와 문자열 값 분리
-        // sharedItems 구성 - 모든 값을 문자열로 저장 (원본 템플릿과 동일한 방식)
-        val sharedItems = if (uniqueValues.isEmpty()) {
-            "<sharedItems/>"
-        } else {
-            val sb = StringBuilder()
-            sb.append("""<sharedItems count="${uniqueValues.size}">""")
-
-            // 모든 값을 문자열로 저장
-            for (value in uniqueValues) {
-                sb.append("""<s v="${escapeXml(value)}"/>""")
-            }
-
-            sb.append("</sharedItems>")
-            sb.toString()
         }
 
-        return "$startTag$sharedItems</cacheField>"
-    }
-
-    /**
-     * 실제 데이터로 피벗 캐시 레코드 XML을 구성합니다.
-     */
-    private fun buildPivotCacheRecordsWithData(fieldData: List<List<Any?>>): String {
-        if (fieldData.isEmpty() || fieldData[0].isEmpty()) {
-            return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""" +
-                    """<pivotCacheRecords xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" """ +
-                    """xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" count="0"/>"""
-        }
-
-        val recordCount = fieldData[0].size
-        val fieldCount = fieldData.size
-
-        // 각 필드별 유니크 값 인덱스 맵 구성
-        val uniqueValueIndices = fieldData.map { field ->
-            val uniqueValues = field.mapNotNull { it?.toString() }.distinct()
-            uniqueValues.mapIndexed { index, value -> value to index }.toMap()
-        }
-
-        val sb = StringBuilder()
-        sb.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""")
-        sb.append("""<pivotCacheRecords xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" """)
-        sb.append("""xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" """)
-        sb.append("""count="$recordCount">""")
-
-        // 각 레코드 생성
-        for (rowIdx in 0 until recordCount) {
-            sb.append("<r>")
-            for (colIdx in 0 until fieldCount) {
-                val value = fieldData[colIdx].getOrNull(rowIdx)
-                val valueStr = value?.toString() ?: ""
-                val idx = uniqueValueIndices[colIdx][valueStr]
-
-                if (idx != null) {
-                    sb.append("""<x v="$idx"/>""")
-                } else {
-                    // 값이 없는 경우 (빈 값)
-                    sb.append("""<m/>""")
-                }
-            }
-            sb.append("</r>")
-        }
-
-        sb.append("</pivotCacheRecords>")
-        return sb.toString()
-    }
-
-    /**
-     * cacheField의 sharedItems 내용을 초기화합니다.
-     * 각 cacheField를 개별적으로 처리하여 정규식 매칭 오류를 방지합니다.
-     */
-    @Suppress("unused")
-    private fun clearSharedItemsContent(xml: String): String {
-        val result = StringBuilder()
-        var pos = 0
-
-        while (pos < xml.length) {
-            val sharedItemsStart = xml.indexOf("<sharedItems", pos)
-            if (sharedItemsStart == -1) {
-                result.append(xml.substring(pos))
-                break
-            }
-
-            // sharedItems 태그 앞부분 추가
-            result.append(xml.substring(pos, sharedItemsStart))
-
-            // self-closing 태그인지 확인
-            val tagEnd = xml.indexOf(">", sharedItemsStart)
-            if (tagEnd == -1) {
-                result.append(xml.substring(sharedItemsStart))
-                break
-            }
-
-            if (xml[tagEnd - 1] == '/') {
-                // self-closing: <sharedItems/> 또는 <sharedItems attr="value"/>
-                result.append("<sharedItems/>")
-                pos = tagEnd + 1
-            } else {
-                // 닫는 태그 찾기
-                val closingTag = "</sharedItems>"
-                val closingPos = xml.indexOf(closingTag, tagEnd)
-                if (closingPos == -1) {
-                    result.append(xml.substring(sharedItemsStart))
-                    break
-                }
-                // 빈 sharedItems로 대체
-                result.append("<sharedItems/>")
-                pos = closingPos + closingTag.length
-            }
-        }
-
-        return result.toString()
+        return null
     }
 
     private fun expandRangeIfNeeded(
