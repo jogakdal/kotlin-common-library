@@ -12,6 +12,7 @@ import org.apache.poi.ss.usermodel.DataValidationConstraint
 import org.apache.poi.ss.usermodel.Sheet
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.ss.util.CellRangeAddressList
+import org.apache.poi.xssf.usermodel.XSSFCellStyle
 import org.apache.poi.xssf.usermodel.XSSFClientAnchor
 import org.apache.poi.xssf.usermodel.XSSFSheet
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
@@ -289,8 +290,9 @@ class ExcelGenerator @JvmOverloads constructor(
             }
         }
 
-        // 후처리 (레이아웃 복원, 데이터 유효성 검사 확장, 피벗 테이블 재생성)
+        // 후처리 (숫자 서식 적용, 레이아웃 복원, 데이터 유효성 검사 확장, 피벗 테이블 재생성)
         val resultBytes = jxlsOutput.toByteArray()
+            .let { bytes -> applyNumberFormatToNumericCells(bytes) }
             .let { bytes -> layout?.let { restoreLayout(bytes, it) } ?: bytes }
             .let { bytes -> expandDataValidations(bytes, dataValidations) }
             .let { bytes -> recreatePivotTables(bytes, pivotTableInfos) }
@@ -298,6 +300,34 @@ class ExcelGenerator @JvmOverloads constructor(
         output.write(resultBytes)
         return rowsProcessed
     }
+
+    // ========== 숫자 서식 자동 적용 ==========
+
+    /**
+     * 숫자 값이 있는 셀 중 표시 형식이 "일반"인 경우 숫자 서식을 자동 적용합니다.
+     * 조건부 서식 등 다른 서식은 그대로 유지됩니다.
+     */
+    private fun applyNumberFormatToNumericCells(bytes: ByteArray): ByteArray =
+        XSSFWorkbook(ByteArrayInputStream(bytes)).use { workbook ->
+            workbook.forEach { sheet ->
+                sheet.forEach { row ->
+                    row.forEach { cell ->
+                        if (cell.cellType == CellType.NUMERIC) {
+                            val currentStyle = cell.cellStyle
+                            // 표시 형식이 "일반"(0)인 경우에만 숫자 서식 적용
+                            if (currentStyle.dataFormat.toInt() == 0) {
+                                val value = cell.numericCellValue
+                                val isInteger = value == value.toLong().toDouble()
+                                cell.cellStyle = getOrCreateNumberStyle(
+                                    workbook, currentStyle.index, isInteger
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            workbook.toByteArray()
+        }
 
     // ========== 레이아웃 처리 ==========
 
@@ -401,12 +431,14 @@ class ExcelGenerator @JvmOverloads constructor(
     private data class PivotTableInfo(
         val pivotTableSheetName: String,       // 피벗 테이블이 위치한 시트
         val pivotTableLocation: String,        // 피벗 테이블 위치 (예: "I6")
+        val originalLocationRef: String,       // 원본 피벗 테이블 전체 범위 (예: "I6:J8")
         val sourceSheetName: String,           // 데이터 소스 시트
         val sourceRange: CellRangeAddress,     // 원본 데이터 범위
         val rowLabelFields: List<Int>,         // 행 레이블 필드 인덱스
         val dataFields: List<DataFieldInfo>,   // 값 필드 정보
         val pivotTableName: String,            // 피벗 테이블 이름
         val rowHeaderCaption: String?,         // 행 레이블 헤더 캡션 (예: "직급")
+        val grandTotalCaption: String?,        // 총합계 행 캡션 (예: "총")
         val pivotTableXml: String,             // 원본 피벗 테이블 XML
         val pivotCacheDefXml: String,          // 원본 피벗 캐시 정의 XML
         val pivotCacheRecordsXml: String?      // 원본 피벗 캐시 레코드 XML
@@ -466,7 +498,8 @@ class ExcelGenerator @JvmOverloads constructor(
 
                     // 위치 정보: <location ref="I6:J8"
                     val locationMatch = Regex("""<location[^>]*ref="([^"]+)"""").find(xml)
-                    val location = locationMatch?.groupValues?.get(1)?.split(":")?.firstOrNull() ?: "A1"
+                    val fullLocationRef = locationMatch?.groupValues?.get(1) ?: "A1:A1"
+                    val location = fullLocationRef.split(":").firstOrNull() ?: "A1"
 
                     // 행 레이블 필드: <rowFields count="1"><field x="1"/></rowFields>
                     val rowLabelFields = mutableListOf<Int>()
@@ -503,6 +536,10 @@ class ExcelGenerator @JvmOverloads constructor(
                     val rowHeaderCaptionMatch = Regex("""rowHeaderCaption="([^"]+)"""").find(xml)
                     val rowHeaderCaption = rowHeaderCaptionMatch?.groupValues?.get(1)
 
+                    // grandTotalCaption 추출 (총합계 행 캡션, 예: "총")
+                    val grandTotalCaptionMatch = Regex("""grandTotalCaption="([^"]+)"""").find(xml)
+                    val grandTotalCaption = grandTotalCaptionMatch?.groupValues?.get(1)
+
                     // 소스 정보는 첫 번째 캐시에서 가져옴 (단순화)
                     val (sourceSheet, sourceRef) = cacheSourceMap.values.firstOrNull() ?: run {
                         logger.warn("피벗 테이블 '$pivotTableName' 캐시 소스 정보 없음")
@@ -517,12 +554,14 @@ class ExcelGenerator @JvmOverloads constructor(
                     pivotTableInfos.add(PivotTableInfo(
                         pivotTableSheetName = pivotTableSheetName,
                         pivotTableLocation = location,
+                        originalLocationRef = fullLocationRef,
                         sourceSheetName = sourceSheet,
                         sourceRange = CellRangeAddress.valueOf(sourceRef),
                         rowLabelFields = rowLabelFields,
                         dataFields = dataFields,
                         pivotTableName = pivotTableName,
                         rowHeaderCaption = rowHeaderCaption,
+                        grandTotalCaption = grandTotalCaption,
                         pivotTableXml = "",
                         pivotCacheDefXml = "",
                         pivotCacheRecordsXml = null
@@ -571,6 +610,43 @@ class ExcelGenerator @JvmOverloads constructor(
                     // 피벗 테이블 위치 파싱
                     val pivotLocation = org.apache.poi.ss.util.CellReference(info.pivotTableLocation)
 
+                    // 원본 피벗 테이블의 행별 스타일 저장
+                    val dataRowStyles = mutableMapOf<Int, Short>()    // 데이터 행 스타일 (열 오프셋 -> 스타일)
+                    val grandTotalStyles = mutableMapOf<Int, Short>() // 총합계 행 스타일
+                    try {
+                        val originalRange = CellRangeAddress.valueOf(info.originalLocationRef)
+
+                        // 데이터 행 스타일 (첫 번째 데이터 행 = 헤더 다음 행)
+                        val dataRowNum = originalRange.firstRow + 1
+                        val dataRow = pivotSheet.getRow(dataRowNum)
+                        if (dataRow != null) {
+                            for (colIdx in originalRange.firstColumn..originalRange.lastColumn) {
+                                val cell = dataRow.getCell(colIdx)
+                                if (cell != null && cell.cellStyle.index.toInt() != 0) {
+                                    val colOffset = colIdx - originalRange.firstColumn
+                                    dataRowStyles[colOffset] = cell.cellStyle.index
+                                    logger.debug("데이터 행 스타일 저장: 열 오프셋=$colOffset, 스타일 인덱스=${cell.cellStyle.index}")
+                                }
+                            }
+                        }
+
+                        // 총합계 행 스타일 (마지막 행)
+                        val grandTotalRowNum = originalRange.lastRow
+                        val grandTotalRow = pivotSheet.getRow(grandTotalRowNum)
+                        if (grandTotalRow != null) {
+                            for (colIdx in originalRange.firstColumn..originalRange.lastColumn) {
+                                val cell = grandTotalRow.getCell(colIdx)
+                                if (cell != null && cell.cellStyle.index.toInt() != 0) {
+                                    val colOffset = colIdx - originalRange.firstColumn
+                                    grandTotalStyles[colOffset] = cell.cellStyle.index
+                                    logger.debug("총합계 행 스타일 저장: 열 오프셋=$colOffset, 스타일 인덱스=${cell.cellStyle.index}")
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        logger.debug("피벗 테이블 스타일 추출 실패: ${e.message}")
+                    }
+
                     // 피벗 테이블 영역 정리 (기존 피벗 테이블 잔여물 제거)
                     // 피벗 테이블은 보통 10x10 정도 영역을 차지하므로 여유있게 정리
                     clearPivotTableArea(pivotSheet, pivotLocation.row, pivotLocation.col.toInt(), 20, 10)
@@ -599,6 +675,21 @@ class ExcelGenerator @JvmOverloads constructor(
                         logger.debug("rowHeaderCaption 적용: '$caption'")
                     }
 
+                    // 피벗 테이블 영역에 셀 값 채우기
+                    fillPivotTableCells(
+                        workbook = workbook,
+                        pivotSheet = pivotSheet,
+                        sourceSheet = sourceSheet,
+                        sourceRange = newSourceRange,
+                        pivotLocation = pivotLocation,
+                        rowLabelFields = info.rowLabelFields,
+                        dataFields = info.dataFields,
+                        rowHeaderCaption = info.rowHeaderCaption,
+                        grandTotalCaption = info.grandTotalCaption,
+                        dataRowStyles = dataRowStyles,
+                        grandTotalStyles = grandTotalStyles
+                    )
+
                     logger.debug("피벗 테이블 재생성 완료: ${info.pivotTableName}")
                 } catch (e: Exception) {
                     throw IllegalStateException("피벗 테이블 재생성 실패: ${info.pivotTableName}", e)
@@ -608,7 +699,185 @@ class ExcelGenerator @JvmOverloads constructor(
             workbook.toByteArray()
         }
 
-        return bytesWithPivotTable
+        // 피벗 캐시를 채우고 refreshOnLoad를 false로 설정
+        return populatePivotCache(bytesWithPivotTable, pivotTableInfos)
+    }
+
+    /**
+     * 피벗 캐시를 소스 데이터로 채우고 refreshOnLoad를 false로 설정합니다.
+     * OOXML 스펙에 따라 Excel이 기대하는 구조를 정확히 생성합니다.
+     *
+     * @see docs/pivot-cache-specification.md
+     */
+    private fun populatePivotCache(
+        inputBytes: ByteArray,
+        pivotTableInfos: List<PivotTableInfo>
+    ): ByteArray {
+        if (pivotTableInfos.isEmpty()) return inputBytes
+
+        // 축 필드 인덱스 수집 (Row/Column Label로 사용되는 필드)
+        val axisFieldIndices = pivotTableInfos.flatMap { it.rowLabelFields }.toSet()
+
+        // 소스 데이터 및 메타데이터
+        data class SourceData(
+            val records: List<List<Any?>>,
+            val fields: List<Map<String, Any?>>  // 필드 메타데이터 (name, isAxisField, isNumeric, sharedItems, minValue, maxValue, isInteger)
+        )
+
+        val sourceDataMap = mutableMapOf<String, SourceData>()
+
+        XSSFWorkbook(ByteArrayInputStream(inputBytes)).use { workbook ->
+            org.apache.poi.openxml4j.opc.OPCPackage.open(ByteArrayInputStream(inputBytes)).use { pkg ->
+                pkg.parts.filter { it.partName.name.contains("/pivotCache/pivotCacheDefinition") }.forEach { part ->
+                    val xml = part.inputStream.bufferedReader().readText()
+
+                    val sheetMatch = Regex("""sheet="([^"]+)"""").find(xml)
+                    val refMatch = Regex("""<worksheetSource[^>]*ref="([^"]+)"""").find(xml)
+
+                    if (sheetMatch != null && refMatch != null) {
+                        val sheetName = sheetMatch.groupValues[1]
+                        val ref = refMatch.groupValues[1]
+                        val sheet = workbook.getSheet(sheetName) ?: return@forEach
+
+                        val range = CellRangeAddress.valueOf(ref)
+                        val records = mutableListOf<List<Any?>>()
+                        val fieldNames = mutableListOf<String>()
+
+                        // 헤더 추출
+                        val headerRow = sheet.getRow(range.firstRow)
+                        for (colIdx in range.firstColumn..range.lastColumn) {
+                            val cell = headerRow?.getCell(colIdx)
+                            fieldNames.add(getCellStringValue(cell) ?: "Field$colIdx")
+                        }
+
+                        // 데이터 추출
+                        for (rowIdx in (range.firstRow + 1)..range.lastRow) {
+                            val row = sheet.getRow(rowIdx) ?: continue
+                            val cellValues = mutableListOf<Any?>()
+                            var hasData = false
+
+                            for (colIdx in range.firstColumn..range.lastColumn) {
+                                val cell = row.getCell(colIdx)
+                                val value = getCellValue(cell)
+                                cellValues.add(value)
+                                if (value != null) hasData = true
+                            }
+
+                            if (hasData) records.add(cellValues)
+                        }
+
+                        // 필드별 메타데이터 생성 (Map으로 변환하여 빌더 함수에서 사용)
+                        val fields = fieldNames.mapIndexed { idx, name ->
+                            val isAxisField = axisFieldIndices.contains(idx)
+                            val columnValues = records.mapNotNull { it.getOrNull(idx) }
+                            val numericValues = columnValues.filterIsInstance<Number>().map { it.toDouble() }
+                            val isNumeric = columnValues.isNotEmpty() && columnValues.all { it is Number }
+
+                            val sharedItems = if (isAxisField) {
+                                columnValues.map { it.toString() }.distinct()
+                            } else emptyList<String>()
+
+                            // Map으로 변환 (빌더 함수에서 사용)
+                            mapOf(
+                                "name" to name,
+                                "isAxisField" to isAxisField,
+                                "isNumeric" to isNumeric,
+                                "sharedItems" to sharedItems,
+                                "minValue" to (if (isNumeric) numericValues.minOrNull() else null),
+                                "maxValue" to (if (isNumeric) numericValues.maxOrNull() else null),
+                                "isInteger" to numericValues.all { it == it.toLong().toDouble() }
+                            )
+                        }
+
+                        sourceDataMap[part.partName.name] = SourceData(records, fields)
+                        logger.debug("피벗 소스 데이터 추출: ${part.partName.name} - ${records.size}개 레코드")
+                    }
+                }
+            }
+        }
+
+        if (sourceDataMap.isEmpty()) return inputBytes
+
+        // ZIP 파일 수정
+        val output = ByteArrayOutputStream()
+        java.util.zip.ZipInputStream(ByteArrayInputStream(inputBytes)).use { zis ->
+            java.util.zip.ZipOutputStream(output).use { zos ->
+                var entry = zis.nextEntry
+
+                while (entry != null) {
+                    val entryName = entry.name
+                    var content = zis.readBytes()
+
+                    when {
+                        entryName.contains("/pivotCache/pivotCacheDefinition") -> {
+                            val partPath = "/$entryName"
+                            sourceDataMap[partPath]?.let { data ->
+                                content = buildPivotCacheDefinition(
+                                    String(content, Charsets.UTF_8),
+                                    data.records.size,
+                                    data.fields
+                                ).toByteArray(Charsets.UTF_8)
+                            }
+                        }
+                        entryName.contains("/pivotCache/pivotCacheRecords") -> {
+                            val defPath = "/$entryName".replace("pivotCacheRecords", "pivotCacheDefinition")
+                            sourceDataMap[defPath]?.let { data ->
+                                content = buildPivotCacheRecords(data.records, data.fields)
+                                    .toByteArray(Charsets.UTF_8)
+                            }
+                        }
+                        entryName.contains("/pivotTables/pivotTable") -> {
+                            sourceDataMap.values.firstOrNull()?.let { data ->
+                                content = buildPivotTableDefinition(
+                                    String(content, Charsets.UTF_8),
+                                    data.fields
+                                ).toByteArray(Charsets.UTF_8)
+                            }
+                        }
+                    }
+
+                    val newEntry = java.util.zip.ZipEntry(entryName)
+                    zos.putNextEntry(newEntry)
+                    zos.write(content)
+                    zos.closeEntry()
+
+                    entry = zis.nextEntry
+                }
+            }
+        }
+
+        return output.toByteArray()
+    }
+
+    /**
+     * 셀 값을 Any?로 가져옵니다.
+     */
+    private fun getCellValue(cell: org.apache.poi.ss.usermodel.Cell?): Any? {
+        if (cell == null) return null
+        return when (cell.cellType) {
+            CellType.STRING -> cell.stringCellValue.takeIf { it.isNotBlank() }
+            CellType.NUMERIC -> cell.numericCellValue
+            CellType.BOOLEAN -> cell.booleanCellValue
+            CellType.FORMULA -> try {
+                cell.numericCellValue
+            } catch (e: Exception) {
+                cell.stringCellValue.takeIf { it.isNotBlank() }
+            }
+            else -> null
+        }
+    }
+
+    /**
+     * 셀 값을 문자열로 가져옵니다.
+     */
+    private fun getCellStringValue(cell: org.apache.poi.ss.usermodel.Cell?): String? {
+        if (cell == null) return null
+        return when (cell.cellType) {
+            CellType.STRING -> cell.stringCellValue.takeIf { it.isNotBlank() }
+            CellType.NUMERIC -> cell.numericCellValue.toString()
+            CellType.BOOLEAN -> cell.booleanCellValue.toString()
+            else -> null
+        }
     }
 
     /**
@@ -646,6 +915,203 @@ class ExcelGenerator @JvmOverloads constructor(
         }
 
         return lastRow
+    }
+
+    /**
+     * 피벗 테이블 영역의 셀에 실제 값을 채웁니다.
+     * refreshOnLoad="false"일 때 Excel이 값을 표시할 수 있도록 합니다.
+     */
+    private fun fillPivotTableCells(
+        workbook: XSSFWorkbook,
+        pivotSheet: XSSFSheet,
+        sourceSheet: XSSFSheet,
+        sourceRange: CellRangeAddress,
+        pivotLocation: org.apache.poi.ss.util.CellReference,
+        rowLabelFields: List<Int>,
+        dataFields: List<DataFieldInfo>,
+        rowHeaderCaption: String?,
+        grandTotalCaption: String?,
+        dataRowStyles: Map<Int, Short> = emptyMap(),
+        grandTotalStyles: Map<Int, Short> = emptyMap()
+    ) {
+        if (rowLabelFields.isEmpty() || dataFields.isEmpty()) return
+
+        // 소스 데이터 읽기
+        val headerRow = sourceSheet.getRow(sourceRange.firstRow) ?: return
+        val headers = (sourceRange.firstColumn..sourceRange.lastColumn).map { colIdx ->
+            getCellStringValue(headerRow.getCell(colIdx)) ?: "Field$colIdx"
+        }
+
+        // 데이터 행 수집
+        data class DataRow(val values: Map<Int, Any?>)
+        val dataRows = mutableListOf<DataRow>()
+
+        for (rowNum in (sourceRange.firstRow + 1)..sourceRange.lastRow) {
+            val row = sourceSheet.getRow(rowNum) ?: continue
+            val values = mutableMapOf<Int, Any?>()
+            for (colIdx in sourceRange.firstColumn..sourceRange.lastColumn) {
+                val fieldIdx = colIdx - sourceRange.firstColumn
+                values[fieldIdx] = getCellValue(row.getCell(colIdx))
+            }
+            dataRows.add(DataRow(values))
+        }
+
+        if (dataRows.isEmpty()) return
+
+        // 축 필드별 고유값 추출 (첫 번째 축 필드만 지원)
+        val axisFieldIdx = rowLabelFields.first()
+        val uniqueValues = dataRows.mapNotNull { it.values[axisFieldIdx]?.toString() }.distinct()
+
+        if (uniqueValues.isEmpty()) return
+
+        // 피벗 테이블 셀 채우기
+        val startRow = pivotLocation.row
+        val startCol = pivotLocation.col.toInt()
+
+        // 헤더 행
+        val pivotHeaderRow = pivotSheet.getRow(startRow) ?: pivotSheet.createRow(startRow)
+
+        // 행 헤더 캡션 (예: "직급")
+        val headerCaptionCell = pivotHeaderRow.getCell(startCol) ?: pivotHeaderRow.createCell(startCol)
+        headerCaptionCell.setCellValue(rowHeaderCaption ?: headers.getOrNull(axisFieldIdx) ?: "Row Labels")
+
+        // 데이터 필드 헤더 (예: "평균 : 급여")
+        dataFields.forEachIndexed { idx, dataField ->
+            val headerCell = pivotHeaderRow.getCell(startCol + 1 + idx)
+                ?: pivotHeaderRow.createCell(startCol + 1 + idx)
+            headerCell.setCellValue(dataField.name ?: "Values")
+        }
+
+        // 데이터 행들
+        uniqueValues.forEachIndexed { rowIdx, axisValue ->
+            val pivotRowNum = startRow + 1 + rowIdx
+            val pivotRow = pivotSheet.getRow(pivotRowNum) ?: pivotSheet.createRow(pivotRowNum)
+
+            // 축 값 (예: "부장", "과장", "대리")
+            val axisCell = pivotRow.getCell(startCol) ?: pivotRow.createCell(startCol)
+            axisCell.setCellValue(axisValue)
+            // 데이터 행 레이블 셀에 스타일 적용 (열 오프셋 0)
+            dataRowStyles[0]?.let { styleIdx ->
+                axisCell.cellStyle = workbook.getCellStyleAt(styleIdx.toInt())
+            }
+
+            // 각 데이터 필드의 집계값
+            dataFields.forEachIndexed { dataIdx, dataField ->
+                val matchingRows = dataRows.filter { it.values[axisFieldIdx]?.toString() == axisValue }
+                val values = matchingRows.mapNotNull { (it.values[dataField.fieldIndex] as? Number)?.toDouble() }
+
+                val aggregatedValue = when (dataField.function) {
+                    org.apache.poi.ss.usermodel.DataConsolidateFunction.SUM -> values.sum()
+                    org.apache.poi.ss.usermodel.DataConsolidateFunction.AVERAGE -> if (values.isNotEmpty()) values.average() else 0.0
+                    org.apache.poi.ss.usermodel.DataConsolidateFunction.COUNT -> values.size.toDouble()
+                    org.apache.poi.ss.usermodel.DataConsolidateFunction.COUNT_NUMS -> values.size.toDouble()
+                    org.apache.poi.ss.usermodel.DataConsolidateFunction.MAX -> values.maxOrNull() ?: 0.0
+                    org.apache.poi.ss.usermodel.DataConsolidateFunction.MIN -> values.minOrNull() ?: 0.0
+                    else -> values.sum()
+                }
+
+                val dataCell = pivotRow.getCell(startCol + 1 + dataIdx)
+                    ?: pivotRow.createCell(startCol + 1 + dataIdx)
+                dataCell.setCellValue(aggregatedValue)
+                // 데이터 행 값 셀에 스타일 적용 (열 오프셋 1 + dataIdx)
+                val templateStyleIdx = dataRowStyles[1 + dataIdx]
+                dataCell.cellStyle = getStyleWithNumberFormat(workbook, templateStyleIdx, dataField.function)
+            }
+        }
+
+        // 총합계 행
+        val grandTotalRowNum = startRow + 1 + uniqueValues.size
+        val grandTotalRow = pivotSheet.getRow(grandTotalRowNum) ?: pivotSheet.createRow(grandTotalRowNum)
+
+        val grandTotalLabelCell = grandTotalRow.getCell(startCol) ?: grandTotalRow.createCell(startCol)
+        grandTotalLabelCell.setCellValue(grandTotalCaption ?: "전체")
+        // 총합계 레이블 셀에 스타일 적용 (열 오프셋 0)
+        grandTotalStyles[0]?.let { styleIdx ->
+            grandTotalLabelCell.cellStyle = workbook.getCellStyleAt(styleIdx.toInt())
+        }
+
+        // 전체 데이터에 대한 집계
+        dataFields.forEachIndexed { dataIdx, dataField ->
+            val allValues = dataRows.mapNotNull { (it.values[dataField.fieldIndex] as? Number)?.toDouble() }
+
+            val grandTotal = when (dataField.function) {
+                org.apache.poi.ss.usermodel.DataConsolidateFunction.SUM -> allValues.sum()
+                org.apache.poi.ss.usermodel.DataConsolidateFunction.AVERAGE -> if (allValues.isNotEmpty()) allValues.average() else 0.0
+                org.apache.poi.ss.usermodel.DataConsolidateFunction.COUNT -> allValues.size.toDouble()
+                org.apache.poi.ss.usermodel.DataConsolidateFunction.COUNT_NUMS -> allValues.size.toDouble()
+                org.apache.poi.ss.usermodel.DataConsolidateFunction.MAX -> allValues.maxOrNull() ?: 0.0
+                org.apache.poi.ss.usermodel.DataConsolidateFunction.MIN -> allValues.minOrNull() ?: 0.0
+                else -> allValues.sum()
+            }
+
+            val grandTotalCell = grandTotalRow.getCell(startCol + 1 + dataIdx)
+                ?: grandTotalRow.createCell(startCol + 1 + dataIdx)
+            grandTotalCell.setCellValue(grandTotal)
+            // 총합계 데이터 셀에 스타일 적용 (열 오프셋 1 + dataIdx)
+            val templateStyleIdx = grandTotalStyles[1 + dataIdx]
+            grandTotalCell.cellStyle = getStyleWithNumberFormat(workbook, templateStyleIdx, dataField.function)
+        }
+
+        logger.debug("피벗 테이블 셀 값 채우기 완료: ${uniqueValues.size}개 항목")
+    }
+
+    // 숫자 서식 스타일 캐시 (workbook당, 캐시 키: "템플릿스타일인덱스_int/dec")
+    private val numberStyleCache = mutableMapOf<XSSFWorkbook, MutableMap<String, XSSFCellStyle>>()
+
+    /**
+     * 템플릿 스타일에 숫자 서식을 적용한 스타일을 반환합니다 (피벗 테이블용).
+     * - 템플릿 스타일이 있고 표시 형식이 이미 지정된 경우: 템플릿 스타일 그대로 사용
+     * - 템플릿 스타일이 있지만 표시 형식이 General(0)인 경우: 다른 서식 유지 + 숫자 서식 추가
+     * - 템플릿 스타일이 없는 경우: 숫자 서식만 적용된 새 스타일 생성
+     */
+    private fun getStyleWithNumberFormat(
+        workbook: XSSFWorkbook,
+        templateStyleIdx: Short?,
+        function: org.apache.poi.ss.usermodel.DataConsolidateFunction
+    ): XSSFCellStyle {
+        val isInteger = when (function) {
+            org.apache.poi.ss.usermodel.DataConsolidateFunction.SUM,
+            org.apache.poi.ss.usermodel.DataConsolidateFunction.COUNT,
+            org.apache.poi.ss.usermodel.DataConsolidateFunction.COUNT_NUMS -> true
+            else -> false
+        }
+
+        // 템플릿 스타일이 있고 표시 형식이 이미 지정된 경우 (General이 아닌 경우)
+        if (templateStyleIdx != null) {
+            val templateStyle = workbook.getCellStyleAt(templateStyleIdx.toInt())
+            if (templateStyle.dataFormat.toInt() != 0) {
+                return templateStyle
+            }
+        }
+
+        return getOrCreateNumberStyle(workbook, templateStyleIdx, isInteger)
+    }
+
+    /**
+     * 숫자 서식이 적용된 스타일을 생성하거나 캐시에서 반환합니다.
+     * - 템플릿 스타일의 다른 서식(채우기, 글꼴, 테두리 등)은 유지
+     * - 표시 형식만 숫자 서식으로 변경
+     */
+    private fun getOrCreateNumberStyle(
+        workbook: XSSFWorkbook,
+        templateStyleIdx: Short?,
+        isInteger: Boolean
+    ): XSSFCellStyle {
+        val cacheKey = "${templateStyleIdx ?: "none"}_${if (isInteger) "int" else "dec"}"
+        val workbookCache = numberStyleCache.getOrPut(workbook) { mutableMapOf() }
+
+        return workbookCache.getOrPut(cacheKey) {
+            workbook.createCellStyle().apply {
+                if (templateStyleIdx != null) {
+                    cloneStyleFrom(workbook.getCellStyleAt(templateStyleIdx.toInt()))
+                }
+                dataFormat = if (isInteger) {
+                    config.pivotIntegerFormatIndex
+                } else {
+                    config.pivotDecimalFormatIndex
+                }
+            }
+        }
     }
 
     /**
@@ -739,11 +1205,15 @@ class ExcelGenerator @JvmOverloads constructor(
      * 피벗 테이블 영역의 셀 내용을 정리합니다.
      */
     private fun clearPivotTableArea(sheet: XSSFSheet, startRow: Int, startCol: Int, rows: Int, cols: Int) {
+        val defaultStyle = sheet.workbook.getCellStyleAt(0)
         for (rowIdx in startRow until startRow + rows) {
             val row = sheet.getRow(rowIdx) ?: continue
             for (colIdx in startCol until startCol + cols) {
                 val cell = row.getCell(colIdx)
-                cell?.setBlank()
+                if (cell != null) {
+                    cell.setBlank()
+                    cell.cellStyle = defaultStyle  // 스타일도 기본값으로 초기화
+                }
             }
         }
     }
@@ -780,6 +1250,293 @@ class ExcelGenerator @JvmOverloads constructor(
         }
 
         return null
+    }
+
+    // ========== 피벗 캐시 빌더 함수들 ==========
+
+    /**
+     * pivotCacheDefinition XML을 수정합니다.
+     * - refreshOnLoad="0" 설정
+     * - recordCount 추가
+     * - sharedItems 채우기
+     */
+    private fun buildPivotCacheDefinition(
+        originalXml: String,
+        recordCount: Int,
+        fields: List<Map<String, Any?>>
+    ): String {
+        var xml = originalXml
+
+        // 1. refreshOnLoad="0" 설정
+        xml = xml.replace(Regex("""refreshOnLoad="(true|1)""""), """refreshOnLoad="0"""")
+
+        // 2. refreshedVersion="8" 설정
+        xml = xml.replace(Regex("""refreshedVersion="\d+""""), """refreshedVersion="8"""")
+
+        // 3. recordCount 추가/수정
+        if (xml.contains("recordCount=")) {
+            xml = xml.replace(Regex("""recordCount="\d+""""), """recordCount="$recordCount"""")
+        } else {
+            xml = xml.replace("<pivotCacheDefinition ", """<pivotCacheDefinition recordCount="$recordCount" """)
+        }
+
+        // 4. 각 cacheField의 sharedItems 수정
+        @Suppress("UNCHECKED_CAST")
+        for (field in fields) {
+            val f = field as? Map<*, *> ?: continue
+            val name = f["name"] as? String ?: continue
+            val isAxisField = f["isAxisField"] as? Boolean ?: false
+            val isNumeric = f["isNumeric"] as? Boolean ?: false
+            val sharedItems = f["sharedItems"] as? List<*> ?: emptyList<String>()
+            val minValue = f["minValue"] as? Number
+            val maxValue = f["maxValue"] as? Number
+            val isInteger = f["isInteger"] as? Boolean ?: false
+
+            val sharedItemsXml = when {
+                isAxisField && sharedItems.isNotEmpty() -> {
+                    val items = sharedItems.joinToString("") { """<s v="${escapeXml(it.toString())}"/>""" }
+                    """<sharedItems count="${sharedItems.size}">$items</sharedItems>"""
+                }
+                isNumeric && minValue != null && maxValue != null -> {
+                    val minStr = if (minValue.toDouble() == minValue.toLong().toDouble()) minValue.toLong() else minValue
+                    val maxStr = if (maxValue.toDouble() == maxValue.toLong().toDouble()) maxValue.toLong() else maxValue
+                    if (isInteger) {
+                        """<sharedItems containsSemiMixedTypes="0" containsString="0" containsNumber="1" containsInteger="1" minValue="$minStr" maxValue="$maxStr"/>"""
+                    } else {
+                        """<sharedItems containsSemiMixedTypes="0" containsString="0" containsNumber="1" minValue="$minStr" maxValue="$maxStr"/>"""
+                    }
+                }
+                else -> """<sharedItems/>"""
+            }
+
+            // cacheField 내의 sharedItems 교체
+            val pattern = Regex(
+                """(<cacheField[^>]*name="${Regex.escape(name)}"[^>]*>)\s*<sharedItems[^/>]*(?:/>|>.*?</sharedItems>)""",
+                RegexOption.DOT_MATCHES_ALL
+            )
+            xml = pattern.replace(xml) { "${it.groupValues[1]}$sharedItemsXml" }
+        }
+
+        return xml
+    }
+
+    /**
+     * pivotCacheRecords XML을 생성합니다.
+     */
+    private fun buildPivotCacheRecords(
+        records: List<List<Any?>>,
+        fields: List<Map<String, Any?>>
+    ): String {
+        val sb = StringBuilder()
+        sb.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""")
+        sb.append("""<pivotCacheRecords xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" """)
+        sb.append("""xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" """)
+        sb.append("""count="${records.size}">""")
+
+        // sharedItems 인덱스 맵 생성
+        @Suppress("UNCHECKED_CAST")
+        val sharedItemsIndexMaps = fields.mapIndexed { idx, field ->
+            val f = field as? Map<*, *>
+            val sharedItems = f?.get("sharedItems") as? List<*> ?: emptyList<String>()
+            idx to sharedItems.withIndex().associate { (i, v) -> v.toString() to i }
+        }.toMap()
+
+        for (record in records) {
+            sb.append("<r>")
+            for ((fieldIdx, value) in record.withIndex()) {
+                @Suppress("UNCHECKED_CAST")
+                val field = fields.getOrNull(fieldIdx) as? Map<*, *>
+                val isAxisField = field?.get("isAxisField") as? Boolean ?: false
+
+                when {
+                    value == null -> sb.append("<m/>")
+                    value is Number -> {
+                        val numStr = if (value.toDouble() == value.toLong().toDouble()) {
+                            value.toLong().toString()
+                        } else {
+                            value.toString()
+                        }
+                        sb.append("""<n v="$numStr"/>""")
+                    }
+                    isAxisField -> {
+                        // 축 필드: sharedItems 인덱스로 참조
+                        val indexMap = sharedItemsIndexMaps[fieldIdx] ?: emptyMap()
+                        val idx = indexMap[value.toString()] ?: 0
+                        sb.append("""<x v="$idx"/>""")
+                    }
+                    else -> {
+                        // 일반 문자열
+                        sb.append("""<s v="${escapeXml(value.toString())}"/>""")
+                    }
+                }
+            }
+            sb.append("</r>")
+        }
+
+        sb.append("</pivotCacheRecords>")
+        return sb.toString()
+    }
+
+    /**
+     * pivotTableDefinition XML을 수정합니다.
+     * - Boolean 형식 변환 (true/false → 0/1)
+     * - location ref 업데이트
+     * - pivotField items 수정
+     * - rowItems, colItems 추가
+     */
+    private fun buildPivotTableDefinition(
+        originalXml: String,
+        fields: List<Map<String, Any?>>
+    ): String {
+        var xml = originalXml
+
+        // 1. dataField="false" 속성 제거 (Excel은 데이터 필드가 아닌 경우 이 속성을 생략)
+        xml = xml.replace(Regex(""" dataField="false""""), "")
+        xml = xml.replace(Regex(""" dataField="0""""), "")
+
+        // 2. Boolean 형식 변환
+        xml = xml.replace("""="true"""", """="1"""")
+        xml = xml.replace("""="false"""", """="0"""")
+
+        // 2. updatedVersion="8" 설정
+        xml = xml.replace(Regex("""updatedVersion="\d+""""), """updatedVersion="8"""")
+
+        // dataFields 수 파악
+        val dataFieldCountMatch = Regex("""<dataFields count="(\d+)"""").find(xml)
+        val dataFieldCount = dataFieldCountMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1
+
+        // 축 필드의 sharedItems 수 계산
+        @Suppress("UNCHECKED_CAST")
+        val axisField = fields.find { (it as? Map<*, *>)?.get("isAxisField") == true } as? Map<*, *>
+        val sharedItems = axisField?.get("sharedItems") as? List<*> ?: emptyList<String>()
+        val itemCount = sharedItems.size
+
+        if (itemCount > 0) {
+            // 3. location ref 업데이트 (행: 데이터 + 총합계, 열: 행레이블 + 데이터필드 수)
+            val totalRows = itemCount + 1  // 데이터 + 총합계 (헤더 제외)
+            val locationPattern = Regex("""(<location[^>]*)ref="([A-Z]+)(\d+):([A-Z]+)(\d+)"([^>]*)""")
+            xml = locationPattern.replace(xml) { match ->
+                val prefix = match.groupValues[1]
+                val startCol = match.groupValues[2]
+                val startRow = match.groupValues[3].toInt()
+                val suffix = match.groupValues[6]
+                val newEndRow = startRow + totalRows
+                // 열 수 계산: 시작 열 + dataFieldCount
+                val startColNum = columnToNumber(startCol)
+                val newEndCol = numberToColumn(startColNum + dataFieldCount)
+                """${prefix}ref="$startCol$startRow:$newEndCol$newEndRow"$suffix"""
+            }
+
+            // 다중 데이터 필드일 때 firstHeaderRow="0" 설정 (열 헤더 표시)
+            if (dataFieldCount > 1) {
+                xml = xml.replace(Regex("""firstHeaderRow="\d+""""), """firstHeaderRow="0"""")
+            }
+
+            // 4. pivotField items 수정 (axis="axisRow"인 필드)
+            val newItems = buildString {
+                for (i in 0 until itemCount) {
+                    append("""<item x="$i"/>""")
+                }
+                append("""<item t="default"/>""")
+            }
+            val itemsPattern = Regex(
+                """(<pivotField[^>]*axis="axisRow"[^>]*>)\s*<items[^>]*>.*?</items>""",
+                RegexOption.DOT_MATCHES_ALL
+            )
+            xml = itemsPattern.replace(xml) { match ->
+                """${match.groupValues[1]}<items count="${itemCount + 1}">$newItems</items>"""
+            }
+
+            // 5. rowItems 업데이트
+            val rowItemsXml = buildString {
+                append("""<rowItems count="${itemCount + 1}">""")
+                for (i in 0 until itemCount) {
+                    if (i == 0) append("<i><x/></i>")
+                    else append("""<i><x v="$i"/></i>""")
+                }
+                append("""<i t="grand"><x/></i>""")
+                append("</rowItems>")
+            }
+            if (xml.contains("<rowItems")) {
+                xml = Regex("""<rowItems[^>]*>.*?</rowItems>""", RegexOption.DOT_MATCHES_ALL)
+                    .replace(xml, rowItemsXml)
+            } else {
+                xml = xml.replace("</rowFields>", "</rowFields>$rowItemsXml")
+            }
+
+            // 6. colItems 업데이트 (데이터 필드 수에 맞게)
+            // OOXML 순서: rowFields -> rowItems -> colFields -> colItems -> dataFields
+            val colItemsXml = if (dataFieldCount == 1) {
+                """<colItems count="1"><i/></colItems>"""
+            } else {
+                // 다중 데이터 필드: 각 데이터 필드에 대한 열 항목
+                buildString {
+                    append("""<colItems count="$dataFieldCount">""")
+                    for (i in 0 until dataFieldCount) {
+                        if (i == 0) append("<i><x/></i>")
+                        else append("""<i i="$i"><x v="$i"/></i>""")
+                    }
+                    append("</colItems>")
+                }
+            }
+            if (xml.contains("<colItems")) {
+                xml = Regex("""<colItems[^>]*>.*?</colItems>""", RegexOption.DOT_MATCHES_ALL)
+                    .replace(xml, colItemsXml)
+            } else {
+                // colItems가 없을 때: colFields 뒤에 삽입 (OOXML 순서 준수)
+                if (xml.contains("</colFields>")) {
+                    xml = xml.replace("</colFields>", "</colFields>$colItemsXml")
+                } else if (xml.contains("</rowItems>")) {
+                    xml = xml.replace("</rowItems>", "</rowItems>$colItemsXml")
+                } else {
+                    xml = xml.replace("</rowFields>", "</rowFields>$colItemsXml")
+                }
+            }
+
+            // 7. dataField에 baseField, baseItem 추가
+            xml = Regex("""<dataField([^>]*?)/>""").replace(xml) { match ->
+                val attrs = match.groupValues[1]
+                if (!attrs.contains("baseField")) {
+                    """<dataField$attrs baseField="0" baseItem="0"/>"""
+                } else {
+                    match.value
+                }
+            }
+        }
+
+        return xml
+    }
+
+    // 열 문자를 숫자로 변환 (A=0, B=1, ..., Z=25, AA=26, ...)
+    private fun columnToNumber(col: String): Int {
+        var result = 0
+        for (c in col.uppercase()) {
+            result = result * 26 + (c - 'A' + 1)
+        }
+        return result - 1
+    }
+
+    // 숫자를 열 문자로 변환 (0=A, 1=B, ..., 25=Z, 26=AA, ...)
+    private fun numberToColumn(num: Int): String {
+        var n = num + 1
+        val result = StringBuilder()
+        while (n > 0) {
+            n--
+            result.insert(0, ('A' + (n % 26)))
+            n /= 26
+        }
+        return result.toString()
+    }
+
+    /**
+     * XML 특수문자 이스케이프
+     */
+    private fun escapeXml(s: String): String {
+        return s.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;")
     }
 
     private fun expandRangeIfNeeded(

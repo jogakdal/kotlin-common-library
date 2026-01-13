@@ -16,6 +16,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *     formula-processing: true      # 수식 자동 계산
  *     timestamp-format: yyyyMMdd_HHmmss
  *     progress-report-interval: 100 # 진행률 콜백 호출 간격
+ *     pivot-integer-format-index: 37  # 피벗 테이블 정수 필드 포맷 인덱스
+ *     pivot-decimal-format-index: 39  # 피벗 테이블 소수점 필드 포맷 인덱스
  * ```
  */
 @ConfigurationProperties(prefix = "hunet.excel")
@@ -46,7 +48,17 @@ data class ExcelGeneratorProperties(
     /**
      * 진행률 콜백 호출 간격 (행 수).
      */
-    var progressReportInterval: Int = 100
+    var progressReportInterval: Int = 100,
+
+    /**
+     * 피벗 테이블 정수 필드에 적용할 Excel 내장 포맷 인덱스.
+     */
+    var pivotIntegerFormatIndex: Short = 37,
+
+    /**
+     * 피벗 테이블 소수점 필드에 적용할 Excel 내장 포맷 인덱스.
+     */
+    var pivotDecimalFormatIndex: Short = 39
 ) {
     /**
      * ExcelGeneratorConfig로 변환합니다.
@@ -56,7 +68,9 @@ data class ExcelGeneratorProperties(
         streamingRowThreshold = streamingRowThreshold,
         formulaProcessingEnabled = formulaProcessing,
         timestampFormat = timestampFormat,
-        progressReportInterval = progressReportInterval
+        progressReportInterval = progressReportInterval,
+        pivotIntegerFormatIndex = pivotIntegerFormatIndex,
+        pivotDecimalFormatIndex = pivotDecimalFormatIndex
     )
 }
 

@@ -9,6 +9,8 @@ package com.hunet.common.excel
  * @property timestampFormat 파일명에 추가되는 타임스탬프 형식 (기본: yyyyMMdd_HHmmss)
  * @property progressReportInterval 진행률 콜백 호출 간격 (행 수, 기본: 100)
  * @property preserveTemplateLayout jx:each 확장 시 원본 템플릿의 열 폭과 행 높이를 보존할지 여부 (기본: true)
+ * @property pivotIntegerFormatIndex 피벗 테이블 정수 필드에 적용할 Excel 내장 포맷 인덱스 (기본: 37)
+ * @property pivotDecimalFormatIndex 피벗 테이블 소수점 필드에 적용할 Excel 내장 포맷 인덱스 (기본: 39)
  */
 data class ExcelGeneratorConfig(
     val streamingMode: StreamingMode = StreamingMode.AUTO,
@@ -16,7 +18,9 @@ data class ExcelGeneratorConfig(
     val formulaProcessingEnabled: Boolean = true,
     val timestampFormat: String = "yyyyMMdd_HHmmss",
     val progressReportInterval: Int = 100,
-    val preserveTemplateLayout: Boolean = true
+    val preserveTemplateLayout: Boolean = true,
+    val pivotIntegerFormatIndex: Short = 37,
+    val pivotDecimalFormatIndex: Short = 39
 ) {
     companion object {
         /**
@@ -59,6 +63,8 @@ data class ExcelGeneratorConfig(
         private var timestampFormat: String = "yyyyMMdd_HHmmss"
         private var progressReportInterval: Int = 100
         private var preserveTemplateLayout: Boolean = true
+        private var pivotIntegerFormatIndex: Short = 37
+        private var pivotDecimalFormatIndex: Short = 39
 
         fun streamingMode(mode: StreamingMode): Builder {
             this.streamingMode = mode
@@ -90,13 +96,25 @@ data class ExcelGeneratorConfig(
             return this
         }
 
+        fun pivotIntegerFormatIndex(index: Short): Builder {
+            this.pivotIntegerFormatIndex = index
+            return this
+        }
+
+        fun pivotDecimalFormatIndex(index: Short): Builder {
+            this.pivotDecimalFormatIndex = index
+            return this
+        }
+
         fun build(): ExcelGeneratorConfig = ExcelGeneratorConfig(
             streamingMode = streamingMode,
             streamingRowThreshold = streamingRowThreshold,
             formulaProcessingEnabled = formulaProcessingEnabled,
             timestampFormat = timestampFormat,
             progressReportInterval = progressReportInterval,
-            preserveTemplateLayout = preserveTemplateLayout
+            preserveTemplateLayout = preserveTemplateLayout,
+            pivotIntegerFormatIndex = pivotIntegerFormatIndex,
+            pivotDecimalFormatIndex = pivotDecimalFormatIndex
         )
     }
 
@@ -117,4 +135,10 @@ data class ExcelGeneratorConfig(
 
     fun withPreserveTemplateLayout(preserve: Boolean): ExcelGeneratorConfig =
         copy(preserveTemplateLayout = preserve)
+
+    fun withPivotIntegerFormatIndex(index: Short): ExcelGeneratorConfig =
+        copy(pivotIntegerFormatIndex = index)
+
+    fun withPivotDecimalFormatIndex(index: Short): ExcelGeneratorConfig =
+        copy(pivotDecimalFormatIndex = index)
 }
