@@ -4,11 +4,13 @@ import com.hunet.common.excel.async.ExcelGenerationListener;
 import com.hunet.common.excel.async.GenerationJob;
 import com.hunet.common.excel.async.GenerationResult;
 import com.hunet.common.excel.async.ProgressInfo;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -116,12 +118,12 @@ public class ExcelGeneratorJavaSample {
 
         // 데이터를 Map으로 준비
         Map<String, Object> data = new HashMap<>();
-        data.put("title", "2024년 직원 현황");
-        data.put("date", "2024-01-06");
+        data.put("title", "2026년 직원 현황");
+        data.put("date", LocalDate.now().toString());
         data.put("employees", Arrays.asList(
-            new Employee("김철수", "부장", 8000),
-            new Employee("이영희", "과장", 6500),
-            new Employee("박민수", "대리", 4500)
+            new Employee("황용호", "부장", 8000),
+            new Employee("한용호", "과장", 6500),
+            new Employee("홍용호", "대리", 4500)
         ));
 
         // 이미지 추가 (있는 경우)
@@ -162,8 +164,8 @@ public class ExcelGeneratorJavaSample {
         // Java에서는 Builder 패턴 사용
         SimpleDataProvider dataProvider = SimpleDataProvider.builder()
             // 단순 값
-            .value("title", "2024년 대용량 직원 현황")
-            .value("date", "2024-01-06")
+            .value("title", "2026년 직원 현황(대용량)")
+            .value("date", LocalDate.now().toString())
             // 이미지
             .image("logo", loadImage("hunet_logo.png") != null ? loadImage("hunet_logo.png") : new byte[0])
             .image("ci", loadImage("hunet_ci.png") != null ? loadImage("hunet_ci.png") : new byte[0])
@@ -190,12 +192,12 @@ public class ExcelGeneratorJavaSample {
      */
     private static Iterator<Object> generateLargeDataSet(int count) {
         String[] positions = {"사원", "대리", "과장", "차장", "부장"};
-        String[] names = {"김", "이", "박", "최", "정", "강", "조", "윤", "장", "임"};
+        String[] names = {"황", "김", "이", "박", "최", "정", "강", "조", "윤", "장", "임"};
 
         List<Object> employees = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             employees.add(new Employee(
-                names[i % names.length] + "직원" + (i + 1),
+                names[i % names.length] + "용호" + (i + 1),
                 positions[i % positions.length],
                 3000 + (i % 5) * 1000
             ));
@@ -224,11 +226,11 @@ public class ExcelGeneratorJavaSample {
         Path[] generatedPath = {null}; // effectively final wrapper
 
         Map<String, Object> data = new HashMap<>();
-        data.put("title", "2024년 비동기 생성 보고서");
-        data.put("date", "2024-01-06");
+        data.put("title", "2026년 직원 현황(비동기 생성)");
+        data.put("date", LocalDate.now().toString());
         data.put("employees", Arrays.asList(
-            new Employee("김철수", "부장", 8000),
-            new Employee("이영희", "과장", 6500)
+            new Employee("황용호", "부장", 8000),
+            new Employee("한용호", "과장", 6500)
         ));
 
         byte[] logo = loadImage("hunet_logo.png");
@@ -246,17 +248,17 @@ public class ExcelGeneratorJavaSample {
             "async_example_java",
             new ExcelGenerationListener() {
                 @Override
-                public void onStarted(String jobId) {
+                public void onStarted(@NotNull String jobId) {
                     System.out.println("\t[시작] jobId: " + jobId);
                 }
 
                 @Override
-                public void onProgress(String jobId, ProgressInfo progress) {
+                public void onProgress(@NotNull String jobId, @NotNull ProgressInfo progress) {
                     // 진행률 업데이트 (옵션)
                 }
 
                 @Override
-                public void onCompleted(String jobId, GenerationResult result) {
+                public void onCompleted(@NotNull String jobId, @NotNull GenerationResult result) {
                     System.out.println("\t[완료] 소요시간: " + result.getDurationMs() + "ms");
                     System.out.println("\t[완료] 파일: " + result.getFilePath());
                     generatedPath[0] = result.getFilePath();
@@ -264,13 +266,13 @@ public class ExcelGeneratorJavaSample {
                 }
 
                 @Override
-                public void onFailed(String jobId, Exception error) {
+                public void onFailed(@NotNull String jobId, @NotNull Exception error) {
                     System.out.println("\t[실패] " + error.getMessage());
                     completionLatch.countDown();
                 }
 
                 @Override
-                public void onCancelled(String jobId) {
+                public void onCancelled(@NotNull String jobId) {
                     System.out.println("\t[취소됨]");
                     completionLatch.countDown();
                 }
@@ -347,7 +349,7 @@ public class ExcelGeneratorJavaSample {
         // DataProvider로 대용량 데이터 지연 로딩 설정 (Builder 사용)
         SimpleDataProvider dataProvider = SimpleDataProvider.builder()
             .value("title", "2024년 대용량 비동기 보고서")
-            .value("date", "2024-01-06")
+            .value("date", LocalDate.now().toString())
             .image("logo", loadImage("hunet_logo.png") != null ? loadImage("hunet_logo.png") : new byte[0])
             .image("ci", loadImage("hunet_ci.png") != null ? loadImage("hunet_ci.png") : new byte[0])
             // 대용량 데이터 - 실제로는 DB 스트리밍 쿼리 사용

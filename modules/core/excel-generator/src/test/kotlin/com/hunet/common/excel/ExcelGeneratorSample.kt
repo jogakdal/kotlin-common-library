@@ -4,6 +4,7 @@ import com.hunet.common.excel.async.ExcelGenerationListener
 import com.hunet.common.excel.async.GenerationResult
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.LocalDate
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -125,12 +126,12 @@ object ExcelGeneratorSample {
 
         // 데이터를 Map으로 준비
         val data = mapOf(
-            "title" to "2024년 직원 현황",
-            "date" to "2024-01-06",
+            "title" to "2026년 직원 현황",
+            "date" to LocalDate.now().toString(),
             "employees" to listOf(
-                Employee("김철수", "부장", 8000),
-                Employee("이영희", "과장", 6500),
-                Employee("박민수", "대리", 4500)
+                Employee("황용호", "부장", 8000),
+                Employee("한용호", "과장", 6500),
+                Employee("홍용호", "대리", 4500)
             ),
             "logo" to loadImage("hunet_logo.png"),
             "ci" to loadImage("hunet_ci.png")
@@ -195,8 +196,8 @@ object ExcelGeneratorSample {
         // simpleDataProvider DSL 사용
         val dataProvider = simpleDataProvider {
             // 단순 값
-            value("title", "2024년 대용량 직원 현황")
-            value("date", "2024-01-06")
+            value("title", "2026년 직원 현황(대용량)")
+            value("date", LocalDate.now().toString())
 
             // 이미지
             image("logo", loadImage("hunet_logo.png") ?: byteArrayOf())
@@ -229,11 +230,11 @@ object ExcelGeneratorSample {
      */
     private fun generateLargeDataSet(count: Int = 100): Sequence<Employee> = sequence {
         val positions = listOf("사원", "대리", "과장", "차장", "부장")
-        val names = listOf("김", "이", "박", "최", "정", "강", "조", "윤", "장", "임")
+        val names = listOf("황", "김", "이", "박", "최", "정", "강", "조", "윤", "장", "임")
 
         repeat(count) { i ->
             yield(Employee(
-                name = "${names[i % names.size]}직원${i + 1}",
+                name = "${names[i % names.size]}용호${i + 1}",
                 position = positions[i % positions.size],
                 salary = 3000 + (i % 5) * 1000
             ))
@@ -293,11 +294,11 @@ object ExcelGeneratorSample {
         var generatedPath: Path? = null
 
         val data = mapOf(
-            "title" to "2024년 비동기 생성 보고서",
-            "date" to "2024-01-06",
+            "title" to "2026년 직원 현황(비동기 생성)",
+            "date" to LocalDate.now().toString(),
             "employees" to listOf(
-                Employee("김철수", "부장", 8000),
-                Employee("이영희", "과장", 6500)
+                Employee("황용호", "부장", 8000),
+                Employee("한용호", "과장", 6500)
             ),
             "logo" to loadImage("hunet_logo.png"),
             "ci" to loadImage("hunet_ci.png")
@@ -445,7 +446,7 @@ object ExcelGeneratorSample {
         // DataProvider로 대용량 데이터 지연 로딩 설정
         val dataProvider = simpleDataProvider {
             value("title", "2024년 대용량 비동기 보고서")
-            value("date", "2024-01-06")
+            value("date", LocalDate.now().toString())
             image("logo", loadImage("hunet_logo.png") ?: byteArrayOf())
             image("ci", loadImage("hunet_ci.png") ?: byteArrayOf())
 

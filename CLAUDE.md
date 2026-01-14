@@ -97,3 +97,36 @@ moduleVersion.jpa-repository-extension=1.2.0-SNAPSHOT
 - **Package root**: `com.hunet.common.*`
 - **Testing**: JUnit Jupiter + Mockito; use `AbstractControllerTest` for Spring Boot integration tests
 - **Null safety**: `-Xjsr305=strict` compiler flag enforced
+
+## Excel Generator 모듈 (`com.hunet.common.excel`)
+
+JXLS 기반 템플릿 엔진을 사용한 Excel 파일 생성 모듈.
+
+### Excel 서식 유지 원칙
+
+**이 원칙은 Excel 생성 관련 모든 코드 수정 시 반드시 준수해야 합니다.**
+
+1. **템플릿 서식 완전 보존**: 템플릿에 작성된 모든 서식(정렬, 글꼴, 색상, 테두리, 채우기 등)은 생성된 Excel에 동일하게 적용되어야 한다.
+
+2. **자동/반복 생성 셀의 서식 상속**: 피벗 테이블을 포함한 자동 생성 또는 반복 생성되는 셀은 템플릿의 기준 셀 서식을 모두 적용해야 한다.
+   - 피벗 테이블 헤더 행: 템플릿의 헤더 행 서식 적용
+   - 피벗 테이블 데이터 행: 템플릿의 첫 번째 데이터 행 서식 적용
+   - 피벗 테이블 Grand Total 행: 피벗 테이블 기본 스타일(PivotStyleLight16 등)에 위임
+
+3. **숫자 서식 자동 지정 예외**: 자동 생성되는 셀의 데이터가 숫자 타입이고, 템플릿 셀의 "표시 형식"이 없거나 "일반"인 경우에만 "숫자" 범주로 자동 지정한다. 이 경우에도 해당 셀의 나머지 모든 서식(정렬, 글꼴, 색상 등)은 원칙 1, 2를 준수한다.
+
+### StyleInfo에서 유지해야 하는 서식 속성
+
+- `horizontalAlignment`: 가로 정렬
+- `verticalAlignment`: 세로 정렬
+- `fontBold`: 굵게
+- `fontItalic`: 기울임꼴
+- `fontUnderline`: 밑줄 (U_NONE, U_SINGLE, U_DOUBLE 등)
+- `fontStrikeout`: 취소선
+- `fontName`: 글꼴 이름
+- `fontSize`: 글꼴 크기
+- `fontColorRgb`: 글꼴 색상
+- `fillForegroundColorRgb`: 채우기 색상
+- `fillPatternType`: 채우기 패턴
+- `borderTop/Bottom/Left/Right`: 테두리
+- `dataFormat`: 표시 형식

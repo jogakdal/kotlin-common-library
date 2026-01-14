@@ -20,6 +20,9 @@ dependencies {
     implementation("org.jxls:jxls:2.14.0")
     implementation("org.jxls:jxls-poi:2.14.0")
 
+    // Apache POI full schemas (피벗 테이블 XML 조작용)
+    implementation("org.apache.poi:poi-ooxml-full:5.2.5")
+
     // Kotlin Coroutines (비동기 지원)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.8.1")
