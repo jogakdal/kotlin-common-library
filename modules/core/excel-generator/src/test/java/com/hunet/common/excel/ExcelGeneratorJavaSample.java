@@ -5,13 +5,21 @@ import com.hunet.common.excel.async.GenerationJob;
 import com.hunet.common.excel.async.GenerationResult;
 import com.hunet.common.excel.async.ProgressInfo;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.CodeSource;
 import java.time.LocalDate;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -53,27 +61,10 @@ import java.util.concurrent.TimeUnit;
 public class ExcelGeneratorJavaSample {
 
     /**
-     * 샘플 데이터 클래스 (Employee)
+     * 샘플 데이터 클래스 (Employee).
+     * JXLS가 리플렉션으로 getter를 사용합니다.
      */
-    public static class Employee {
-        private final String name;
-        private final String position;
-        private final int salary;
-
-        public Employee(String name, String position, int salary) {
-            this.name = name;
-            this.position = position;
-            this.salary = salary;
-        }
-
-        public String getName() { return name; }
-        public String getPosition() { return position; }
-        public int getSalary() { return salary; }
-
-        @Override
-        public String toString() {
-            return "Employee{name='" + name + "', position='" + position + "', salary=" + salary + "}";
-        }
+    public record Employee(String name, String position, int salary) {
     }
 
     public static void main(String[] args) throws Exception {
@@ -112,7 +103,7 @@ public class ExcelGeneratorJavaSample {
      * Map 기반의 가장 간단한 사용 방법입니다.
      * 소량의 데이터를 빠르게 처리할 때 적합합니다.
      */
-    private static void runBasicExample(ExcelGenerator generator, Path outputDir) throws IOException {
+    private static void runBasicExample(ExcelGenerator generator, Path outputDir) {
         System.out.println("\n[1] 기본 사용 (Map 기반)");
         System.out.println("-".repeat(40));
 
@@ -157,18 +148,21 @@ public class ExcelGeneratorJavaSample {
      *   <li>메모리 효율적</li>
      * </ul>
      */
-    private static void runLazyLoadingExample(ExcelGenerator generator, Path outputDir) throws IOException {
+    private static void runLazyLoadingExample(ExcelGenerator generator, Path outputDir) {
         System.out.println("\n[2] 지연 로딩 (DataProvider + Builder)");
         System.out.println("-".repeat(40));
 
         // Java에서는 Builder 패턴 사용
+        byte[] logo = loadImage("hunet_logo.png");
+        byte[] ci = loadImage("hunet_ci.png");
+
         SimpleDataProvider dataProvider = SimpleDataProvider.builder()
             // 단순 값
             .value("title", "2026년 직원 현황(대용량)")
             .value("date", LocalDate.now().toString())
             // 이미지
-            .image("logo", loadImage("hunet_logo.png") != null ? loadImage("hunet_logo.png") : new byte[0])
-            .image("ci", loadImage("hunet_ci.png") != null ? loadImage("hunet_ci.png") : new byte[0])
+            .image("logo", logo != null ? logo : new byte[0])
+            .image("ci", ci != null ? ci : new byte[0])
             // 컬렉션 - 지연 로딩 (Java Supplier 사용)
             .itemsFromSupplier("employees", () -> generateLargeDataSet(100))
             .build();
@@ -223,7 +217,7 @@ public class ExcelGeneratorJavaSample {
         System.out.println("-".repeat(40));
 
         CountDownLatch completionLatch = new CountDownLatch(1);
-        Path[] generatedPath = {null}; // effectively final wrapper
+        Path[] generatedPath = new Path[1]; // effectively final wrapper
 
         Map<String, Object> data = new HashMap<>();
         data.put("title", "2026년 직원 현황(비동기 생성)");
@@ -284,9 +278,9 @@ public class ExcelGeneratorJavaSample {
         System.out.println("\t(API 서버에서는 여기서 HTTP 202 반환)");
 
         // 샘플에서는 완료 대기
-        completionLatch.await(30, TimeUnit.SECONDS);
+        boolean completed = completionLatch.await(30, TimeUnit.SECONDS);
 
-        if (generatedPath[0] != null) {
+        if (completed && generatedPath[0] != null) {
             System.out.println("\t결과: " + generatedPath[0]);
         }
     }
@@ -315,21 +309,14 @@ public class ExcelGeneratorJavaSample {
         Result result = runLargeAsyncWithRetry(generator, outputDir, initialCount, retryCount);
 
         if (result != null) {
-            System.out.println("\t결과: " + result.path + " (" + result.rowsProcessed + "건 처리)");
+            System.out.println("\t결과: " + result.path() + " (" + result.rowsProcessed() + "건 처리)");
         }
     }
 
     /**
      * 결과를 담는 내부 클래스
      */
-    private static class Result {
-        final Path path;
-        final int rowsProcessed;
-
-        Result(Path path, int rowsProcessed) {
-            this.path = path;
-            this.rowsProcessed = rowsProcessed;
-        }
+    private record Result(Path path, int rowsProcessed) {
     }
 
     /**
@@ -342,16 +329,19 @@ public class ExcelGeneratorJavaSample {
             int retryDataCount
     ) throws Exception {
         CountDownLatch completionLatch = new CountDownLatch(1);
-        Path[] generatedPath = {null};
-        int[] processedRows = {0};
-        FormulaExpansionException[] formulaError = {null};
+        Path[] generatedPath = new Path[1];
+        int[] processedRows = new int[1];
+        FormulaExpansionException[] formulaError = new FormulaExpansionException[1];
 
         // DataProvider로 대용량 데이터 지연 로딩 설정 (Builder 사용)
+        byte[] logo = loadImage("hunet_logo.png");
+        byte[] ci = loadImage("hunet_ci.png");
+
         SimpleDataProvider dataProvider = SimpleDataProvider.builder()
-            .value("title", "2024년 대용량 비동기 보고서")
+            .value("title", "2026년 직원 현황(대용량 비동기)")
             .value("date", LocalDate.now().toString())
-            .image("logo", loadImage("hunet_logo.png") != null ? loadImage("hunet_logo.png") : new byte[0])
-            .image("ci", loadImage("hunet_ci.png") != null ? loadImage("hunet_ci.png") : new byte[0])
+            .image("logo", logo != null ? logo : new byte[0])
+            .image("ci", ci != null ? ci : new byte[0])
             // 대용량 데이터 - 실제로는 DB 스트리밍 쿼리 사용
             .itemsFromSupplier("employees", () -> generateLargeDataSet(dataCount))
             .build();
@@ -368,17 +358,17 @@ public class ExcelGeneratorJavaSample {
             "large_async_example_java",
             new ExcelGenerationListener() {
                 @Override
-                public void onStarted(String jobId) {
+                public void onStarted(@NotNull String jobId) {
                     System.out.println("\t[시작] jobId: " + jobId);
                 }
 
                 @Override
-                public void onProgress(String jobId, ProgressInfo progress) {
+                public void onProgress(@NotNull String jobId, @NotNull ProgressInfo progress) {
                     // 진행률 업데이트 (옵션)
                 }
 
                 @Override
-                public void onCompleted(String jobId, GenerationResult result) {
+                public void onCompleted(@NotNull String jobId, @NotNull GenerationResult result) {
                     System.out.println("\t[완료] 처리된 행: " + result.getRowsProcessed() + "건");
                     System.out.println("\t[완료] 소요시간: " + result.getDurationMs() + "ms");
                     System.out.println("\t[완료] 파일: " + result.getFilePath());
@@ -388,7 +378,7 @@ public class ExcelGeneratorJavaSample {
                 }
 
                 @Override
-                public void onFailed(String jobId, Exception error) {
+                public void onFailed(@NotNull String jobId, @NotNull Exception error) {
                     System.out.println("\t[실패] " + error.getMessage());
                     if (error instanceof FormulaExpansionException) {
                         formulaError[0] = (FormulaExpansionException) error;
@@ -397,7 +387,7 @@ public class ExcelGeneratorJavaSample {
                 }
 
                 @Override
-                public void onCancelled(String jobId) {
+                public void onCancelled(@NotNull String jobId) {
                     System.out.println("\t[취소됨]");
                     completionLatch.countDown();
                 }
@@ -408,6 +398,7 @@ public class ExcelGeneratorJavaSample {
         System.out.println("\t(백그라운드에서 대용량 데이터 처리 중...)");
 
         // 샘플에서는 완료 대기
+        //noinspection ResultOfMethodCallIgnored
         completionLatch.await(60, TimeUnit.SECONDS);
 
         // FormulaExpansionException 발생 시 데이터 수를 줄여서 재시도
@@ -432,7 +423,7 @@ public class ExcelGeneratorJavaSample {
         return stream;
     }
 
-    private static byte[] loadImage(String fileName) {
+    private static byte @Nullable [] loadImage(String fileName) {
         try (InputStream stream = ExcelGeneratorJavaSample.class.getResourceAsStream("/" + fileName)) {
             if (stream == null) return null;
             return stream.readAllBytes();
@@ -443,19 +434,21 @@ public class ExcelGeneratorJavaSample {
 
     private static Path findModuleDir() {
         try {
-            var classLocation = ExcelGeneratorJavaSample.class.getProtectionDomain().getCodeSource();
+            CodeSource classLocation = ExcelGeneratorJavaSample.class.getProtectionDomain().getCodeSource();
             if (classLocation != null) {
-                Path classPath = Path.of(classLocation.getLocation().toURI());
-                Path current = classPath;
+                Path current = Path.of(classLocation.getLocation().toURI());
                 while (current.getParent() != null) {
-                    if ("build".equals(current.getFileName().toString()) &&
+                    Path fileName = current.getFileName();
+                    if (fileName != null && "build".equals(fileName.toString()) &&
                         Files.exists(current.resolveSibling("src"))) {
                         return current.getParent();
                     }
                     current = current.getParent();
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (URISyntaxException e) {
+            // Fall through to use working directory
+        }
 
         Path workingDir = Path.of("").toAbsolutePath();
         if (Files.exists(workingDir.resolve("src/main/kotlin/com/hunet/common/excel"))) {

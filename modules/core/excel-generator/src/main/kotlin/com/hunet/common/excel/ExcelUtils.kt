@@ -18,27 +18,19 @@ import java.io.ByteArrayOutputStream
  * Excel 열 문자를 0-based 숫자로 변환합니다.
  * 예: "A" -> 0, "B" -> 1, "Z" -> 25, "AA" -> 26
  */
-internal fun String.toColumnIndex(): Int {
-    var result = 0
-    for (c in this.uppercase()) {
-        result = result * 26 + (c - 'A' + 1)
-    }
-    return result - 1
-}
+internal fun String.toColumnIndex() =
+    uppercase().fold(0) { acc, c -> acc * 26 + (c - 'A' + 1) } - 1
 
 /**
  * 0-based 숫자를 Excel 열 문자로 변환합니다.
  * 예: 0 -> "A", 1 -> "B", 25 -> "Z", 26 -> "AA"
  */
-internal fun Int.toColumnLetter(): String {
-    var n = this + 1
-    val result = StringBuilder()
-    while (n > 0) {
-        n--
-        result.insert(0, ('A' + (n % 26)))
-        n /= 26
-    }
-    return result.toString()
+internal fun Int.toColumnLetter(): String = buildString {
+    generateSequence(this@toColumnLetter + 1) { n -> ((n - 1) / 26).takeIf { it > 0 } }
+        .map { n -> 'A' + ((n - 1) % 26) }
+        .toList()
+        .reversed()
+        .forEach { append(it) }
 }
 
 // ========== XML 유틸리티 ==========
@@ -68,22 +60,21 @@ internal val XSSFWorkbook.sheets: Sequence<Sheet>
     get() = (0 until numberOfSheets).asSequence().map { getSheetAt(it) }
 
 /**
+ * 시트의 모든 셀을 Sequence로 반환합니다.
+ */
+internal fun Sheet.cellSequence() = asSequence().flatMap { it.asSequence() }
+
+/**
  * 시트에서 데이터가 있는 마지막 행 인덱스를 반환합니다.
  */
-internal val Sheet.lastRowWithData: Int
-    get() = asSequence()
-        .flatMap { it.asSequence() }
-        .filterNot { it.isEmpty }
-        .maxOfOrNull { it.rowIndex } ?: -1
+internal val Sheet.lastRowWithData
+    get() = cellSequence().filterNot { it.isEmpty }.maxOfOrNull { it.rowIndex } ?: -1
 
 /**
  * 시트에서 데이터가 있는 마지막 열 인덱스를 반환합니다.
  */
-internal val Sheet.lastColumnWithData: Int
-    get() = asSequence()
-        .flatMap { it.asSequence() }
-        .filterNot { it.isEmpty }
-        .maxOfOrNull { it.columnIndex } ?: -1
+internal val Sheet.lastColumnWithData
+    get() = cellSequence().filterNot { it.isEmpty }.maxOfOrNull { it.columnIndex } ?: -1
 
 /**
  * 셀이 비어있는지 확인합니다 (코멘트도 없고 내용도 없는 경우).

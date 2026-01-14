@@ -35,7 +35,7 @@ data class GenerationResult(
         } else if (other.bytes != null) return false
         if (rowsProcessed != other.rowsProcessed) return false
         if (durationMs != other.durationMs) return false
-        if (completedAt != other.completedAt) return false
+        if (!completedAt.equals(other.completedAt)) return false
 
         return true
     }

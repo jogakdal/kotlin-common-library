@@ -3,11 +3,14 @@ package com.hunet.common.excel
 import com.hunet.common.excel.async.ExcelGenerationListener
 import com.hunet.common.excel.async.GenerationResult
 import kotlinx.coroutines.runBlocking
+import org.apache.poi.openxml4j.opc.OPCPackage
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import java.io.ByteArrayInputStream
+import kotlin.io.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
@@ -391,5 +394,226 @@ class ExcelGeneratorTest {
         assertTrue(latch.await(30, TimeUnit.SECONDS))
         assertNotNull(result)
         assertEquals(largeCount, result!!.rowsProcessed)
+    }
+
+    // ==================== ChartProcessor 변수 치환 테스트 ====================
+
+    @Test
+    fun `chart title variable should be replaced`() {
+        val template = loadTemplate()
+        val data = createTestData()
+
+        val bytes = generator.generate(template, data)
+
+        // 생성된 Excel에서 chart1.xml 내용 추출
+        OPCPackage.open(ByteArrayInputStream(bytes)).use { pkg ->
+            val chartPart = pkg.parts.find { it.partName.name == "/xl/charts/chart1.xml" }
+            assertNotNull(chartPart, "차트가 존재해야 합니다")
+
+            val chartXml = chartPart!!.inputStream.bufferedReader().readText()
+            // ${title} 변수가 "테스트 보고서"로 치환되었는지 확인
+            assertFalse(chartXml.contains("\${title}"), "차트에서 \${title} 변수가 치환되어야 합니다")
+            assertTrue(chartXml.contains("테스트 보고서"), "차트에 '테스트 보고서' 텍스트가 있어야 합니다")
+        }
+    }
+
+    @Test
+    fun `drawing shape variable should be replaced`() {
+        val template = loadTemplate()
+        val data = createTestData()
+
+        val bytes = generator.generate(template, data)
+
+        // 생성된 Excel에서 drawing1.xml 내용 추출
+        OPCPackage.open(ByteArrayInputStream(bytes)).use { pkg ->
+            val drawingPart = pkg.parts.find { it.partName.name == "/xl/drawings/drawing1.xml" }
+            assertNotNull(drawingPart, "도형이 존재해야 합니다")
+
+            val drawingXml = drawingPart!!.inputStream.bufferedReader().readText()
+            // ${title} 변수가 치환되었는지 확인
+            assertFalse(drawingXml.contains("\${title}"), "도형에서 \${title} 변수가 치환되어야 합니다")
+            assertTrue(drawingXml.contains("테스트 보고서"), "도형에 '테스트 보고서' 텍스트가 있어야 합니다")
+            // ${date} 변수도 치환되었는지 확인
+            assertFalse(drawingXml.contains("\${date}"), "도형에서 \${date} 변수가 치환되어야 합니다")
+        }
+    }
+
+    @Test
+    fun `all xml files with variables should be processed`() {
+        val template = loadTemplate()
+        val data = createTestData()
+
+        val bytes = generator.generate(template, data)
+
+        // 생성된 Excel의 모든 XML 파일에서 ${...} 패턴 검색
+        OPCPackage.open(ByteArrayInputStream(bytes)).use { pkg ->
+            val variablePattern = Regex("""\$\{(title|date)}""")
+            val partsWithUnreplacedVars = mutableListOf<String>()
+
+            // XML 파일만 필터링하여 순회
+            for (part in pkg.parts) {
+                if (part.partName.name.endsWith(".xml")) {
+                    try {
+                        val content = part.inputStream.bufferedReader().readText()
+                        if (variablePattern.containsMatchIn(content)) {
+                            partsWithUnreplacedVars.add(part.partName.name)
+                        }
+                    } catch (e: Exception) {
+                        // 일부 스트림 읽기 실패는 무시
+                    }
+                }
+            }
+
+            assertTrue(
+                partsWithUnreplacedVars.isEmpty(),
+                "다음 파일에 치환되지 않은 변수가 있습니다: $partsWithUnreplacedVars"
+            )
+        }
+    }
+
+    // ==================== FileNamingMode / FileConflictPolicy 테스트 ====================
+
+    @Test
+    fun `FileNamingMode NONE should create file without timestamp`() {
+        val config = ExcelGeneratorConfig(fileNamingMode = FileNamingMode.NONE)
+        ExcelGenerator(config).use { gen ->
+            val template = loadTemplate()
+            val data = createTestData()
+
+            val resultPath = gen.generateToFile(
+                template = template,
+                dataProvider = SimpleDataProvider.of(data),
+                outputDir = tempDir,
+                baseFileName = "no_timestamp_test"
+            )
+
+            assertEquals("no_timestamp_test.xlsx", resultPath.fileName.toString())
+            assertTrue(Files.exists(resultPath))
+        }
+    }
+
+    @Test
+    fun `FileNamingMode TIMESTAMP should create file with timestamp`() {
+        val config = ExcelGeneratorConfig(fileNamingMode = FileNamingMode.TIMESTAMP)
+        ExcelGenerator(config).use { gen ->
+            val template = loadTemplate()
+            val data = createTestData()
+
+            val resultPath = gen.generateToFile(
+                template = template,
+                dataProvider = SimpleDataProvider.of(data),
+                outputDir = tempDir,
+                baseFileName = "timestamp_test"
+            )
+
+            assertTrue(resultPath.fileName.toString().startsWith("timestamp_test_"))
+            assertTrue(resultPath.fileName.toString().endsWith(".xlsx"))
+            assertTrue(Files.exists(resultPath))
+        }
+    }
+
+    @Test
+    fun `FileConflictPolicy ERROR should throw exception when file exists`() {
+        val config = ExcelGeneratorConfig(
+            fileNamingMode = FileNamingMode.NONE,
+            fileConflictPolicy = FileConflictPolicy.ERROR
+        )
+
+        // 먼저 파일 생성
+        val existingFile = tempDir.resolve("conflict_test.xlsx")
+        Files.createFile(existingFile)
+
+        ExcelGenerator(config).use { gen ->
+            val template = loadTemplate()
+            val data = createTestData()
+
+            assertThrows(FileAlreadyExistsException::class.java) {
+                gen.generateToFile(
+                    template = template,
+                    dataProvider = SimpleDataProvider.of(data),
+                    outputDir = tempDir,
+                    baseFileName = "conflict_test"
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `FileConflictPolicy SEQUENCE should add sequence number when file exists`() {
+        val config = ExcelGeneratorConfig(
+            fileNamingMode = FileNamingMode.NONE,
+            fileConflictPolicy = FileConflictPolicy.SEQUENCE
+        )
+
+        ExcelGenerator(config).use { gen ->
+            val template = loadTemplate()
+            val data = createTestData()
+
+            // 첫 번째 파일 생성
+            val firstPath = gen.generateToFile(
+                template = template,
+                dataProvider = SimpleDataProvider.of(data),
+                outputDir = tempDir,
+                baseFileName = "sequence_test"
+            )
+            assertEquals("sequence_test.xlsx", firstPath.fileName.toString())
+
+            // 두 번째 파일 생성 (충돌 발생 -> 시퀀스 추가)
+            val secondPath = gen.generateToFile(
+                template = loadTemplate(),
+                dataProvider = SimpleDataProvider.of(data),
+                outputDir = tempDir,
+                baseFileName = "sequence_test"
+            )
+            assertEquals("sequence_test_1.xlsx", secondPath.fileName.toString())
+
+            // 세 번째 파일 생성
+            val thirdPath = gen.generateToFile(
+                template = loadTemplate(),
+                dataProvider = SimpleDataProvider.of(data),
+                outputDir = tempDir,
+                baseFileName = "sequence_test"
+            )
+            assertEquals("sequence_test_2.xlsx", thirdPath.fileName.toString())
+
+            assertTrue(Files.exists(firstPath))
+            assertTrue(Files.exists(secondPath))
+            assertTrue(Files.exists(thirdPath))
+        }
+    }
+
+    @Test
+    fun `FileConflictPolicy SEQUENCE with TIMESTAMP should add sequence after timestamp`() {
+        val config = ExcelGeneratorConfig(
+            fileNamingMode = FileNamingMode.TIMESTAMP,
+            fileConflictPolicy = FileConflictPolicy.SEQUENCE,
+            timestampFormat = "yyyyMMdd"  // 날짜만 사용하여 충돌 유발
+        )
+
+        ExcelGenerator(config).use { gen ->
+            val template = loadTemplate()
+            val data = createTestData()
+
+            // 첫 번째 파일 생성
+            val firstPath = gen.generateToFile(
+                template = template,
+                dataProvider = SimpleDataProvider.of(data),
+                outputDir = tempDir,
+                baseFileName = "ts_seq_test"
+            )
+            assertTrue(firstPath.fileName.toString().matches(Regex("ts_seq_test_\\d{8}\\.xlsx")))
+
+            // 두 번째 파일 생성 (같은 날짜면 충돌 -> 시퀀스 추가)
+            val secondPath = gen.generateToFile(
+                template = loadTemplate(),
+                dataProvider = SimpleDataProvider.of(data),
+                outputDir = tempDir,
+                baseFileName = "ts_seq_test"
+            )
+            assertTrue(secondPath.fileName.toString().matches(Regex("ts_seq_test_\\d{8}_1\\.xlsx")))
+
+            assertTrue(Files.exists(firstPath))
+            assertTrue(Files.exists(secondPath))
+        }
     }
 }

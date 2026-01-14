@@ -445,7 +445,7 @@ object ExcelGeneratorSample {
 
         // DataProvider로 대용량 데이터 지연 로딩 설정
         val dataProvider = simpleDataProvider {
-            value("title", "2024년 대용량 비동기 보고서")
+            value("title", "2026년 직원 현황(대용량 비동기)")
             value("date", LocalDate.now().toString())
             image("logo", loadImage("hunet_logo.png") ?: byteArrayOf())
             image("ci", loadImage("hunet_ci.png") ?: byteArrayOf())

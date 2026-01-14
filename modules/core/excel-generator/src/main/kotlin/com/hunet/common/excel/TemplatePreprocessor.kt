@@ -1,12 +1,12 @@
 package com.hunet.common.excel
 
+import com.hunet.common.logging.commonLogger
 import com.hunet.common.util.unquote
 import org.apache.poi.ss.usermodel.*
 import org.apache.poi.ss.util.CellAddress
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.XSSFClientAnchor
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
-import org.slf4j.LoggerFactory
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -33,8 +33,12 @@ import java.io.InputStream
  * - **경고 로깅**: 알 수 없는 direction 값 (기본값 DOWN 사용)
  */
 internal class TemplatePreprocessor {
-
-    private val logger = LoggerFactory.getLogger(TemplatePreprocessor::class.java)
+    companion object {
+        val LOG by commonLogger()
+        private val REPEAT_MARKER_PATTERN = Regex("""\$\{repeat\(([^)]+)\)\}""")
+        private val COMPLETE_MARKER_PATTERN = Regex("""\$\{repeat\([^)]+\)\}""")
+        private const val REPEAT_MARKER_PREFIX = "\${repeat("
+    }
 
     /**
      * repeat 마커 정보
@@ -72,168 +76,123 @@ internal class TemplatePreprocessor {
      * @return 변환된 템플릿 입력 스트림
      * @throws TemplateProcessingException 템플릿 처리 중 오류 발생 시
      */
-    fun preprocess(template: InputStream): InputStream {
-        val workbook = XSSFWorkbook(template)
+    fun preprocess(template: InputStream): InputStream = XSSFWorkbook(template).use { workbook ->
+        val availableSheets = workbook.sheetNames()
 
-        try {
-            // 사용 가능한 시트 목록 (오류 메시지용)
-            val availableSheets = (0 until workbook.numberOfSheets).map { workbook.getSheetAt(it).sheetName }
+        checkIncompleteMarkers(workbook)
 
-            // 1. 불완전한 repeat 마커 검사
-            checkIncompleteMarkers(workbook)
+        val markers = findRepeatMarkers(workbook)
 
-            // 2. 모든 시트에서 repeat 마커 찾기
-            val markers = findRepeatMarkers(workbook)
-
-            // 3. 시트 존재 여부 검증
-            for (marker in markers) {
-                if (workbook.getSheet(marker.targetSheetName) == null) {
-                    throw TemplateProcessingException.sheetNotFound(marker.targetSheetName, availableSheets)
-                }
-            }
-
-            // 4. 각 마커를 jx:each 코멘트로 변환
-            for (marker in markers) {
-                convertMarkerToJxlsComment(workbook, marker)
-            }
-
-            // 변환된 워크북을 스트림으로 반환
-            val output = ByteArrayOutputStream()
-            workbook.write(output)
-            return ByteArrayInputStream(output.toByteArray())
-        } finally {
-            workbook.close()
+        markers.firstOrNull { workbook.getSheet(it.targetSheetName) == null }?.let {
+            throw TemplateProcessingException.sheetNotFound(it.targetSheetName, availableSheets)
         }
+
+        markers.forEach { convertMarkerToJxlsComment(workbook, it) }
+
+        ByteArrayOutputStream().also { workbook.write(it) }.let { ByteArrayInputStream(it.toByteArray()) }
     }
+
+    private fun XSSFWorkbook.sheetNames() = (0 until numberOfSheets).map { getSheetAt(it).sheetName }
 
     /**
      * 불완전한 repeat 마커를 검사합니다.
      * `${repeat(` 로 시작하지만 `)}` 로 끝나지 않는 마커를 찾습니다.
      */
     private fun checkIncompleteMarkers(workbook: XSSFWorkbook) {
-        // 불완전한 마커 패턴: ${repeat( 로 시작하지만 )}로 끝나지 않는 것
-        val incompletePattern = Regex("""\$\{repeat\([^}]*$""")
-        // 괄호가 맞지 않는 패턴: ${repeat(...) 만 있고 } 가 없는 것
-        val missingBracePattern = Regex("""\$\{repeat\([^)]*\)(?!})""")
-
-        for (sheetIndex in 0 until workbook.numberOfSheets) {
-            val sheet = workbook.getSheetAt(sheetIndex)
-
-            for (row in sheet) {
-                for (cell in row) {
-                    if (cell.cellType == CellType.STRING) {
-                        val cellValue = cell.stringCellValue ?: continue
-
-                        // ${repeat( 가 있는지 확인
-                        if (cellValue.contains("\${repeat(")) {
-                            // 완전한 마커인지 확인
-                            val completePattern = Regex("""\$\{repeat\([^)]+\)\}""")
-                            if (!completePattern.containsMatchIn(cellValue)) {
-                                // 어떤 유형의 오류인지 판단
-                                val reason = when {
-                                    !cellValue.contains(")") -> "닫는 괄호 ')'가 누락되었습니다."
-                                    !cellValue.contains("}") -> "닫는 중괄호 '}'가 누락되었습니다."
-                                    else -> "문법이 올바르지 않습니다. 올바른 형식: \${repeat(collection, range, var, direction)}"
-                                }
-
-                                val markerStart = cellValue.indexOf("\${repeat(")
-                                val markerPreview = cellValue.substring(markerStart).take(50) +
-                                    if (cellValue.length - markerStart > 50) "..." else ""
-
-                                throw TemplateProcessingException.invalidRepeatSyntax(
-                                    marker = markerPreview,
-                                    reason = "$reason (시트: '${sheet.sheetName}', 셀: ${CellAddress(cell.rowIndex, cell.columnIndex)})"
-                                )
-                            }
-                        }
-                    }
-                }
+        workbook.sheetSequence()
+            .flatMap { sheet -> sheet.cellSequence().map { cell -> sheet to cell } }
+            .filter { (_, cell) -> cell.cellType == CellType.STRING }
+            .mapNotNull { (sheet, cell) ->
+                cell.stringCellValue?.takeIf { it.contains(REPEAT_MARKER_PREFIX) }
+                    ?.let { Triple(sheet, cell, it) }
             }
-        }
+            .filterNot { (_, _, value) -> COMPLETE_MARKER_PATTERN.containsMatchIn(value) }
+            .firstOrNull()
+            ?.let { (sheet, cell, cellValue) ->
+                val reason = when {
+                    ')' !in cellValue -> "닫는 괄호 ')'가 누락되었습니다."
+                    '}' !in cellValue -> "닫는 중괄호 '}'가 누락되었습니다."
+                    else -> "문법이 올바르지 않습니다. " +
+                        "올바른 형식: \${repeat(collection, range, var, direction)}"
+                }
+                val markerStart = cellValue.indexOf(REPEAT_MARKER_PREFIX)
+                val markerPreview = cellValue.substring(markerStart).take(50) +
+                    if (cellValue.length - markerStart > 50) "..." else ""
+
+                throw TemplateProcessingException.invalidRepeatSyntax(
+                    marker = markerPreview,
+                    reason = "$reason (시트: '${sheet.sheetName}', " +
+                        "셀: ${CellAddress(cell.rowIndex, cell.columnIndex)})"
+                )
+            }
     }
+
+    private fun XSSFWorkbook.sheetSequence() =
+        (0 until numberOfSheets).asSequence().map { getSheetAt(it) }
+
+    private fun Sheet.cellSequence() = asSequence().flatMap { it.asSequence() }
 
     /**
      * 워크북에서 모든 repeat 마커를 찾습니다.
      */
-    private fun findRepeatMarkers(workbook: XSSFWorkbook): List<RepeatMarker> {
-        val markers = mutableListOf<RepeatMarker>()
+    private fun findRepeatMarkers(workbook: XSSFWorkbook) =
+        (0 until workbook.numberOfSheets)
+            .flatMap { workbook.getSheetAt(it).let { sheet -> sheet.findMarkersInSheet() } }
 
-        for (sheetIndex in 0 until workbook.numberOfSheets) {
-            val sheet = workbook.getSheetAt(sheetIndex)
-
-            for (row in sheet) {
-                for (cell in row) {
-                    if (cell.cellType == CellType.STRING) {
-                        val cellValue = cell.stringCellValue
-                        val marker = parseRepeatMarker(cellValue, cell, sheet.sheetName)
-                        if (marker != null) {
-                            markers.add(marker)
-                        }
-                    }
-                }
-            }
-        }
-
-        return markers
-    }
+    private fun Sheet.findMarkersInSheet() = cellSequence()
+        .filter { it.cellType == CellType.STRING }
+        .mapNotNull { parseRepeatMarker(it.stringCellValue, it, sheetName) }
+        .toList()
 
     /**
      * 셀 값에서 repeat 마커를 파싱합니다.
      */
-    private fun parseRepeatMarker(cellValue: String, cell: Cell, sheetName: String): RepeatMarker? {
-        val pattern = Regex("""\$\{repeat\(([^)]+)\)\}""")
-        val match = pattern.find(cellValue) ?: return null
-
-        val originalMarker = match.value
-        val params = match.groupValues[1]
-        return parseRepeatParams(params, cell, sheetName, originalMarker)
-    }
+    private fun parseRepeatMarker(cellValue: String, cell: Cell, sheetName: String): RepeatMarker? =
+        REPEAT_MARKER_PATTERN.find(cellValue)?.let { match ->
+            parseRepeatParams(match.groupValues[1], cell, sheetName, match.value)
+        }
 
     /**
      * repeat 파라미터를 파싱합니다.
      */
-    private fun parseRepeatParams(params: String, cell: Cell, sheetName: String, originalMarker: String): RepeatMarker {
-        val parts = params.split(",").map { it.trim().unquote() }
-
-        return if (parts.any { it.contains("=") }) {
-            parseNamedParams(parts, cell, sheetName, originalMarker)
-        } else {
-            parsePositionalParams(parts, cell, sheetName, originalMarker)
-        }
+    private fun parseRepeatParams(
+        params: String,
+        cell: Cell,
+        sheetName: String,
+        originalMarker: String
+    ): RepeatMarker = params.split(",").map { it.trim().unquote() }.let { parts ->
+        if (parts.any { "=" in it }) parseNamedParams(parts, cell, sheetName, originalMarker)
+        else parsePositionalParams(parts, cell, sheetName, originalMarker)
     }
 
     /**
      * 키=값 형태의 파라미터를 파싱합니다.
      */
-    private fun parseNamedParams(parts: List<String>, cell: Cell, sheetName: String, originalMarker: String): RepeatMarker {
-        val paramMap = mutableMapOf<String, String>()
-
-        for (part in parts) {
-            if (part.contains("=")) {
-                val (key, value) = part.split("=", limit = 2).map { it.trim() }
-                paramMap[key] = value.unquote()
+    private fun parseNamedParams(
+        parts: List<String>,
+        cell: Cell,
+        sheetName: String,
+        originalMarker: String
+    ): RepeatMarker {
+        val paramMap = parts.filter { "=" in it }
+            .associate { part ->
+                part.split("=", limit = 2).let { (key, value) ->
+                    key.trim() to value.trim().unquote()
+                }
             }
-        }
 
         val collection = paramMap["collection"]
             ?: throw TemplateProcessingException.missingParameter(originalMarker, "collection")
-
         val rangeStr = paramMap["range"]
             ?: throw TemplateProcessingException.missingParameter(originalMarker, "range")
-
-        val variable = paramMap["var"] ?: collection
-
-        val direction = paramMap["direction"]?.let { dirStr ->
-            parseDirection(dirStr, originalMarker)
-        } ?: Direction.DOWN
-
         val parsedRange = parseRangeWithSheet(rangeStr, originalMarker)
 
         return RepeatMarker(
             collection = collection,
             range = parsedRange.range,
-            variable = variable,
-            direction = direction,
+            variable = paramMap["var"] ?: collection,
+            direction = paramMap["direction"]?.let { parseDirection(it, originalMarker) }
+                ?: Direction.DOWN,
             markerCell = CellAddress(cell.rowIndex, cell.columnIndex),
             markerSheetName = sheetName,
             targetSheetName = parsedRange.sheetName ?: sheetName,
@@ -244,35 +203,24 @@ internal class TemplatePreprocessor {
     /**
      * 위치 기반 파라미터를 파싱합니다.
      */
-    private fun parsePositionalParams(parts: List<String>, cell: Cell, sheetName: String, originalMarker: String): RepeatMarker {
-        if (parts.isEmpty()) {
-            throw TemplateProcessingException.missingParameter(originalMarker, "collection")
-        }
-
-        val collection = parts[0]
-        if (collection.isBlank()) {
-            throw TemplateProcessingException.missingParameter(originalMarker, "collection")
-        }
-
-        if (parts.size < 2 || parts[1].isBlank()) {
-            throw TemplateProcessingException.missingParameter(originalMarker, "range")
-        }
-
-        val rangeStr = parts[1]
-        val variable = if (parts.size >= 3 && parts[2].isNotBlank()) parts[2] else collection
-        val direction = if (parts.size >= 4 && parts[3].isNotBlank()) {
-            parseDirection(parts[3], originalMarker)
-        } else {
-            Direction.DOWN
-        }
-
+    private fun parsePositionalParams(
+        parts: List<String>,
+        cell: Cell,
+        sheetName: String,
+        originalMarker: String
+    ): RepeatMarker {
+        val collection = parts.getOrNull(0)?.takeIf { it.isNotBlank() }
+            ?: throw TemplateProcessingException.missingParameter(originalMarker, "collection")
+        val rangeStr = parts.getOrNull(1)?.takeIf { it.isNotBlank() }
+            ?: throw TemplateProcessingException.missingParameter(originalMarker, "range")
         val parsedRange = parseRangeWithSheet(rangeStr, originalMarker)
 
         return RepeatMarker(
             collection = collection,
             range = parsedRange.range,
-            variable = variable,
-            direction = direction,
+            variable = parts.getOrNull(2)?.takeIf { it.isNotBlank() } ?: collection,
+            direction = parts.getOrNull(3)?.takeIf { it.isNotBlank() }
+                ?.let { parseDirection(it, originalMarker) } ?: Direction.DOWN,
             markerCell = CellAddress(cell.rowIndex, cell.columnIndex),
             markerSheetName = sheetName,
             targetSheetName = parsedRange.sheetName ?: sheetName,
@@ -283,45 +231,33 @@ internal class TemplatePreprocessor {
     /**
      * direction 문자열을 파싱합니다.
      */
-    private fun parseDirection(dirStr: String, originalMarker: String): Direction {
-        return try {
-            Direction.valueOf(dirStr.uppercase())
-        } catch (e: IllegalArgumentException) {
-            logger.warn(
-                "repeat 마커 '$originalMarker'의 direction 값 '$dirStr'이(가) 올바르지 않습니다. " +
-                "사용 가능한 값: DOWN, RIGHT. 기본값 DOWN을 사용합니다."
-            )
-            Direction.DOWN
-        }
-    }
+    private fun parseDirection(dirStr: String, originalMarker: String) =
+        runCatching { Direction.valueOf(dirStr.uppercase()) }
+            .getOrElse {
+                LOG.warn(
+                    "repeat 마커 '$originalMarker'의 direction 값 '$dirStr'이(가) 올바르지 않습니다. " +
+                        "사용 가능한 값: DOWN, RIGHT. 기본값 DOWN을 사용합니다."
+                )
+                Direction.DOWN
+            }
 
     /**
      * 시트명이 포함될 수 있는 범위 문자열을 파싱합니다.
      */
     private fun parseRangeWithSheet(rangeStr: String, originalMarker: String): ParsedRange {
         val trimmed = rangeStr.trim()
-
         val exclamationIndex = findExclamationIndex(trimmed)
 
+        fun parseRange(rangePart: String) = runCatching { CellRangeAddress.valueOf(rangePart) }
+            .getOrElse { throw TemplateProcessingException.invalidRange(originalMarker, rangeStr) }
+
         return if (exclamationIndex >= 0) {
-            val sheetPart = trimmed.substring(0, exclamationIndex).unquote()
-            val rangePart = trimmed.substring(exclamationIndex + 1)
-
-            val range = try {
-                CellRangeAddress.valueOf(rangePart)
-            } catch (e: Exception) {
-                throw TemplateProcessingException.invalidRange(originalMarker, rangeStr)
-            }
-
-            ParsedRange(sheetName = sheetPart, range = range)
+            ParsedRange(
+                sheetName = trimmed.substring(0, exclamationIndex).unquote(),
+                range = parseRange(trimmed.substring(exclamationIndex + 1))
+            )
         } else {
-            val range = try {
-                CellRangeAddress.valueOf(trimmed)
-            } catch (e: Exception) {
-                throw TemplateProcessingException.invalidRange(originalMarker, rangeStr)
-            }
-
-            ParsedRange(sheetName = null, range = range)
+            ParsedRange(sheetName = null, range = parseRange(trimmed))
         }
     }
 
@@ -367,7 +303,7 @@ internal class TemplatePreprocessor {
         val jxlsComment = buildJxlsComment(marker, lastCellRef)
         addCellComment(workbook, targetSheet, targetCell, jxlsComment)
 
-        logger.debug(
+        LOG.debug(
             "repeat 마커 변환 완료: {} -> jx:each (시트: '{}', 범위: {})",
             marker.originalMarker, marker.targetSheetName, marker.range.formatAsString()
         )
@@ -383,32 +319,29 @@ internal class TemplatePreprocessor {
      * JXLS jx:each 코멘트 문자열을 생성합니다.
      */
     private fun buildJxlsComment(marker: RepeatMarker, lastCellRef: String): String {
-        val directionParam = if (marker.direction == Direction.RIGHT) {
-            " direction=\"RIGHT\""
-        } else {
-            ""
-        }
-
-        return "jx:each(items=\"${marker.collection}\" var=\"${marker.variable}\" lastCell=\"${lastCellRef}\"${directionParam})"
+        val directionParam = marker.direction.takeIf { it == Direction.RIGHT }
+            ?.let { " direction=\"RIGHT\"" } ?: ""
+        return "jx:each(items=\"${marker.collection}\" var=\"${marker.variable}\" " +
+            "lastCell=\"${lastCellRef}\"${directionParam})"
     }
 
     /**
      * 셀에 코멘트를 추가합니다.
      */
-    private fun addCellComment(workbook: XSSFWorkbook, sheet: Sheet, cell: Cell, commentText: String) {
-        val factory = workbook.creationHelper
-        val drawing = sheet.createDrawingPatriarch()
-
+    private fun addCellComment(
+        workbook: XSSFWorkbook,
+        sheet: Sheet,
+        cell: Cell,
+        commentText: String
+    ) {
         cell.removeCellComment()
-
         val anchor = XSSFClientAnchor(
             0, 0, 0, 0,
             cell.columnIndex, cell.rowIndex,
             cell.columnIndex + 3, cell.rowIndex + 2
         )
-
-        val comment = drawing.createCellComment(anchor)
-        comment.string = factory.createRichTextString(commentText)
-        cell.cellComment = comment
+        cell.cellComment = sheet.createDrawingPatriarch().createCellComment(anchor).apply {
+            string = workbook.creationHelper.createRichTextString(commentText)
+        }
     }
 }

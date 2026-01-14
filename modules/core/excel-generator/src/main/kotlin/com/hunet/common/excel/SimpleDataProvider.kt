@@ -1,5 +1,7 @@
 package com.hunet.common.excel
 
+import java.util.function.Supplier
+
 /**
  * [ExcelDataProvider]의 기본 구현체.
  *
@@ -88,50 +90,29 @@ class SimpleDataProvider private constructor(
         private val collections = mutableMapOf<String, () -> Iterator<Any>>()
         private val images = mutableMapOf<String, ByteArray>()
 
-        /**
-         * 단일 값을 추가합니다.
-         */
-        fun value(name: String, value: Any): Builder {
-            values[name] = value
-            return this
-        }
+        /** 단일 값을 추가합니다. */
+        fun value(name: String, value: Any) = apply { values[name] = value }
 
-        /**
-         * 컬렉션을 추가합니다. (즉시 로딩)
-         */
-        fun items(name: String, items: Iterable<Any>): Builder {
+        /** 컬렉션을 추가합니다. (즉시 로딩) */
+        fun items(name: String, items: Iterable<Any>) = apply {
             collections[name] = { items.iterator() }
-            return this
         }
 
-        /**
-         * 컬렉션을 추가합니다. (지연 로딩 - Kotlin)
-         */
-        fun items(name: String, itemsSupplier: () -> Iterator<Any>): Builder {
+        /** 컬렉션을 추가합니다. (지연 로딩 - Kotlin) */
+        fun items(name: String, itemsSupplier: () -> Iterator<Any>) = apply {
             collections[name] = itemsSupplier
-            return this
         }
 
-        /**
-         * 컬렉션을 추가합니다. (지연 로딩 - Java Supplier)
-         */
-        fun itemsFromSupplier(name: String, itemsSupplier: java.util.function.Supplier<Iterator<Any>>): Builder {
+        /** 컬렉션을 추가합니다. (지연 로딩 - Java Supplier) */
+        fun itemsFromSupplier(name: String, itemsSupplier: Supplier<Iterator<Any>>) = apply {
             collections[name] = { itemsSupplier.get() }
-            return this
         }
 
-        /**
-         * 이미지를 추가합니다.
-         */
-        fun image(name: String, imageData: ByteArray): Builder {
-            images[name] = imageData
-            return this
-        }
+        /** 이미지를 추가합니다. */
+        fun image(name: String, imageData: ByteArray) = apply { images[name] = imageData }
 
-        /**
-         * SimpleDataProvider를 빌드합니다.
-         */
-        fun build(): SimpleDataProvider = SimpleDataProvider(values, collections, images)
+        /** SimpleDataProvider를 빌드합니다. */
+        fun build() = SimpleDataProvider(values, collections, images)
     }
 }
 

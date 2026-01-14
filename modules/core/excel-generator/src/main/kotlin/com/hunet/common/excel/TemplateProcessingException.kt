@@ -80,12 +80,17 @@ class TemplateProcessingException(
         /**
          * 잘못된 파라미터 값
          */
-        fun invalidParameterValue(marker: String, parameterName: String, value: String, validValues: List<String>? = null): TemplateProcessingException {
-            val validValuesMsg = if (validValues != null) " 사용 가능한 값: ${validValues.joinToString(", ")}" else ""
-            return TemplateProcessingException(
-                errorType = ErrorType.INVALID_PARAMETER_VALUE,
-                details = "마커 '$marker'의 파라미터 '$parameterName' 값 '$value'이(가) 올바르지 않습니다.$validValuesMsg"
-            )
-        }
+        fun invalidParameterValue(
+            marker: String,
+            parameterName: String,
+            value: String,
+            validValues: List<String>? = null
+        ) = TemplateProcessingException(
+            errorType = ErrorType.INVALID_PARAMETER_VALUE,
+            details = buildString {
+                append("마커 '$marker'의 파라미터 '$parameterName' 값 '$value'이(가) 올바르지 않습니다.")
+                validValues?.let { append(" 사용 가능한 값: ${it.joinToString(", ")}") }
+            }
+        )
     }
 }

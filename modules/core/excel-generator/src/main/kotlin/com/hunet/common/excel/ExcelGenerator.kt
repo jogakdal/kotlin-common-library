@@ -12,8 +12,10 @@ import org.apache.poi.ss.usermodel.Sheet
 import org.apache.poi.xssf.usermodel.XSSFCellStyle
 import org.apache.poi.xssf.usermodel.XSSFClientAnchor
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import ch.qos.logback.classic.Logger
 import org.jxls.common.Context
 import org.jxls.util.JxlsHelper
+import org.slf4j.LoggerFactory
 import java.io.*
 import java.nio.file.Files
 import java.nio.file.Path
@@ -68,6 +70,7 @@ class ExcelGenerator @JvmOverloads constructor(
     private val layoutProcessor = LayoutProcessor()
     private val dataValidationProcessor = DataValidationProcessor()
     private val pivotTableProcessor = PivotTableProcessor(config)
+    private val xmlVariableProcessor = XmlVariableProcessor()
 
     // ========== 동기 API ==========
 
@@ -115,8 +118,8 @@ class ExcelGenerator @JvmOverloads constructor(
         outputDir: Path,
         baseFileName: String
     ): Pair<Path, Int> {
-        val outputPath = outputDir.resolve(generateFileName(baseFileName))
         Files.createDirectories(outputDir)
+        val outputPath = resolveOutputPath(outputDir, baseFileName)
 
         return runCatching {
             val rowsProcessed = Files.newOutputStream(outputPath).use { output ->
@@ -257,12 +260,12 @@ class ExcelGenerator @JvmOverloads constructor(
             }
         }
 
-        // 후처리 (숫자 서식 적용, 레이아웃 복원, 데이터 유효성 검사 확장, 피벗 테이블 재생성)
-        val resultBytes = jxlsOutput.toByteArray()
-            .let { bytes -> applyNumberFormatToNumericCells(bytes) }
+        // 후처리 (숫자 서식 적용, 레이아웃 복원, 데이터 유효성 검사 확장, 피벗 테이블 재생성, 차트 변수 치환)
+        val resultBytes = applyNumberFormatToNumericCells(jxlsOutput.toByteArray())
             .let { bytes -> layout?.let { layoutProcessor.restore(bytes, it) } ?: bytes }
             .let { bytes -> dataValidationProcessor.expand(bytes, dataValidations) }
             .let { bytes -> pivotTableProcessor.recreate(bytes, pivotTableInfos) }
+            .let { bytes -> xmlVariableProcessor.processVariables(bytes, dataProvider) }
 
         output.write(resultBytes)
         return rowsProcessed
@@ -340,8 +343,7 @@ class ExcelGenerator @JvmOverloads constructor(
         context: Context
     ) {
         val appender = FormulaErrorCapturingAppender().apply { start() }
-        val logger = org.slf4j.LoggerFactory.getLogger("org.jxls.transform.poi.PoiTransformer")
-            as ch.qos.logback.classic.Logger
+        val logger = LoggerFactory.getLogger("org.jxls.transform.poi.PoiTransformer") as Logger
         val originalLevel = logger.level
 
         try {
@@ -378,20 +380,14 @@ class ExcelGenerator @JvmOverloads constructor(
     }
 
     private fun convertImagePlaceholders(workbook: XSSFWorkbook, sheet: Sheet) {
-        val imagePattern = Regex("""\$\{image\.(\w+)}""")
-
-        sheet.asSequence()
-            .flatMap { it.asSequence() }
+        sheet.cellSequence()
             .filter { it.cellType == CellType.STRING }
             .forEach { cell ->
-                cell.stringCellValue?.let { value ->
-                    imagePattern.find(value)?.let { match ->
-                        val imageName = match.groupValues[1]
-                        cell.setCellValue("")
-
-                        if (cell.cellComment == null) {
-                            cell.addJxImageComment(workbook, sheet, imageName)
-                        }
+                IMAGE_PLACEHOLDER_REGEX.find(cell.stringCellValue.orEmpty())?.let { match ->
+                    val imageName = match.groupValues[1]
+                    cell.setCellValue("")
+                    if (cell.cellComment == null) {
+                        cell.addJxImageComment(workbook, sheet, imageName)
                     }
                 }
             }
@@ -410,18 +406,16 @@ class ExcelGenerator @JvmOverloads constructor(
         sheet: Sheet,
         dataProvider: ExcelDataProvider
     ) {
-        sheet.asSequence()
-            .flatMap { it.asSequence() }
+        sheet.cellSequence()
             .filter { it.cellComment != null }
             .forEach { cell ->
                 val comment = cell.cellComment
                 val commentText = comment.string?.string ?: return@forEach
 
-                if (commentText.contains("jx:image", ignoreCase = true)) {
-                    val updatedCommand = completeImageCommand(commentText, cell, sheet, dataProvider)
-                    if (updatedCommand != commentText) {
-                        comment.string = workbook.creationHelper.createRichTextString(updatedCommand)
-                    }
+                if ("jx:image" in commentText.lowercase()) {
+                    completeImageCommand(commentText, cell, sheet, dataProvider)
+                        .takeIf { it != commentText }
+                        ?.let { comment.string = workbook.creationHelper.createRichTextString(it) }
                 }
             }
     }
@@ -503,12 +497,45 @@ class ExcelGenerator @JvmOverloads constructor(
 
     // ========== 유틸리티 ==========
 
-    private fun generateFileName(baseFileName: String): String {
-        val timestamp = LocalDateTime.now().format(
-            DateTimeFormatter.ofPattern(config.timestampFormat)
-        )
-        return "${baseFileName}_${timestamp}.xlsx"
+    /**
+     * 출력 파일 경로를 결정합니다.
+     * fileNamingMode에 따라 파일명을 생성하고, fileConflictPolicy에 따라 충돌을 처리합니다.
+     */
+    private fun resolveOutputPath(outputDir: Path, baseFileName: String): Path {
+        val basePath = outputDir.resolve(generateFileName(baseFileName))
+
+        return basePath.takeUnless { Files.exists(it) }
+            ?: when (config.fileConflictPolicy) {
+                FileConflictPolicy.ERROR -> throw FileAlreadyExistsException(
+                    basePath.toFile(), null, "파일이 이미 존재합니다: $basePath"
+                )
+                FileConflictPolicy.SEQUENCE -> findAvailablePathWithSequence(outputDir, baseFileName)
+            }
     }
+
+    /**
+     * 시퀀스 번호를 붙여 사용 가능한 파일 경로를 찾습니다.
+     */
+    private fun findAvailablePathWithSequence(outputDir: Path, baseFileName: String): Path {
+        val baseNameWithSuffix = when (config.fileNamingMode) {
+            FileNamingMode.NONE -> baseFileName
+            FileNamingMode.TIMESTAMP -> "${baseFileName}_${currentTimestamp()}"
+        }
+
+        return generateSequence(1) { it + 1 }
+            .take(10000)
+            .map { outputDir.resolve("${baseNameWithSuffix}_$it.xlsx") }
+            .firstOrNull { !Files.exists(it) }
+            ?: throw IllegalStateException("시퀀스 번호가 한계(10000)를 초과했습니다: $baseNameWithSuffix")
+    }
+
+    private fun generateFileName(baseFileName: String) = when (config.fileNamingMode) {
+        FileNamingMode.NONE -> "$baseFileName.xlsx"
+        FileNamingMode.TIMESTAMP -> "${baseFileName}_${currentTimestamp()}.xlsx"
+    }
+
+    private fun currentTimestamp() =
+        LocalDateTime.now().format(DateTimeFormatter.ofPattern(config.timestampFormat))
 
     private fun getCellReference(row: Int, col: Int) =
         "${col.toColumnLetter()}${row + 1}"
@@ -522,4 +549,10 @@ class ExcelGenerator @JvmOverloads constructor(
 
     private fun Cell?.hasJxAreaComment() =
         this?.cellComment?.string?.string?.contains("jx:area", ignoreCase = true) == true
+
+    private fun Sheet.cellSequence() = asSequence().flatMap { it.asSequence() }
+
+    companion object {
+        private val IMAGE_PLACEHOLDER_REGEX = Regex("""\$\{image\.(\w+)}""")
+    }
 }

@@ -6,7 +6,9 @@ package com.hunet.common.excel
  * @property streamingMode 스트리밍 모드 (기본: AUTO)
  * @property streamingRowThreshold AUTO 모드에서 SXSSF로 전환되는 행 수 기준 (기본: 1000)
  * @property formulaProcessingEnabled 수식 자동 계산 활성화 여부 (기본: true)
+ * @property fileNamingMode 파일명 생성 모드 (기본: TIMESTAMP)
  * @property timestampFormat 파일명에 추가되는 타임스탬프 형식 (기본: yyyyMMdd_HHmmss)
+ * @property fileConflictPolicy 파일명 충돌 시 처리 정책 (기본: SEQUENCE)
  * @property progressReportInterval 진행률 콜백 호출 간격 (행 수, 기본: 100)
  * @property preserveTemplateLayout jx:each 확장 시 원본 템플릿의 열 폭과 행 높이를 보존할지 여부 (기본: true)
  * @property pivotIntegerFormatIndex 피벗 테이블 정수 필드에 적용할 Excel 내장 포맷 인덱스 (기본: 37)
@@ -16,7 +18,9 @@ data class ExcelGeneratorConfig(
     val streamingMode: StreamingMode = StreamingMode.AUTO,
     val streamingRowThreshold: Int = 1000,
     val formulaProcessingEnabled: Boolean = true,
+    val fileNamingMode: FileNamingMode = FileNamingMode.TIMESTAMP,
     val timestampFormat: String = "yyyyMMdd_HHmmss",
+    val fileConflictPolicy: FileConflictPolicy = FileConflictPolicy.SEQUENCE,
     val progressReportInterval: Int = 100,
     val preserveTemplateLayout: Boolean = true,
     val pivotIntegerFormatIndex: Short = 37,
@@ -60,57 +64,32 @@ data class ExcelGeneratorConfig(
         private var streamingMode: StreamingMode = StreamingMode.AUTO
         private var streamingRowThreshold: Int = 1000
         private var formulaProcessingEnabled: Boolean = true
+        private var fileNamingMode: FileNamingMode = FileNamingMode.TIMESTAMP
         private var timestampFormat: String = "yyyyMMdd_HHmmss"
+        private var fileConflictPolicy: FileConflictPolicy = FileConflictPolicy.SEQUENCE
         private var progressReportInterval: Int = 100
         private var preserveTemplateLayout: Boolean = true
         private var pivotIntegerFormatIndex: Short = 37
         private var pivotDecimalFormatIndex: Short = 39
 
-        fun streamingMode(mode: StreamingMode): Builder {
-            this.streamingMode = mode
-            return this
-        }
+        fun streamingMode(mode: StreamingMode) = apply { this.streamingMode = mode }
+        fun streamingRowThreshold(threshold: Int) = apply { this.streamingRowThreshold = threshold }
+        fun formulaProcessingEnabled(enabled: Boolean) = apply { this.formulaProcessingEnabled = enabled }
+        fun fileNamingMode(mode: FileNamingMode) = apply { this.fileNamingMode = mode }
+        fun timestampFormat(format: String) = apply { this.timestampFormat = format }
+        fun fileConflictPolicy(policy: FileConflictPolicy) = apply { this.fileConflictPolicy = policy }
+        fun progressReportInterval(interval: Int) = apply { this.progressReportInterval = interval }
+        fun preserveTemplateLayout(preserve: Boolean) = apply { this.preserveTemplateLayout = preserve }
+        fun pivotIntegerFormatIndex(index: Short) = apply { this.pivotIntegerFormatIndex = index }
+        fun pivotDecimalFormatIndex(index: Short) = apply { this.pivotDecimalFormatIndex = index }
 
-        fun streamingRowThreshold(threshold: Int): Builder {
-            this.streamingRowThreshold = threshold
-            return this
-        }
-
-        fun formulaProcessingEnabled(enabled: Boolean): Builder {
-            this.formulaProcessingEnabled = enabled
-            return this
-        }
-
-        fun timestampFormat(format: String): Builder {
-            this.timestampFormat = format
-            return this
-        }
-
-        fun progressReportInterval(interval: Int): Builder {
-            this.progressReportInterval = interval
-            return this
-        }
-
-        fun preserveTemplateLayout(preserve: Boolean): Builder {
-            this.preserveTemplateLayout = preserve
-            return this
-        }
-
-        fun pivotIntegerFormatIndex(index: Short): Builder {
-            this.pivotIntegerFormatIndex = index
-            return this
-        }
-
-        fun pivotDecimalFormatIndex(index: Short): Builder {
-            this.pivotDecimalFormatIndex = index
-            return this
-        }
-
-        fun build(): ExcelGeneratorConfig = ExcelGeneratorConfig(
+        fun build() = ExcelGeneratorConfig(
             streamingMode = streamingMode,
             streamingRowThreshold = streamingRowThreshold,
             formulaProcessingEnabled = formulaProcessingEnabled,
+            fileNamingMode = fileNamingMode,
             timestampFormat = timestampFormat,
+            fileConflictPolicy = fileConflictPolicy,
             progressReportInterval = progressReportInterval,
             preserveTemplateLayout = preserveTemplateLayout,
             pivotIntegerFormatIndex = pivotIntegerFormatIndex,
@@ -127,8 +106,14 @@ data class ExcelGeneratorConfig(
     fun withStreamingRowThreshold(threshold: Int): ExcelGeneratorConfig =
         copy(streamingRowThreshold = threshold)
 
+    fun withFileNamingMode(mode: FileNamingMode): ExcelGeneratorConfig =
+        copy(fileNamingMode = mode)
+
     fun withTimestampFormat(format: String): ExcelGeneratorConfig =
         copy(timestampFormat = format)
+
+    fun withFileConflictPolicy(policy: FileConflictPolicy): ExcelGeneratorConfig =
+        copy(fileConflictPolicy = policy)
 
     fun withProgressReportInterval(interval: Int): ExcelGeneratorConfig =
         copy(progressReportInterval = interval)

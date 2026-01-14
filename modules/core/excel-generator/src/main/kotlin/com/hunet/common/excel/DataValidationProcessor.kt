@@ -1,6 +1,8 @@
 package com.hunet.common.excel
 
+import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.CellType
+import org.apache.poi.ss.usermodel.DataValidation
 import org.apache.poi.ss.usermodel.DataValidationConstraint
 import org.apache.poi.ss.usermodel.DataValidationHelper
 import org.apache.poi.ss.usermodel.Sheet
@@ -112,11 +114,12 @@ internal class DataValidationProcessor {
         templateLastRow: Int,
         currentLastRow: Int
     ): CellRangeAddress {
-        val isSingleRow = originalRange.firstRow == originalRange.lastRow
-        val isInTemplateArea = originalRange.firstRow <= templateLastRow
         val rowExpansion = currentLastRow - templateLastRow
+        val shouldExpand = originalRange.firstRow == originalRange.lastRow &&
+            originalRange.firstRow <= templateLastRow &&
+            rowExpansion > 0
 
-        return if (isSingleRow && isInTemplateArea && rowExpansion > 0) {
+        return if (shouldExpand) {
             CellRangeAddress(
                 originalRange.firstRow,
                 originalRange.lastRow + rowExpansion,
@@ -132,33 +135,8 @@ internal class DataValidationProcessor {
         helper: DataValidationHelper,
         info: ValidationInfo,
         ranges: List<CellRangeAddress>
-    ): org.apache.poi.ss.usermodel.DataValidation? {
-        val constraint = when (info.validationType) {
-            DataValidationConstraint.ValidationType.LIST ->
-                info.explicitListValues?.let { helper.createExplicitListConstraint(it.toTypedArray()) }
-                    ?: helper.createFormulaListConstraint(info.formula1)
-
-            DataValidationConstraint.ValidationType.INTEGER ->
-                helper.createIntegerConstraint(info.operatorType, info.formula1, info.formula2)
-
-            DataValidationConstraint.ValidationType.DECIMAL ->
-                helper.createDecimalConstraint(info.operatorType, info.formula1, info.formula2)
-
-            DataValidationConstraint.ValidationType.DATE ->
-                helper.createDateConstraint(info.operatorType, info.formula1, info.formula2, null)
-
-            DataValidationConstraint.ValidationType.TIME ->
-                helper.createTimeConstraint(info.operatorType, info.formula1, info.formula2)
-
-            DataValidationConstraint.ValidationType.TEXT_LENGTH ->
-                helper.createTextLengthConstraint(info.operatorType, info.formula1, info.formula2)
-
-            DataValidationConstraint.ValidationType.FORMULA ->
-                helper.createCustomConstraint(info.formula1)
-
-            else -> return null
-        }
-
+    ): DataValidation? {
+        val constraint = createConstraint(helper, info) ?: return null
         val addressList = CellRangeAddressList().apply {
             ranges.forEach { addCellRangeAddress(it) }
         }
@@ -167,30 +145,48 @@ internal class DataValidationProcessor {
             showErrorBox = info.showErrorBox
             showPromptBox = info.showPromptBox
             emptyCellAllowed = info.emptyCellAllowed
-
-            if (info.errorTitle != null || info.errorText != null) {
-                createErrorBox(info.errorTitle.orEmpty(), info.errorText.orEmpty())
-            }
-            if (info.promptTitle != null || info.promptText != null) {
-                createPromptBox(info.promptTitle.orEmpty(), info.promptText.orEmpty())
-            }
+            info.errorTitle?.let { createErrorBox(it, info.errorText.orEmpty()) }
+                ?: info.errorText?.let { createErrorBox("", it) }
+            info.promptTitle?.let { createPromptBox(it, info.promptText.orEmpty()) }
+                ?: info.promptText?.let { createPromptBox("", it) }
         }
     }
 
-    // 확장 프로퍼티
-    private val Sheet.lastRowWithData: Int
-        get() = asSequence()
-            .flatMap { it.asSequence() }
-            .filterNot { it.isEmpty }
-            .maxOfOrNull { it.rowIndex } ?: -1
+    private fun createConstraint(
+        helper: DataValidationHelper,
+        info: ValidationInfo
+    ): DataValidationConstraint? = when (info.validationType) {
+        DataValidationConstraint.ValidationType.LIST ->
+            info.explicitListValues?.let { helper.createExplicitListConstraint(it.toTypedArray()) }
+                ?: helper.createFormulaListConstraint(info.formula1)
+        DataValidationConstraint.ValidationType.INTEGER ->
+            helper.createIntegerConstraint(info.operatorType, info.formula1, info.formula2)
+        DataValidationConstraint.ValidationType.DECIMAL ->
+            helper.createDecimalConstraint(info.operatorType, info.formula1, info.formula2)
+        DataValidationConstraint.ValidationType.DATE ->
+            helper.createDateConstraint(info.operatorType, info.formula1, info.formula2, null)
+        DataValidationConstraint.ValidationType.TIME ->
+            helper.createTimeConstraint(info.operatorType, info.formula1, info.formula2)
+        DataValidationConstraint.ValidationType.TEXT_LENGTH ->
+            helper.createTextLengthConstraint(info.operatorType, info.formula1, info.formula2)
+        DataValidationConstraint.ValidationType.FORMULA ->
+            helper.createCustomConstraint(info.formula1)
+        else -> null
+    }
 
-    private val org.apache.poi.ss.usermodel.Cell.isEmpty: Boolean
+    // 확장 프로퍼티
+    private val Sheet.lastRowWithData
+        get() = cellSequence().filterNot { it.isEmpty }.maxOfOrNull { it.rowIndex } ?: -1
+
+    private val Cell.isEmpty
         get() = cellComment == null && when (cellType) {
             CellType.BLANK -> true
             CellType.STRING -> stringCellValue.isNullOrBlank()
             else -> false
         }
 
-    private fun XSSFWorkbook.toByteArray(): ByteArray =
+    private fun Sheet.cellSequence() = asSequence().flatMap { it.asSequence() }
+
+    private fun XSSFWorkbook.toByteArray() =
         ByteArrayOutputStream().also { write(it) }.toByteArray()
 }

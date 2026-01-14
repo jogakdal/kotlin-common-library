@@ -60,9 +60,7 @@ class ExcelGeneratorAutoConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean
-    fun excelGeneratorConfig(properties: ExcelGeneratorProperties): ExcelGeneratorConfig {
-        return properties.toConfig()
-    }
+    fun excelGeneratorConfig(properties: ExcelGeneratorProperties) = properties.toConfig()
 
     /**
      * ExcelGenerator Bean.
@@ -72,7 +70,5 @@ class ExcelGeneratorAutoConfiguration {
      */
     @Bean(destroyMethod = "close")
     @ConditionalOnMissingBean
-    fun excelGenerator(config: ExcelGeneratorConfig): ExcelGenerator {
-        return ExcelGenerator(config)
-    }
+    fun excelGenerator(config: ExcelGeneratorConfig) = ExcelGenerator(config)
 }

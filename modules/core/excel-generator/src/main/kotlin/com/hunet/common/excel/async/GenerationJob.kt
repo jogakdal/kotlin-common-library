@@ -75,12 +75,8 @@ internal class DefaultGenerationJob(
     override val isCancelled: Boolean
         get() = cancelled.get()
 
-    override fun cancel(): Boolean {
-        if (cancelled.compareAndSet(false, true)) {
-            deferred.cancel()
-            return true
-        }
-        return false
+    override fun cancel() = cancelled.compareAndSet(false, true).also { success ->
+        if (success) deferred.cancel()
     }
 
     override fun await(): GenerationResult =

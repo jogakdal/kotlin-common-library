@@ -32,3 +32,36 @@ enum class StreamingMode {
      */
     AUTO
 }
+
+/**
+ * 파일명 생성 모드.
+ */
+enum class FileNamingMode {
+    /**
+     * 기본 파일명만 사용 (suffix 없음).
+     * 예: report.xlsx
+     */
+    NONE,
+
+    /**
+     * 타임스탬프를 suffix로 추가.
+     * 예: report_20240107_143052.xlsx
+     */
+    TIMESTAMP
+}
+
+/**
+ * 파일명 충돌 시 처리 정책.
+ */
+enum class FileConflictPolicy {
+    /**
+     * 동일 파일명이 존재하면 예외 발생.
+     */
+    ERROR,
+
+    /**
+     * 동일 파일명이 존재하면 시퀀스 번호를 추가.
+     * 예: report.xlsx → report_1.xlsx → report_2.xlsx
+     */
+    SEQUENCE
+}
