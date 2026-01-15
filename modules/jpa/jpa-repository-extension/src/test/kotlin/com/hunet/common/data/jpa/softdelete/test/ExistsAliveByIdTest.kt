@@ -39,13 +39,10 @@ data class UserEntity(
 interface UserRepository : SoftDeleteJpaRepository<UserEntity, Long>
 
 @SpringBootTest(properties = [
-    "spring.datasource.url=jdbc:h2:mem:softdelete;DB_CLOSE_DELAY=-1;MODE=MySQL",
+    "spring.datasource.url=jdbc:h2:mem:softdelete;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
     "spring.datasource.driverClassName=org.h2.Driver",
-    // 스키마 초기화 활성화 (schema.sql 적용)
-    "spring.sql.init.mode=always",
-    "spring.sql.init.platform=h2",
-    // Hibernate DDL 자동 생성 비활성화
-    "spring.jpa.hibernate.ddl-auto=none",
+    // Hibernate DDL 자동 생성 활성화
+    "spring.jpa.hibernate.ddl-auto=create-drop",
     "spring.jpa.show-sql=true",
     // 카멜케이스 네이밍 보존
     "spring.jpa.hibernate.naming.physical-strategy=org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl"

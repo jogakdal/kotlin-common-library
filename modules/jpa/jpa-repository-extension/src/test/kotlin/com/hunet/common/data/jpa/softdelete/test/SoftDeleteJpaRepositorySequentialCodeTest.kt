@@ -1,6 +1,7 @@
 package com.hunet.common.data.jpa.softdelete.test
 
 import com.hunet.common.data.jpa.sequence.GenerateSequentialCode
+import com.hunet.common.data.jpa.sequence.SequenceGenerator
 import com.hunet.common.data.jpa.softdelete.SoftDeleteJpaRepository
 import com.hunet.common.data.jpa.softdelete.SoftDeleteJpaRepositoryImpl
 import jakarta.persistence.*
@@ -10,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration
 import org.springframework.boot.autoconfigure.domain.EntityScan
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.ComponentScan
 import org.springframework.context.annotation.Configuration
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories
@@ -159,5 +161,14 @@ class SoftDeleteJpaRepositorySequentialCodeTest {
             SeqCircularB::class
         ]
     )
-    class SeqTestConfig
+    class SeqTestConfig {
+        @Bean
+        fun sequenceGenerator(): SequenceGenerator = object : SequenceGenerator {
+            private val counters = mutableMapOf<String, java.util.concurrent.atomic.AtomicLong>()
+            override fun generateKey(prefix: String, entity: Any?) =
+                counters.computeIfAbsent(prefix) {
+                    java.util.concurrent.atomic.AtomicLong(0)
+                }.let { cnt -> prefix + cnt.incrementAndGet() }
+        }
+    }
 }
