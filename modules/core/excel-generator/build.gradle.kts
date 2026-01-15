@@ -56,10 +56,18 @@ tasks.register<JavaExec>("runJavaSample") {
     mainClass.set("com.hunet.common.excel.ExcelGeneratorJavaSample")
 }
 
-// 템플릿 구조 확인 태스크
-tasks.register<JavaExec>("inspectTemplate") {
+// Spring Boot 샘플 실행 태스크 (Kotlin)
+tasks.register<JavaExec>("runSpringBootSample") {
     group = "application"
-    description = "템플릿 파일 구조 확인"
+    description = "Excel Generator Spring Boot Kotlin 샘플 실행"
     classpath = sourceSets["test"].runtimeClasspath
-    mainClass.set("com.hunet.common.excel.TemplateInspector")
+    mainClass.set("com.hunet.common.excel.spring.ExcelGeneratorSpringBootSample")
+}
+
+// Spring Boot 샘플 실행 태스크 (Java)
+tasks.register<JavaExec>("runSpringBootJavaSample") {
+    group = "application"
+    description = "Excel Generator Spring Boot Java 샘플 실행"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.hunet.common.excel.spring.ExcelGeneratorSpringBootJavaSample")
 }

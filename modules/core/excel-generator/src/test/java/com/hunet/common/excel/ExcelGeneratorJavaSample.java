@@ -63,9 +63,23 @@ public class ExcelGeneratorJavaSample {
 
     /**
      * 샘플 데이터 클래스 (Employee).
-     * JXLS가 리플렉션으로 getter를 사용합니다.
+     * JXLS가 리플렉션으로 getter를 사용하므로 JavaBean 규칙을 따르는 클래스로 정의합니다.
+     * (Java record는 name() 형태의 접근자를 사용하여 JXLS와 호환되지 않음)
      */
-    public record Employee(String name, String position, int salary) {
+    public static class Employee {
+        private final String name;
+        private final String position;
+        private final int salary;
+
+        public Employee(String name, String position, int salary) {
+            this.name = name;
+            this.position = position;
+            this.salary = salary;
+        }
+
+        public String getName() { return name; }
+        public String getPosition() { return position; }
+        public int getSalary() { return salary; }
     }
 
     public static void main(String[] args) throws Exception {
