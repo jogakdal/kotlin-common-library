@@ -290,7 +290,7 @@ internal class TemplatePreprocessor {
     private fun convertMarkerToJxlsComment(workbook: XSSFWorkbook, marker: RepeatMarker) {
         val targetSheet = workbook.getSheet(marker.targetSheetName) ?: return
 
-        // 1. range의 시작 셀에 jx:each 코멘트 추가
+        // range의 시작 셀에 jx:each 코멘트 추가
         val targetRow = targetSheet.getRow(marker.range.firstRow)
             ?: targetSheet.createRow(marker.range.firstRow)
         val targetCell = targetRow.getCell(marker.range.firstColumn)
@@ -301,12 +301,7 @@ internal class TemplatePreprocessor {
         val jxlsComment = buildJxlsComment(marker, lastCellRef)
         addCellComment(workbook, targetSheet, targetCell, jxlsComment)
 
-        LOG.debug(
-            "repeat 마커 변환 완료: {} -> jx:each (시트: '{}', 범위: {})",
-            marker.originalMarker, marker.targetSheetName, marker.range.formatAsString()
-        )
-
-        // 2. 마커 셀 내용 삭제
+        // 마커 셀 내용 삭제
         val markerSheet = workbook.getSheet(marker.markerSheetName) ?: return
         val markerRow = markerSheet.getRow(marker.markerCell.row)
         val markerCell = markerRow?.getCell(marker.markerCell.column)

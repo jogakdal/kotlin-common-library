@@ -108,14 +108,12 @@ internal class PivotTableProcessor(
                     extractOriginalStyles(pivotTable)?.let { styles ->
                         val name = pivotTable.ctPivotTableDefinition?.name ?: "PivotTable"
                         stylesMap[name] = styles
-                        LOG.debug("원본 스타일 추출 완료: $name")
                     }
                 }
                 .any()
         }
 
         if (!hasPivotTable) {
-            LOG.debug("피벗 테이블이 없음, 원본 반환")
             return emptyList<PivotTableInfo>() to inputBytes
         }
 
@@ -127,7 +125,6 @@ internal class PivotTableProcessor(
                     val sheet = SHEET_ATTR_REGEX.find(xml)?.groupValues?.get(1)
                     val ref = WORKSHEET_SOURCE_REF_REGEX.find(xml)?.groupValues?.get(1)
                     if (sheet != null && ref != null) {
-                        LOG.debug("피벗 캐시 발견: ${part.partName.name} -> $sheet!$ref")
                         part.partName.name to (sheet to ref)
                     } else null
                 }.toMap()
@@ -162,21 +159,11 @@ internal class PivotTableProcessor(
         val dataRowNum = range.firstRow + 1
         val grandTotalRowNum = range.lastRow
 
-        LOG.debug(
-            "원본 스타일 추출 - range: ${range.formatAsString()}, " +
-                "header: $headerRowNum, data: $dataRowNum, grandTotal: $grandTotalRowNum"
-        )
-
         val headerStyles = sheet.getRow(headerRowNum).extractStyleInfos(range)
         val dataRowStyles = if (dataRowNum < grandTotalRowNum) {
             sheet.getRow(dataRowNum).extractStyleInfos(range)
         } else headerStyles
         val grandTotalStyles = sheet.getRow(grandTotalRowNum).extractStyleInfos(range)
-
-        LOG.debug(
-            "원본 스타일 - header: ${headerStyles.size}개, " +
-                "dataRow: ${dataRowStyles.size}개, grandTotal: ${grandTotalStyles.size}개"
-        )
 
         PivotTableStyles(headerStyles, dataRowStyles, grandTotalStyles)
     }.onFailure { LOG.warn("원본 스타일 추출 실패: ${it.message}") }.getOrNull()
@@ -240,9 +227,7 @@ internal class PivotTableProcessor(
 
         val rowHeaderCaption = ROW_HEADER_CAPTION_REGEX.find(xml)?.groupValues?.get(1)
         val grandTotalCaption = GRAND_TOTAL_CAPTION_REGEX.find(xml)?.groupValues?.get(1)
-        val originalFormatsXml = FORMATS_REGEX.find(xml)?.value?.also {
-            LOG.debug("원본 formats XML 추출: ${it.length}자")
-        }
+        val originalFormatsXml = FORMATS_REGEX.find(xml)?.value
 
         val (sourceSheet, sourceRef) = cacheSourceMap.values.firstOrNull() ?: run {
             LOG.warn("피벗 테이블 '$pivotTableName' 캐시 소스 정보 없음")
@@ -250,11 +235,6 @@ internal class PivotTableProcessor(
         }
 
         val pivotTableSheetName = findPivotTableSheetName(pkg, part.partName.name) ?: sourceSheet
-
-        LOG.debug(
-            "피벗 테이블 발견: '$pivotTableName' " +
-                "(위치: $pivotTableSheetName!$location, 소스: $sourceSheet!$sourceRef)"
-        )
 
         return PivotTableInfo(
             pivotTableSheetName = pivotTableSheetName,
@@ -325,21 +305,9 @@ internal class PivotTableProcessor(
         val newLastRow = sourceSheet.findLastRowWithData(info.sourceRange)
         val newSourceRange = info.sourceRange.copy(lastRow = newLastRow)
 
-        LOG.debug(
-            "피벗 테이블 재생성: ${info.pivotTableName} " +
-                "(범위: ${info.sourceRange.formatAsString()} -> ${newSourceRange.formatAsString()})"
-        )
-
         runCatching {
             val pivotLocation = CellReference(info.pivotTableLocation)
             val originalStyles = info.originalStyles
-
-            originalStyles?.let {
-                LOG.debug(
-                    "원본 스타일 사용 - dataRow: ${it.dataRowStyles.size}개, " +
-                        "grandTotal: ${it.grandTotalStyles.size}개"
-                )
-            } ?: LOG.debug("원본 스타일 없음, 기본 스타일 사용")
 
             // 피벗 테이블 영역 클리어
             val expectedDataRows = sourceSheet.uniqueValuesFromSourceData(newSourceRange, info.rowLabelFields).size
@@ -360,7 +328,6 @@ internal class PivotTableProcessor(
             info.dataFields.forEach { pivotTable.addColumnLabel(it.function, it.fieldIndex, it.name) }
             info.rowHeaderCaption?.let {
                 pivotTable.ctPivotTableDefinition.rowHeaderCaption = it
-                LOG.debug("rowHeaderCaption 적용: '$it'")
             }
 
             fillPivotTableCells(
@@ -369,8 +336,6 @@ internal class PivotTableProcessor(
                 originalStyles?.headerStyles.orEmpty(),
                 originalStyles?.dataRowStyles.orEmpty()
             )
-
-            LOG.debug("피벗 테이블 재생성 완료: ${info.pivotTableName}")
         }.onFailure {
             throw IllegalStateException("피벗 테이블 재생성 실패: ${info.pivotTableName}", it)
         }
@@ -503,8 +468,6 @@ internal class PivotTableProcessor(
                 }
             }
         }
-
-        LOG.debug("피벗 테이블 셀 값 채우기 완료: ${uniqueValues.size}개 항목")
     }
 
     // ========== 스타일 생성 ==========
@@ -540,7 +503,6 @@ internal class PivotTableProcessor(
                 fontHeightInPoints = styleInfo.fontSize
                 styleInfo.fontColorRgb?.let { colorHex ->
                     runCatching { setColor(XSSFColor(colorHex.toRgbBytes(), null)) }
-                        .onFailure { LOG.debug("글꼴 색상 설정 실패: ${it.message}") }
                 }
             }
             setFont(font)
@@ -549,7 +511,6 @@ internal class PivotTableProcessor(
             if (styleInfo.fillPatternType != FillPatternType.NO_FILL) {
                 styleInfo.fillForegroundColorRgb?.let { colorHex ->
                     runCatching { setFillForegroundColor(XSSFColor(colorHex.toRgbBytes(), null)) }
-                        .onFailure { LOG.debug("채우기 색상 설정 실패: ${it.message}") }
                 }
             }
 
@@ -612,10 +573,7 @@ internal class PivotTableProcessor(
                 val pivotTableName = NAME_ATTR_REGEX.find(xml)?.groupValues?.get(1)
                 val info = pivotTableName?.let { infoByName[it] }
 
-                if (info == null) {
-                    LOG.debug("피벗 테이블 info를 찾을 수 없음: $pivotTableName")
-                    return@forEach
-                }
+                if (info == null) return@forEach
 
                 val expectedColCount = info.dataFields.size
                 val originalRange = CellRangeAddress.valueOf(info.originalLocationRef)
@@ -650,7 +608,6 @@ internal class PivotTableProcessor(
 
                 if (modified) {
                     part.outputStream.use { it.write(xml.toByteArray(Charsets.UTF_8)) }
-                    LOG.debug("피벗 테이블 XML 구조 조정 완료: $pivotTableName")
                 }
             }
 
@@ -668,47 +625,42 @@ internal class PivotTableProcessor(
                         val entryName = entry.name
 
                         if ("pivotCache" in entryName || "pivotTables" in entryName) {
-                            LOG.debug("피벗 파트 제거: $entryName")
                             return@forEach
                         }
 
                         val content = zis.readBytes().let { bytes ->
                             when {
-                                entryName == "[Content_Types].xml" -> {
-                                    LOG.debug("Content_Types에서 피벗 참조 제거")
+                                entryName == "[Content_Types].xml" ->
                                     bytes.decodeToString()
                                         .replace(PIVOT_CACHE_OVERRIDE_REGEX, "")
                                         .replace(PIVOT_TABLE_OVERRIDE_REGEX, "")
                                         .encodeToByteArray()
-                                }
-                                "worksheets/_rels/" in entryName && entryName.endsWith(".rels") -> {
+
+                                "worksheets/_rels/" in entryName && entryName.endsWith(".rels") ->
                                     bytes.decodeToString().let { xml ->
                                         if ("pivotTable" in xml) {
-                                            LOG.debug("워크시트 관계에서 피벗 참조 제거: $entryName")
                                             xml.replace(PIVOT_TABLE_REL_REGEX, "").let { cleaned ->
                                                 if ("<Relationship" !in cleaned) EMPTY_RELATIONSHIPS_XML else cleaned
                                             }.encodeToByteArray()
                                         } else bytes
                                     }
-                                }
-                                entryName == "xl/workbook.xml" -> {
+
+                                entryName == "xl/workbook.xml" ->
                                     bytes.decodeToString().let { xml ->
                                         if ("<pivotCaches" in xml) {
-                                            LOG.debug("워크북에서 pivotCaches 제거")
                                             xml.replace(PIVOT_CACHES_REGEX, "")
                                                 .replace(PIVOT_CACHES_EMPTY_REGEX, "")
                                                 .encodeToByteArray()
                                         } else bytes
                                     }
-                                }
-                                entryName == "xl/_rels/workbook.xml.rels" -> {
+
+                                entryName == "xl/_rels/workbook.xml.rels" ->
                                     bytes.decodeToString().let { xml ->
                                         if ("pivotCache" in xml) {
-                                            LOG.debug("워크북 관계에서 피벗 캐시 참조 제거")
                                             xml.replace(PIVOT_CACHE_REL_REGEX, "").encodeToByteArray()
                                         } else bytes
                                     }
-                                }
+
                                 else -> bytes
                             }
                         }
@@ -772,9 +724,6 @@ internal class PivotTableProcessor(
                             )
                         }
 
-                        LOG.debug(
-                            "피벗 소스 데이터 추출: ${part.partName.name} - ${records.size}개 레코드"
-                        )
                         part.partName.name to SourceData(records, fields)
                     }.toMap()
             }

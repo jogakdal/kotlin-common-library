@@ -26,13 +26,14 @@ import java.util.concurrent.TimeUnit;
 /**
  * Excel Generator Java 샘플 실행 클래스.
  *
- * <p>다섯 가지 생성 방식을 시연합니다:
+ * <p>여섯 가지 생성 방식을 시연합니다:
  * <ol>
  *   <li>기본 사용 - Map 기반 간편 API</li>
  *   <li>지연 로딩 - DataProvider를 통한 대용량 처리</li>
  *   <li>비동기 실행 - 리스너 기반 백그라운드 처리</li>
  *   <li>대용량 비동기 - DataProvider + 비동기 조합</li>
  *   <li>암호화된 대용량 비동기 - 파일 열기 암호 설정</li>
+ *   <li>문서 메타데이터 - 제목, 작성자, 키워드 등 설정</li>
  * </ol>
  *
  * <h2>Spring Boot 환경에서 사용</h2>
@@ -108,6 +109,9 @@ public class ExcelGeneratorJavaSample {
 
             // 5. 암호화된 대용량 비동기 (암호: 1234)
             runEncryptedLargeAsyncExample(generator, outputDir);
+
+            // 6. 문서 메타데이터 설정
+            runMetadataExample(generator, outputDir);
         }
 
         System.out.println("\n" + "=".repeat(60));
@@ -129,6 +133,8 @@ public class ExcelGeneratorJavaSample {
         Map<String, Object> data = new HashMap<>();
         data.put("title", "2026년 직원 현황");
         data.put("date", LocalDate.now().toString());
+        data.put("linkText", "(주)휴넷 홈페이지");
+        data.put("url", "https://www.hunet.co.kr");
         data.put("employees", Arrays.asList(
             new Employee("황용호", "부장", 8000),
             new Employee("한용호", "과장", 6500),
@@ -178,6 +184,8 @@ public class ExcelGeneratorJavaSample {
             // 단순 값
             .value("title", "2026년 직원 현황(대용량)")
             .value("date", LocalDate.now().toString())
+            .value("linkText", "(주)휴넷 홈페이지")
+            .value("url", "https://www.hunet.co.kr")
             // 이미지
             .image("logo", logo != null ? logo : new byte[0])
             .image("ci", ci != null ? ci : new byte[0])
@@ -240,6 +248,8 @@ public class ExcelGeneratorJavaSample {
         Map<String, Object> data = new HashMap<>();
         data.put("title", "2026년 직원 현황(비동기 생성)");
         data.put("date", LocalDate.now().toString());
+        data.put("linkText", "(주)휴넷 홈페이지");
+        data.put("url", "https://www.hunet.co.kr");
         data.put("employees", Arrays.asList(
             new Employee("황용호", "부장", 8000),
             new Employee("한용호", "과장", 6500)
@@ -359,6 +369,8 @@ public class ExcelGeneratorJavaSample {
         SimpleDataProvider dataProvider = SimpleDataProvider.builder()
             .value("title", "2026년 직원 현황(대용량 비동기)")
             .value("date", LocalDate.now().toString())
+            .value("linkText", "(주)휴넷 홈페이지")
+            .value("url", "https://www.hunet.co.kr")
             .image("logo", logo != null ? logo : new byte[0])
             .image("ci", ci != null ? ci : new byte[0])
             // 대용량 데이터 - 실제로는 DB 스트리밍 쿼리 사용
@@ -463,6 +475,8 @@ public class ExcelGeneratorJavaSample {
         SimpleDataProvider dataProvider = SimpleDataProvider.builder()
             .value("title", "2026년 직원 현황(암호화)")
             .value("date", LocalDate.now().toString())
+            .value("linkText", "(주)휴넷 홈페이지")
+            .value("url", "https://www.hunet.co.kr")
             .image("logo", logo != null ? logo : new byte[0])
             .image("ci", ci != null ? ci : new byte[0])
             .itemsFromSupplier("employees", () -> generateLargeDataSet(dataCount))
@@ -525,6 +539,96 @@ public class ExcelGeneratorJavaSample {
         if (generatedPath[0] != null) {
             System.out.println("\t결과: " + generatedPath[0] + " (" + processedRows[0] + "건 처리)");
         }
+    }
+
+    // ==================== 6. 문서 메타데이터 설정 ====================
+
+    /**
+     * 문서 메타데이터를 설정하는 방식입니다.
+     * Excel 파일의 속성(제목, 작성자, 키워드 등)을 설정할 수 있습니다.
+     *
+     * <p>메타데이터는 Excel에서 "파일 > 정보 > 속성"에서 확인할 수 있습니다.
+     *
+     * <p>실제 서비스 코드 예시:
+     * <pre>{@code
+     * @Service
+     * public class MetadataReportService {
+     *     private final ExcelGenerator excelGenerator;
+     *     private final ResourceLoader resourceLoader;
+     *
+     *     public Path generateReportWithMetadata() throws IOException {
+     *         Resource template = resourceLoader.getResource("classpath:templates/template.xlsx");
+     *
+     *         SimpleDataProvider provider = SimpleDataProvider.builder()
+     *             .value("title", "보고서")
+     *             .metadata(meta -> meta
+     *                 .title("월간 실적 보고서")
+     *                 .author("황용호")
+     *                 .subject("2026년 1월 실적")
+     *                 .keywords("실적", "월간", "보고서")
+     *                 .description("2026년 1월 월간 실적 보고서입니다.")
+     *                 .category("업무 보고")
+     *                 .company("(주)휴넷")
+     *                 .manager("황상무"))
+     *             .build();
+     *
+     *         return excelGenerator.generateToFile(
+     *             template.getInputStream(),
+     *             provider,
+     *             Path.of("/output"),
+     *             "monthly_report"
+     *         );
+     *     }
+     * }
+     * }</pre>
+     */
+    private static void runMetadataExample(ExcelGenerator generator, Path outputDir) {
+        System.out.println("\n[6] 문서 메타데이터 설정");
+        System.out.println("-".repeat(40));
+
+        byte[] logo = loadImage("hunet_logo.png");
+        byte[] ci = loadImage("hunet_ci.png");
+
+        // Java에서는 Builder의 metadata(Consumer) 사용
+        SimpleDataProvider dataProvider = SimpleDataProvider.builder()
+            .value("title", "2026년 직원 현황(메타데이터 포함)")
+            .value("date", LocalDate.now().toString())
+            .value("linkText", "(주)휴넷 홈페이지")
+            .value("url", "https://www.hunet.co.kr")
+            .image("logo", logo != null ? logo : new byte[0])
+            .image("ci", ci != null ? ci : new byte[0])
+            .items("employees", Arrays.asList(
+                new Employee("황용호", "부장", 8000),
+                new Employee("한용호", "과장", 6500),
+                new Employee("홍용호", "대리", 4500)
+            ))
+            // 문서 메타데이터 설정
+            .metadata((java.util.function.Consumer<DocumentMetadata.Builder>) meta -> meta
+                .title("2026년 직원 현황 보고서")
+                .author("황용호")
+                .subject("직원 현황")
+                .keywords("직원", "현황", "2026년", "보고서")
+                .description("2026년도 직원 현황을 정리한 보고서입니다.")
+                .category("인사 보고")
+                .company("(주)휴넷")
+                .manager("황상무"))
+            .build();
+
+        System.out.println("\t문서 메타데이터:");
+        System.out.println("\t  - 제목: 2026년 직원 현황 보고서");
+        System.out.println("\t  - 작성자: 황용호");
+        System.out.println("\t  - 회사: (주)휴넷");
+
+        InputStream template = loadTemplate();
+        Path resultPath = generator.generateToFile(
+            template,
+            dataProvider,
+            outputDir,
+            "metadata_example_java"
+        );
+
+        System.out.println("\t결과: " + resultPath);
+        System.out.println("\t(Excel에서 \"파일 > 정보 > 속성\"에서 메타데이터 확인 가능)");
     }
 
     // ==================== 유틸리티 메서드 ====================

@@ -97,8 +97,8 @@ class ExcelGeneratorAutoConfigurationTest {
                 "title" to "Spring Boot 테스트",
                 "date" to "2024-01-06",
                 "employees" to listOf(
-                    Employee("홍길동", "과장", 5000),
-                    Employee("김영희", "대리", 4000)
+                    Employee("황용호", "과장", 5000),
+                    Employee("홍용호", "대리", 4000)
                 )
             )
             logo?.let { data["logo"] = it }

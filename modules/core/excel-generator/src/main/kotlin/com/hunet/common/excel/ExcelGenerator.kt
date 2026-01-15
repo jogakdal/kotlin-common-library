@@ -326,14 +326,17 @@ class ExcelGenerator @JvmOverloads constructor(
             workbook.toByteArray()
         }
 
+        // 수식 내 ${변수}를 포함하는 셀 추출 (JXLS가 처리하지 않도록)
+        val (formulaExtractedBytes, formulaInfos) = extractFormulaVariables(processedBytes)
+
         // 레이아웃 및 데이터 유효성 검사 백업
         val layout = if (config.preserveTemplateLayout) {
-            layoutProcessor.backup(ByteArrayInputStream(processedBytes))
+            layoutProcessor.backup(ByteArrayInputStream(formulaExtractedBytes))
         } else null
-        val dataValidations = dataValidationProcessor.backup(ByteArrayInputStream(processedBytes))
+        val dataValidations = dataValidationProcessor.backup(ByteArrayInputStream(formulaExtractedBytes))
 
         // 피벗 테이블 정보 추출 및 삭제 (JXLS 처리 전)
-        val (pivotTableInfos, bytesWithoutPivot) = pivotTableProcessor.extractAndRemove(processedBytes)
+        val (pivotTableInfos, bytesWithoutPivot) = pivotTableProcessor.extractAndRemove(formulaExtractedBytes)
 
         // JXLS 처리 (피벗 테이블 없이)
         val jxlsOutput = ByteArrayOutputStream().also { tempOutput ->
@@ -342,15 +345,110 @@ class ExcelGenerator @JvmOverloads constructor(
             }
         }
 
-        // 후처리 (숫자 서식 적용, 레이아웃 복원, 데이터 유효성 검사 확장, 피벗 테이블 재생성, 차트 변수 치환)
-        val resultBytes = applyNumberFormatToNumericCells(jxlsOutput.toByteArray())
+        // 저장해둔 수식 복원 (${변수} 패턴 유지)
+        val formulaRestoredBytes = restoreFormulaVariables(jxlsOutput.toByteArray(), formulaInfos)
+
+        // 후처리 (숫자 서식 적용, 레이아웃 복원, 데이터 유효성 검사 확장, 피벗 테이블 재생성, 변수 치환, 메타데이터 적용)
+        val resultBytes = applyNumberFormatToNumericCells(formulaRestoredBytes)
             .let { bytes -> layout?.let { layoutProcessor.restore(bytes, it) } ?: bytes }
             .let { bytes -> dataValidationProcessor.expand(bytes, dataValidations) }
             .let { bytes -> pivotTableProcessor.recreate(bytes, pivotTableInfos) }
             .let { bytes -> xmlVariableProcessor.processVariables(bytes, dataProvider) }
+            .let { bytes -> applyMetadata(bytes, dataProvider.getMetadata()) }
 
         output.write(resultBytes)
         return rowsProcessed
+    }
+
+    // ========== 문서 메타데이터 적용 ==========
+
+    /**
+     * 문서 메타데이터를 워크북에 적용합니다.
+     */
+    private fun applyMetadata(bytes: ByteArray, metadata: DocumentMetadata?): ByteArray {
+        if (metadata == null || metadata.isEmpty()) return bytes
+
+        return transformWorkbook(bytes) { workbook ->
+            val props = workbook.properties
+            val coreProps = props.coreProperties
+            val extProps = props.extendedProperties.underlyingProperties
+
+            metadata.title?.let { coreProps.setTitle(it) }
+            metadata.author?.let { coreProps.setCreator(it) }
+            metadata.subject?.let { coreProps.setSubjectProperty(it) }
+            metadata.keywords?.let { coreProps.setKeywords(it.joinToString(", ")) }
+            metadata.description?.let { coreProps.setDescription(it) }
+            metadata.category?.let { coreProps.setCategory(it) }
+            metadata.company?.let { extProps.company = it }
+            metadata.manager?.let { extProps.manager = it }
+            metadata.created?.let {
+                coreProps.setCreated(Optional.of(Date.from(it.atZone(java.time.ZoneId.systemDefault()).toInstant())))
+            }
+        }
+    }
+
+    // ========== 수식 변수 보호 ==========
+
+    // JXLS가 수식 내 ${변수}를 처리하지 않도록 수식을 별도 저장 후 JXLS 처리 후 복원
+    private data class FormulaInfo(
+        val sheetName: String,
+        val rowIndex: Int,
+        val columnIndex: Int,
+        val formula: String,
+        val style: Short
+    )
+
+    /**
+     * ${변수} 패턴을 포함하는 수식 셀을 추출하고 빈 셀로 변환합니다.
+     * 반환된 리스트는 JXLS 처리 후 restoreFormulaVariables에서 복원됩니다.
+     */
+    private fun extractFormulaVariables(bytes: ByteArray): Pair<ByteArray, List<FormulaInfo>> {
+        val formulas = mutableListOf<FormulaInfo>()
+        val newBytes = transformWorkbook(bytes) { workbook ->
+            workbook.forEach { sheet ->
+                sheet.forEach { row ->
+                    row.forEach { cell ->
+                        if (cell.cellType == CellType.FORMULA) {
+                            val formula = cell.cellFormula
+                            if ("\${" in formula) {
+                                formulas.add(FormulaInfo(
+                                    sheetName = sheet.sheetName,
+                                    rowIndex = cell.rowIndex,
+                                    columnIndex = cell.columnIndex,
+                                    formula = formula,
+                                    style = cell.cellStyle.index
+                                ))
+                                // 수식 셀을 빈 셀로 변환 (JXLS가 처리하지 않도록)
+                                val style = cell.cellStyle
+                                cell.setBlank()
+                                cell.cellStyle = style
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return newBytes to formulas
+    }
+
+    /**
+     * JXLS 처리 후 저장해둔 수식을 다시 설정합니다.
+     * 이후 XmlVariableProcessor가 변수를 실제 값으로 치환합니다.
+     */
+    private fun restoreFormulaVariables(bytes: ByteArray, formulas: List<FormulaInfo>): ByteArray {
+        if (formulas.isEmpty()) return bytes
+
+        return transformWorkbook(bytes) { workbook ->
+            formulas.forEach { info ->
+                val sheet = workbook.getSheet(info.sheetName) ?: return@forEach
+                val row = sheet.getRow(info.rowIndex) ?: sheet.createRow(info.rowIndex)
+                val cell = row.getCell(info.columnIndex) ?: row.createCell(info.columnIndex)
+                cell.cellFormula = info.formula
+                if (info.style >= 0) {
+                    cell.cellStyle = workbook.getCellStyleAt(info.style.toInt())
+                }
+            }
+        }
     }
 
     // ========== 숫자 서식 자동 적용 ==========

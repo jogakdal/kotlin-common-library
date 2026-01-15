@@ -2,7 +2,6 @@ package com.hunet.common.excel
 
 import com.hunet.common.lib.VariableProcessor
 import com.hunet.common.lib.VariableResolverRegistry
-import com.hunet.common.logging.commonLogger
 import org.apache.poi.openxml4j.opc.OPCPackage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -31,7 +30,6 @@ import java.io.ByteArrayOutputStream
  */
 internal class XmlVariableProcessor {
     companion object {
-        val LOG by commonLogger()
         private val EXCLUDE_PATTERNS = listOf(".rels", "[Content_Types].xml", "/docProps/")
 
         /** VariableProcessor 구분자: ${변수명} 형태 */
@@ -60,10 +58,7 @@ internal class XmlVariableProcessor {
             .filterValues { it != null }
             .mapValues { it.value!! }
             .takeIf { it.isNotEmpty() }
-            ?: run {
-                LOG.debug("치환할 변수 값이 없음")
-                return inputBytes
-            }
+            ?: return inputBytes
 
         val processor = VariableProcessor(listOf(XmlValueRegistry(variableValues)))
 
@@ -81,9 +76,6 @@ internal class XmlVariableProcessor {
                 }
 
             if (modifiedParts.isNotEmpty()) {
-                LOG.debug(
-                    "변수 치환 완료: ${modifiedParts.size}개 파일 - ${modifiedParts.joinToString(", ")}"
-                )
                 ByteArrayOutputStream().also { pkg.save(it) }.toByteArray()
             } else {
                 inputBytes

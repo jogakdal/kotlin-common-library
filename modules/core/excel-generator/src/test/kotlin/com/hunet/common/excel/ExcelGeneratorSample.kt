@@ -11,12 +11,13 @@ import java.util.concurrent.TimeUnit
 /**
  * Excel Generator 샘플 실행 클래스.
  *
- * 다섯 가지 생성 방식을 시연합니다:
+ * 여섯 가지 생성 방식을 시연합니다:
  * 1. 기본 사용 - Map 기반 간편 API
  * 2. 지연 로딩 - DataProvider를 통한 대용량 처리
  * 3. 비동기 실행 - 리스너 기반 백그라운드 처리
  * 4. 대용량 비동기 - DataProvider + 비동기 조합
  * 5. 암호화된 대용량 비동기 - 파일 열기 암호 설정
+ * 6. 문서 메타데이터 - 제목, 작성자, 키워드 등 설정
  *
  * ## Spring Boot 환경에서 사용
  *
@@ -87,6 +88,9 @@ object ExcelGeneratorSample {
 
             // 5. 암호화된 대용량 비동기 (암호: 1234)
             runEncryptedLargeAsyncExample(generator, outputDir)
+
+            // 6. 문서 메타데이터 설정
+            runMetadataExample(generator, outputDir)
         }
 
         println("\n" + "=" .repeat(60))
@@ -132,6 +136,8 @@ object ExcelGeneratorSample {
         val data = mapOf(
             "title" to "2026년 직원 현황",
             "date" to LocalDate.now().toString(),
+            "linkText" to "(주)휴넷 홈페이지",
+            "url" to "https://www.hunet.co.kr",
             "employees" to listOf(
                 Employee("황용호", "부장", 8000),
                 Employee("한용호", "과장", 6500),
@@ -202,6 +208,8 @@ object ExcelGeneratorSample {
             // 단순 값
             value("title", "2026년 직원 현황(대용량)")
             value("date", LocalDate.now().toString())
+            value("linkText", "(주)휴넷 홈페이지")
+            value("url", "https://www.hunet.co.kr")
 
             // 이미지
             image("logo", loadImage("hunet_logo.png") ?: byteArrayOf())
@@ -300,6 +308,8 @@ object ExcelGeneratorSample {
         val data = mapOf(
             "title" to "2026년 직원 현황(비동기 생성)",
             "date" to LocalDate.now().toString(),
+            "linkText" to "(주)휴넷 홈페이지",
+            "url" to "https://www.hunet.co.kr",
             "employees" to listOf(
                 Employee("황용호", "부장", 8000),
                 Employee("한용호", "과장", 6500)
@@ -451,6 +461,8 @@ object ExcelGeneratorSample {
         val dataProvider = simpleDataProvider {
             value("title", "2026년 직원 현황(대용량 비동기)")
             value("date", LocalDate.now().toString())
+            value("linkText", "(주)휴넷 홈페이지")
+            value("url", "https://www.hunet.co.kr")
             image("logo", loadImage("hunet_logo.png") ?: byteArrayOf())
             image("ci", loadImage("hunet_ci.png") ?: byteArrayOf())
 
@@ -581,6 +593,8 @@ object ExcelGeneratorSample {
         val dataProvider = simpleDataProvider {
             value("title", "2026년 직원 현황(암호화)")
             value("date", LocalDate.now().toString())
+            value("linkText", "(주)휴넷 홈페이지")
+            value("url", "https://www.hunet.co.kr")
             image("logo", loadImage("hunet_logo.png") ?: byteArrayOf())
             image("ci", loadImage("hunet_ci.png") ?: byteArrayOf())
 
@@ -636,6 +650,117 @@ object ExcelGeneratorSample {
         if (generatedPath != null) {
             println("\t결과: $generatedPath (${processedRows}건 처리, 암호: 1234)")
         }
+    }
+
+    // ==================== 6. 문서 메타데이터 설정 ====================
+
+    /**
+     * 문서 메타데이터를 설정하는 방식입니다.
+     * Excel 파일의 속성(제목, 작성자, 키워드 등)을 설정할 수 있습니다.
+     *
+     * 메타데이터는 Excel에서 "파일 > 정보 > 속성"에서 확인할 수 있습니다.
+     *
+     * Spring Boot 예시:
+     * ```kotlin
+     * @Service
+     * class MetadataReportService(
+     *     private val excelGenerator: ExcelGenerator,
+     *     private val resourceLoader: ResourceLoader
+     * ) {
+     *     fun generateReportWithMetadata(): Path {
+     *         val template = resourceLoader.getResource("classpath:templates/template.xlsx")
+     *
+     *         val provider = simpleDataProvider {
+     *             value("title", "보고서")
+     *             items("employees") { employeeRepository.findAll().iterator() }
+     *
+     *             // 문서 메타데이터 설정
+     *             metadata {
+     *                 title = "월간 실적 보고서"
+     *                 author = "황용호"
+     *                 subject = "2026년 1월 실적"
+     *                 keywords("실적", "월간", "보고서")
+     *                 description = "2026년 1월 월간 실적 보고서입니다."
+     *                 category = "업무 보고"
+     *                 company = "(주)휴넷"
+     *                 manager = "황상무"
+     *             }
+     *         }
+     *
+     *         return excelGenerator.generateToFile(
+     *             template = template.inputStream,
+     *             dataProvider = provider,
+     *             outputDir = Path.of("/output"),
+     *             baseFileName = "monthly_report"
+     *         )
+     *     }
+     * }
+     * ```
+     *
+     * Java에서 사용하는 경우:
+     * ```java
+     * var provider = SimpleDataProvider.builder()
+     *     .value("title", "보고서")
+     *     .metadata(meta -> meta
+     *         .title("월간 실적 보고서")
+     *         .author("황용호")
+     *         .company("(주)휴넷"))
+     *     .build();
+     * ```
+     */
+    private fun runMetadataExample(generator: ExcelGenerator, outputDir: Path) {
+        println("\n[6] 문서 메타데이터 설정")
+        println("-" .repeat(40))
+
+        // simpleDataProvider DSL 사용
+        val dataProvider = simpleDataProvider {
+            // 단순 값
+            value("title", "2026년 직원 현황(메타데이터 포함)")
+            value("date", LocalDate.now().toString())
+            value("linkText", "(주)휴넷 홈페이지")
+            value("url", "https://www.hunet.co.kr")
+
+            // 이미지
+            image("logo", loadImage("hunet_logo.png") ?: byteArrayOf())
+            image("ci", loadImage("hunet_ci.png") ?: byteArrayOf())
+
+            // 컬렉션
+            items("employees") {
+                listOf(
+                    Employee("황용호", "부장", 8000),
+                    Employee("한용호", "과장", 6500),
+                    Employee("홍용호", "대리", 4500)
+                ).iterator()
+            }
+
+            // 문서 메타데이터 설정
+            metadata {
+                title = "2026년 직원 현황 보고서"
+                author = "황용호"
+                subject = "직원 현황"
+                keywords("직원", "현황", "2026년", "보고서")
+                description = "2026년도 직원 현황을 정리한 보고서입니다."
+                category = "인사 보고"
+                company = "(주)휴넷"
+                manager = "황상무"
+            }
+        }
+
+        println("\t문서 메타데이터:")
+        println("\t  - 제목: 2026년 직원 현황 보고서")
+        println("\t  - 작성자: 황용호")
+        println("\t  - 회사: (주)휴넷")
+
+        val template = loadTemplate()
+        val resultPath = generator.generateToFile(
+            template = template,
+            dataProvider = dataProvider,
+            outputDir = outputDir,
+            baseFileName = "metadata_example"
+        )
+
+        println("\t결과: $resultPath")
+        println("\t(Excel에서 \"파일 > 정보 > 속성\"에서 메타데이터 확인 가능)")
     }
 
     // ==================== 유틸리티 메서드 ====================

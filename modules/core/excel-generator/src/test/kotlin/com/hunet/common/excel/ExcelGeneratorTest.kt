@@ -55,12 +55,12 @@ class ExcelGeneratorTest {
     @Test
     fun `SimpleDataProvider Builder should work correctly`() {
         val provider = SimpleDataProvider.Builder()
-            .value("name", "홍길동")
+            .value("name", "황용호")
             .value("age", 30)
             .items("tags", listOf("kotlin", "java"))
             .build()
 
-        assertEquals("홍길동", provider.getValue("name"))
+        assertEquals("황용호", provider.getValue("name"))
         assertEquals(30, provider.getValue("age"))
         assertEquals(listOf("kotlin", "java"), provider.getItems("tags")?.asSequence()?.toList())
     }

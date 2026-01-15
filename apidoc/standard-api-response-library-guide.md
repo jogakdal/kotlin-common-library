@@ -877,7 +877,7 @@ class ManagerSessionController(
     "pageable": {
       "page": { "size": 20, "current": 1, "total": 3 },
       "order": { "sorted": false, "by": [] },
-      "items": { "total": 42, "current": 20, "list": [ { "sessionId": 10, "userName": "홍길동" }, { "sessionId": 11, "userName": "김철수" } ] }
+      "items": { "total": 42, "current": 20, "list": [ { "sessionId": 10, "userName": "황용호" }, { "sessionId": 11, "userName": "홍용호" } ] }
     }
   }
 }

@@ -49,4 +49,14 @@ interface ExcelDataProvider {
      * @return 사용 가능한 이름 목록
      */
     fun getAvailableNames(): Set<String> = emptySet()
+
+    /**
+     * 문서 메타데이터를 반환합니다.
+     *
+     * Excel 파일의 문서 속성(제목, 작성자, 설명 등)을 설정합니다.
+     * Excel에서 "파일 > 정보 > 속성"에서 확인할 수 있습니다.
+     *
+     * @return 문서 메타데이터, 설정하지 않으면 null
+     */
+    fun getMetadata(): DocumentMetadata? = null
 }

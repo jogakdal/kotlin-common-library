@@ -15,7 +15,8 @@ import java.util.function.Supplier
 class SimpleDataProvider private constructor(
     private val values: Map<String, Any>,
     private val collections: Map<String, () -> Iterator<Any>>,
-    private val images: Map<String, ByteArray>
+    private val images: Map<String, ByteArray>,
+    private val metadata: DocumentMetadata?
 ) : ExcelDataProvider {
 
     override fun getValue(name: String): Any? = values[name]
@@ -26,6 +27,8 @@ class SimpleDataProvider private constructor(
 
     override fun getAvailableNames(): Set<String> =
         values.keys + collections.keys + images.keys
+
+    override fun getMetadata(): DocumentMetadata? = metadata
 
     companion object {
         /**
@@ -66,14 +69,14 @@ class SimpleDataProvider private constructor(
                 }
             }
 
-            return SimpleDataProvider(values, collections, emptyMap())
+            return SimpleDataProvider(values, collections, emptyMap(), null)
         }
 
         /**
          * 빈 SimpleDataProvider를 반환합니다.
          */
         @JvmStatic
-        fun empty(): SimpleDataProvider = SimpleDataProvider(emptyMap(), emptyMap(), emptyMap())
+        fun empty(): SimpleDataProvider = SimpleDataProvider(emptyMap(), emptyMap(), emptyMap(), null)
 
         /**
          * Builder를 반환합니다. (Java에서 사용하기 편리)
@@ -89,6 +92,7 @@ class SimpleDataProvider private constructor(
         private val values = mutableMapOf<String, Any>()
         private val collections = mutableMapOf<String, () -> Iterator<Any>>()
         private val images = mutableMapOf<String, ByteArray>()
+        private var metadata: DocumentMetadata? = null
 
         /** 단일 값을 추가합니다. */
         fun value(name: String, value: Any) = apply { values[name] = value }
@@ -111,8 +115,21 @@ class SimpleDataProvider private constructor(
         /** 이미지를 추가합니다. */
         fun image(name: String, imageData: ByteArray) = apply { images[name] = imageData }
 
+        /** 문서 메타데이터를 설정합니다. (Kotlin DSL) */
+        fun metadata(block: DocumentMetadataBuilder.() -> Unit) = apply {
+            this.metadata = DocumentMetadataBuilder().apply(block).build()
+        }
+
+        /** 문서 메타데이터를 설정합니다. (Java Consumer) */
+        fun metadata(configurer: java.util.function.Consumer<DocumentMetadata.Builder>) = apply {
+            this.metadata = DocumentMetadata.Builder().also { configurer.accept(it) }.build()
+        }
+
+        /** 문서 메타데이터를 설정합니다. (직접 설정) */
+        fun metadata(metadata: DocumentMetadata) = apply { this.metadata = metadata }
+
         /** SimpleDataProvider를 빌드합니다. */
-        fun build() = SimpleDataProvider(values, collections, images)
+        fun build() = SimpleDataProvider(values, collections, images, metadata)
     }
 }
 
