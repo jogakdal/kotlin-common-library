@@ -11,11 +11,12 @@ import java.util.concurrent.TimeUnit
 /**
  * Excel Generator 샘플 실행 클래스.
  *
- * 네 가지 생성 방식을 시연합니다:
+ * 다섯 가지 생성 방식을 시연합니다:
  * 1. 기본 사용 - Map 기반 간편 API
  * 2. 지연 로딩 - DataProvider를 통한 대용량 처리
  * 3. 비동기 실행 - 리스너 기반 백그라운드 처리
  * 4. 대용량 비동기 - DataProvider + 비동기 조합
+ * 5. 암호화된 대용량 비동기 - 파일 열기 암호 설정
  *
  * ## Spring Boot 환경에서 사용
  *
@@ -83,6 +84,9 @@ object ExcelGeneratorSample {
 
             // 4. 대용량 비동기 (DataProvider + Listener)
             runLargeAsyncExample(generator, outputDir)
+
+            // 5. 암호화된 대용량 비동기 (암호: 1234)
+            runEncryptedLargeAsyncExample(generator, outputDir)
         }
 
         println("\n" + "=" .repeat(60))
@@ -516,6 +520,121 @@ object ExcelGeneratorSample {
             generatedPath!! to processedRows
         } else {
             null
+        }
+    }
+
+    // ==================== 5. 암호화된 대용량 비동기 ====================
+
+    /**
+     * 대용량 데이터를 비동기로 처리하면서 파일에 암호를 설정합니다.
+     * 생성된 Excel 파일을 열 때 암호 입력이 필요합니다.
+     *
+     * Spring Boot 예시:
+     * ```kotlin
+     * @RestController
+     * class SecureReportController(
+     *     private val excelGenerator: ExcelGenerator,
+     *     private val employeeRepository: EmployeeRepository,
+     *     private val resourceLoader: ResourceLoader
+     * ) {
+     *     @PostMapping("/reports/secure")
+     *     @Transactional(readOnly = true)
+     *     fun generateSecureReport(
+     *         @RequestParam password: String
+     *     ): ResponseEntity<JobResponse> {
+     *         val template = resourceLoader.getResource("classpath:templates/template.xlsx")
+     *
+     *         val provider = simpleDataProvider {
+     *             value("title", "보안 직원 현황")
+     *             items("employees") { employeeRepository.streamAll().iterator() }
+     *         }
+     *
+     *         val job = excelGenerator.submit(
+     *             template = template.inputStream,
+     *             dataProvider = provider,
+     *             outputDir = Path.of("/output"),
+     *             baseFileName = "secure_report",
+     *             password = password,  // 파일 열기 암호 설정
+     *             listener = object : ExcelGenerationListener {
+     *                 override fun onCompleted(jobId: String, result: GenerationResult) {
+     *                     // 암호화된 파일 생성 완료
+     *                 }
+     *             }
+     *         )
+     *
+     *         return ResponseEntity.accepted().body(JobResponse(job.jobId))
+     *     }
+     * }
+     * ```
+     */
+    private fun runEncryptedLargeAsyncExample(generator: ExcelGenerator, outputDir: Path) {
+        println("\n[5] 암호화된 대용량 비동기 (암호: 1234)")
+        println("-" .repeat(40))
+
+        val completionLatch = CountDownLatch(1)
+        var generatedPath: Path? = null
+        var processedRows = 0
+
+        val dataCount = 255  // 수식 확장 이슈 방지를 위해 255건으로 제한
+
+        // DataProvider로 대용량 데이터 지연 로딩 설정
+        val dataProvider = simpleDataProvider {
+            value("title", "2026년 직원 현황(암호화)")
+            value("date", LocalDate.now().toString())
+            image("logo", loadImage("hunet_logo.png") ?: byteArrayOf())
+            image("ci", loadImage("hunet_ci.png") ?: byteArrayOf())
+
+            items("employees") {
+                generateLargeDataSet(dataCount).iterator()
+            }
+        }
+
+        println("\tDataProvider 생성 완료 (${dataCount}건 데이터)")
+
+        val template = loadTemplate()
+
+        // 비동기 작업 제출 (암호 설정)
+        val job = generator.submit(
+            template = template,
+            dataProvider = dataProvider,
+            outputDir = outputDir,
+            baseFileName = "encrypted_large_async_example",
+            password = "1234",  // 파일 열기 암호 설정
+            listener = object : ExcelGenerationListener {
+                override fun onStarted(jobId: String) {
+                    println("\t[시작] jobId: $jobId")
+                }
+
+                override fun onCompleted(jobId: String, result: GenerationResult) {
+                    println("\t[완료] 처리된 행: ${result.rowsProcessed}건")
+                    println("\t[완료] 소요시간: ${result.durationMs}ms")
+                    println("\t[완료] 파일: ${result.filePath}")
+                    println("\t[완료] 파일 열기 암호: 1234")
+                    generatedPath = result.filePath
+                    processedRows = result.rowsProcessed
+                    completionLatch.countDown()
+                }
+
+                override fun onFailed(jobId: String, error: Exception) {
+                    println("\t[실패] ${error.message}")
+                    completionLatch.countDown()
+                }
+
+                override fun onCancelled(jobId: String) {
+                    println("\t[취소됨]")
+                    completionLatch.countDown()
+                }
+            }
+        )
+
+        println("\t작업 제출됨: ${job.jobId}")
+        println("\t(백그라운드에서 암호화된 파일 생성 중...)")
+
+        // 샘플에서는 완료 대기
+        completionLatch.await(60, TimeUnit.SECONDS)
+
+        if (generatedPath != null) {
+            println("\t결과: $generatedPath (${processedRows}건 처리, 암호: 1234)")
         }
     }
 

@@ -26,12 +26,13 @@ import java.util.concurrent.TimeUnit;
 /**
  * Excel Generator Java 샘플 실행 클래스.
  *
- * <p>네 가지 생성 방식을 시연합니다:
+ * <p>다섯 가지 생성 방식을 시연합니다:
  * <ol>
  *   <li>기본 사용 - Map 기반 간편 API</li>
  *   <li>지연 로딩 - DataProvider를 통한 대용량 처리</li>
  *   <li>비동기 실행 - 리스너 기반 백그라운드 처리</li>
  *   <li>대용량 비동기 - DataProvider + 비동기 조합</li>
+ *   <li>암호화된 대용량 비동기 - 파일 열기 암호 설정</li>
  * </ol>
  *
  * <h2>Spring Boot 환경에서 사용</h2>
@@ -90,6 +91,9 @@ public class ExcelGeneratorJavaSample {
 
             // 4. 대용량 비동기 (DataProvider + Listener)
             runLargeAsyncExample(generator, outputDir);
+
+            // 5. 암호화된 대용량 비동기 (암호: 1234)
+            runEncryptedLargeAsyncExample(generator, outputDir);
         }
 
         System.out.println("\n" + "=".repeat(60));
@@ -240,6 +244,7 @@ public class ExcelGeneratorJavaSample {
             SimpleDataProvider.of(data),
             outputDir,
             "async_example_java",
+            null, // 암호 없음
             new ExcelGenerationListener() {
                 @Override
                 public void onStarted(@NotNull String jobId) {
@@ -356,6 +361,7 @@ public class ExcelGeneratorJavaSample {
             dataProvider,
             outputDir,
             "large_async_example_java",
+            null, // 암호 없음
             new ExcelGenerationListener() {
                 @Override
                 public void onStarted(@NotNull String jobId) {
@@ -411,6 +417,100 @@ public class ExcelGeneratorJavaSample {
             return new Result(generatedPath[0], processedRows[0]);
         }
         return null;
+    }
+
+    // ==================== 5. 암호화된 대용량 비동기 ====================
+
+    /**
+     * 암호화된 대용량 비동기 생성 방식입니다.
+     * 대용량 비동기 생성에 파일 열기 암호를 추가합니다.
+     *
+     * <p>사용 시나리오:
+     * <ul>
+     *   <li>보안이 필요한 대용량 Excel 생성</li>
+     *   <li>파일 열기 시 암호 입력 필요</li>
+     * </ul>
+     */
+    private static void runEncryptedLargeAsyncExample(ExcelGenerator generator, Path outputDir) throws Exception {
+        System.out.println("\n[5] 암호화된 대용량 비동기 (암호: 1234)");
+        System.out.println("-".repeat(40));
+
+        int dataCount = 255;
+        String password = "1234";
+
+        CountDownLatch completionLatch = new CountDownLatch(1);
+        Path[] generatedPath = new Path[1];
+        int[] processedRows = new int[1];
+
+        // DataProvider로 대용량 데이터 지연 로딩 설정 (Builder 사용)
+        byte[] logo = loadImage("hunet_logo.png");
+        byte[] ci = loadImage("hunet_ci.png");
+
+        SimpleDataProvider dataProvider = SimpleDataProvider.builder()
+            .value("title", "2026년 직원 현황(암호화)")
+            .value("date", LocalDate.now().toString())
+            .image("logo", logo != null ? logo : new byte[0])
+            .image("ci", ci != null ? ci : new byte[0])
+            .itemsFromSupplier("employees", () -> generateLargeDataSet(dataCount))
+            .build();
+
+        System.out.println("\tDataProvider 생성 완료 (" + dataCount + "건 데이터 지연 로딩 예정)");
+
+        InputStream template = loadTemplate();
+
+        // 비동기 작업 제출 (암호 포함)
+        GenerationJob job = generator.submit(
+            template,
+            dataProvider,
+            outputDir,
+            "encrypted_large_async_example_java",
+            password, // 파일 열기 암호
+            new ExcelGenerationListener() {
+                @Override
+                public void onStarted(@NotNull String jobId) {
+                    System.out.println("\t[시작] jobId: " + jobId);
+                }
+
+                @Override
+                public void onProgress(@NotNull String jobId, @NotNull ProgressInfo progress) {
+                    // 진행률 업데이트 (옵션)
+                }
+
+                @Override
+                public void onCompleted(@NotNull String jobId, @NotNull GenerationResult result) {
+                    System.out.println("\t[완료] 처리된 행: " + result.getRowsProcessed() + "건");
+                    System.out.println("\t[완료] 소요시간: " + result.getDurationMs() + "ms");
+                    System.out.println("\t[완료] 파일: " + result.getFilePath());
+                    System.out.println("\t[완료] 암호: " + password);
+                    generatedPath[0] = result.getFilePath();
+                    processedRows[0] = result.getRowsProcessed();
+                    completionLatch.countDown();
+                }
+
+                @Override
+                public void onFailed(@NotNull String jobId, @NotNull Exception error) {
+                    System.out.println("\t[실패] " + error.getMessage());
+                    completionLatch.countDown();
+                }
+
+                @Override
+                public void onCancelled(@NotNull String jobId) {
+                    System.out.println("\t[취소됨]");
+                    completionLatch.countDown();
+                }
+            }
+        );
+
+        System.out.println("\t작업 제출됨: " + job.getJobId());
+        System.out.println("\t(백그라운드에서 암호화된 Excel 생성 중...)");
+
+        // 샘플에서는 완료 대기
+        //noinspection ResultOfMethodCallIgnored
+        completionLatch.await(60, TimeUnit.SECONDS);
+
+        if (generatedPath[0] != null) {
+            System.out.println("\t결과: " + generatedPath[0] + " (" + processedRows[0] + "건 처리)");
+        }
     }
 
     // ==================== 유틸리티 메서드 ====================

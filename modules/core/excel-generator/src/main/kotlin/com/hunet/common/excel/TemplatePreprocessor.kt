@@ -130,8 +130,6 @@ internal class TemplatePreprocessor {
     private fun XSSFWorkbook.sheetSequence() =
         (0 until numberOfSheets).asSequence().map { getSheetAt(it) }
 
-    private fun Sheet.cellSequence() = asSequence().flatMap { it.asSequence() }
-
     /**
      * 워크북에서 모든 repeat 마커를 찾습니다.
      */

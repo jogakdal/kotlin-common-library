@@ -1,12 +1,17 @@
 package com.hunet.common.excel
 
 import com.hunet.common.util.detectImageType
+import org.apache.poi.poifs.crypt.EncryptionInfo
+import org.apache.poi.poifs.crypt.EncryptionMode
+import org.apache.poi.poifs.filesystem.POIFSFileSystem
 import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.CellType
 import org.apache.poi.ss.usermodel.Sheet
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.OutputStream
 
 /**
  * Excel 관련 유틸리티 함수 모음.
@@ -104,3 +109,44 @@ internal fun ByteArray.detectImageTypeForPoi(): String =
         "BMP" -> "DIB"   // POI에서 BMP는 DIB로 처리
         else -> type
     }
+
+// ========== Excel 암호화 유틸리티 ==========
+
+/**
+ * Excel 파일 데이터를 암호화합니다.
+ *
+ * @param password 파일을 열 때 필요한 암호
+ * @return 암호화된 Excel 파일 데이터
+ */
+internal fun ByteArray.encryptExcel(password: String): ByteArray =
+    POIFSFileSystem().use { fs ->
+        EncryptionInfo(EncryptionMode.agile).let { info ->
+            info.encryptor.apply {
+                confirmPassword(password)
+                getDataStream(fs).use { encryptedStream ->
+                    encryptedStream.write(this@encryptExcel)
+                }
+            }
+        }
+        ByteArrayOutputStream().also { fs.writeFilesystem(it) }.toByteArray()
+    }
+
+/**
+ * Excel 파일 데이터를 암호화하여 OutputStream에 씁니다.
+ *
+ * @param password 파일을 열 때 필요한 암호
+ * @param output 암호화된 데이터를 쓸 OutputStream
+ */
+internal fun ByteArray.encryptExcelTo(password: String, output: OutputStream) {
+    POIFSFileSystem().use { fs ->
+        EncryptionInfo(EncryptionMode.agile).let { info ->
+            info.encryptor.apply {
+                confirmPassword(password)
+                getDataStream(fs).use { encryptedStream ->
+                    encryptedStream.write(this@encryptExcelTo)
+                }
+            }
+        }
+        fs.writeFilesystem(output)
+    }
+}

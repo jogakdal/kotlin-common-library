@@ -74,10 +74,4 @@ internal class XmlVariableProcessor {
         VARIABLE_PATTERN.replace(xml) { match ->
             values[match.groupValues[1]]?.escapeXml() ?: match.value
         }
-
-    private fun String.escapeXml() = replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace("\"", "&quot;")
-        .replace("'", "&apos;")
 }

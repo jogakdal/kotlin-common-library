@@ -1002,8 +1002,6 @@ internal class PivotTableProcessor(
 
     private fun PackagePart.readText() = inputStream.bufferedReader().readText()
 
-    private fun XSSFWorkbook.toByteArray() = ByteArrayOutputStream().also { write(it) }.toByteArray()
-
     private fun XSSFWorkbook.sheetSequence(): Sequence<Sheet> = sheetIterator().asSequence()
 
     private fun <T> ByteArray.useWorkbook(block: (XSSFWorkbook) -> T): T =

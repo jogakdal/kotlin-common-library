@@ -1,11 +1,7 @@
 package com.hunet.common.excel
 
-import org.apache.poi.ss.usermodel.Cell
-import org.apache.poi.ss.usermodel.CellType
-import org.apache.poi.ss.usermodel.Sheet
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.InputStream
 
 /**
@@ -55,23 +51,4 @@ internal class LayoutProcessor {
                 }
             workbook.toByteArray()
         }
-
-    // 확장 프로퍼티
-    private val Sheet.lastRowWithData
-        get() = cellSequence().filterNot { it.isEmpty }.maxOfOrNull { it.rowIndex } ?: -1
-
-    private val Sheet.lastColumnWithData
-        get() = cellSequence().filterNot { it.isEmpty }.maxOfOrNull { it.columnIndex } ?: -1
-
-    private val Cell.isEmpty
-        get() = cellComment == null && when (cellType) {
-            CellType.BLANK -> true
-            CellType.STRING -> stringCellValue.isNullOrBlank()
-            else -> false
-        }
-
-    private fun Sheet.cellSequence() = asSequence().flatMap { it.asSequence() }
-
-    private fun XSSFWorkbook.toByteArray() =
-        ByteArrayOutputStream().also { write(it) }.toByteArray()
 }

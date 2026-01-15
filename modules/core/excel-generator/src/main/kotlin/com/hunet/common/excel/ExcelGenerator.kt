@@ -76,54 +76,96 @@ class ExcelGenerator @JvmOverloads constructor(
 
     /**
      * 템플릿과 데이터 맵으로 Excel을 생성합니다.
+     *
+     * @param template 템플릿 입력 스트림
+     * @param data 바인딩할 데이터 맵
+     * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
+     * @return 생성된 Excel 파일의 바이트 배열
      */
-    fun generate(template: InputStream, data: Map<String, Any>): ByteArray =
-        generate(template, SimpleDataProvider.of(data))
+    @JvmOverloads
+    fun generate(template: InputStream, data: Map<String, Any>, password: String? = null): ByteArray =
+        generate(template, SimpleDataProvider.of(data), password)
 
     /**
      * 템플릿과 DataProvider로 Excel을 생성합니다.
+     *
+     * @param template 템플릿 입력 스트림
+     * @param dataProvider 데이터 제공자
+     * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
+     * @return 생성된 Excel 파일의 바이트 배열
      */
-    fun generate(template: InputStream, dataProvider: ExcelDataProvider): ByteArray =
+    @JvmOverloads
+    fun generate(template: InputStream, dataProvider: ExcelDataProvider, password: String? = null): ByteArray =
         ByteArrayOutputStream().use { output ->
             processTemplate(template, dataProvider, output)
             output.toByteArray()
+        }.let { bytes ->
+            password.takeUnless { it.isNullOrBlank() }?.let { bytes.encryptExcel(it) } ?: bytes
         }
 
     /**
      * 템플릿 파일과 DataProvider로 Excel을 생성합니다.
+     *
+     * @param template 템플릿 파일
+     * @param dataProvider 데이터 제공자
+     * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
+     * @return 생성된 Excel 파일의 바이트 배열
      */
-    fun generate(template: File, dataProvider: ExcelDataProvider): ByteArray =
-        template.inputStream().use { generate(it, dataProvider) }
+    @JvmOverloads
+    fun generate(template: File, dataProvider: ExcelDataProvider, password: String? = null): ByteArray =
+        template.inputStream().use { generate(it, dataProvider, password) }
 
     /**
      * Excel을 생성하여 파일로 저장합니다.
      *
      * 파일명에 타임스탬프가 자동으로 추가됩니다.
      * 예: "report" → "report_20240106_143052.xlsx"
+     *
+     * @param template 템플릿 입력 스트림
+     * @param dataProvider 데이터 제공자
+     * @param outputDir 출력 디렉토리 경로
+     * @param baseFileName 기본 파일명 (확장자 제외)
+     * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
+     * @return 생성된 파일의 경로
      */
+    @JvmOverloads
     fun generateToFile(
         template: InputStream,
         dataProvider: ExcelDataProvider,
         outputDir: Path,
-        baseFileName: String
-    ): Path = generateToFileInternal(template, dataProvider, outputDir, baseFileName).first
+        baseFileName: String,
+        password: String? = null
+    ): Path = generateToFileInternal(template, dataProvider, outputDir, baseFileName, password).first
 
     /**
-     * 내부용: 파일 생성 후 경로와 처리된 행 수를 함께 반환합니다.
+     * 파일 생성 후 경로와 처리된 행 수를 함께 반환합니다.
      * 예외 발생 시 생성된 파일을 삭제합니다.
      */
     private fun generateToFileInternal(
         template: InputStream,
         dataProvider: ExcelDataProvider,
         outputDir: Path,
-        baseFileName: String
+        baseFileName: String,
+        password: String? = null
     ): Pair<Path, Int> {
         Files.createDirectories(outputDir)
         val outputPath = resolveOutputPath(outputDir, baseFileName)
 
         return runCatching {
-            val rowsProcessed = Files.newOutputStream(outputPath).use { output ->
-                processTemplate(template, dataProvider, output)
+            val effectivePassword = password.takeUnless { it.isNullOrBlank() }
+            val rowsProcessed = if (effectivePassword != null) {
+                // 암호화가 필요한 경우 메모리에서 처리 후 암호화
+                ByteArrayOutputStream().use { tempOutput ->
+                    val rows = processTemplate(template, dataProvider, tempOutput)
+                    Files.newOutputStream(outputPath).use { fileOutput ->
+                        tempOutput.toByteArray().encryptExcelTo(effectivePassword, fileOutput)
+                    }
+                    rows
+                }
+            } else {
+                Files.newOutputStream(outputPath).use { output ->
+                    processTemplate(template, dataProvider, output)
+                }
             }
             outputPath to rowsProcessed
         }.onFailure {
@@ -136,45 +178,84 @@ class ExcelGenerator @JvmOverloads constructor(
 
     /**
      * 비동기로 Excel을 생성합니다.
+     *
+     * @param template 템플릿 입력 스트림
+     * @param dataProvider 데이터 제공자
+     * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
+     * @return 생성된 Excel 파일의 바이트 배열
      */
-    suspend fun generateAsync(template: InputStream, dataProvider: ExcelDataProvider): ByteArray =
-        withContext(dispatcher) { generate(template, dataProvider) }
+    suspend fun generateAsync(
+        template: InputStream,
+        dataProvider: ExcelDataProvider,
+        password: String? = null
+    ): ByteArray = withContext(dispatcher) { generate(template, dataProvider, password) }
 
     /**
      * 비동기로 Excel을 생성하여 파일로 저장합니다.
+     *
+     * @param template 템플릿 입력 스트림
+     * @param dataProvider 데이터 제공자
+     * @param outputDir 출력 디렉토리 경로
+     * @param baseFileName 기본 파일명 (확장자 제외)
+     * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
+     * @return 생성된 파일의 경로
      */
     suspend fun generateToFileAsync(
         template: InputStream,
         dataProvider: ExcelDataProvider,
         outputDir: Path,
-        baseFileName: String
+        baseFileName: String,
+        password: String? = null
     ): Path = withContext(dispatcher) {
-        generateToFile(template, dataProvider, outputDir, baseFileName)
+        generateToFile(template, dataProvider, outputDir, baseFileName, password)
     }
 
     // ========== 비동기 API (Java CompletableFuture) ==========
 
     /**
      * CompletableFuture로 Excel을 생성합니다.
+     *
+     * @param template 템플릿 입력 스트림
+     * @param dataProvider 데이터 제공자
+     * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
+     * @return 생성된 Excel 파일의 바이트 배열을 담은 CompletableFuture
      */
-    fun generateFuture(template: InputStream, dataProvider: ExcelDataProvider) =
-        scope.future { generate(template, dataProvider) }
+    @JvmOverloads
+    fun generateFuture(template: InputStream, dataProvider: ExcelDataProvider, password: String? = null) =
+        scope.future { generate(template, dataProvider, password) }
 
     /**
      * CompletableFuture로 Excel을 생성하여 파일로 저장합니다.
+     *
+     * @param template 템플릿 입력 스트림
+     * @param dataProvider 데이터 제공자
+     * @param outputDir 출력 디렉토리 경로
+     * @param baseFileName 기본 파일명 (확장자 제외)
+     * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
+     * @return 생성된 파일의 경로를 담은 CompletableFuture
      */
+    @JvmOverloads
     fun generateToFileFuture(
         template: InputStream,
         dataProvider: ExcelDataProvider,
         outputDir: Path,
-        baseFileName: String
-    ) = scope.future { generateToFile(template, dataProvider, outputDir, baseFileName) }
+        baseFileName: String,
+        password: String? = null
+    ) = scope.future { generateToFile(template, dataProvider, outputDir, baseFileName, password) }
 
     // ========== 비동기 API (작업 관리) ==========
 
     /**
      * 비동기 작업을 제출하고 작업 핸들을 반환합니다.
      * API 서버에서 즉시 응답 후 백그라운드 처리에 적합합니다.
+     *
+     * @param template 템플릿 입력 스트림
+     * @param dataProvider 데이터 제공자
+     * @param outputDir 출력 디렉토리 경로
+     * @param baseFileName 기본 파일명 (확장자 제외)
+     * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
+     * @param listener 작업 진행 상태를 받을 리스너 (선택)
+     * @return 작업 핸들 (취소, 완료 대기 등에 사용)
      */
     @JvmOverloads
     fun submit(
@@ -182,6 +263,7 @@ class ExcelGenerator @JvmOverloads constructor(
         dataProvider: ExcelDataProvider,
         outputDir: Path,
         baseFileName: String,
+        password: String? = null,
         listener: ExcelGenerationListener? = null
     ): GenerationJob {
         val jobId = UUID.randomUUID().toString()
@@ -198,7 +280,7 @@ class ExcelGenerator @JvmOverloads constructor(
                 }
 
                 val (filePath, rowsProcessed) = generateToFileInternal(
-                    template, dataProvider, outputDir, baseFileName
+                    template, dataProvider, outputDir, baseFileName, password
                 )
 
                 GenerationResult(
@@ -549,8 +631,6 @@ class ExcelGenerator @JvmOverloads constructor(
 
     private fun Cell?.hasJxAreaComment() =
         this?.cellComment?.string?.string?.contains("jx:area", ignoreCase = true) == true
-
-    private fun Sheet.cellSequence() = asSequence().flatMap { it.asSequence() }
 
     companion object {
         private val IMAGE_PLACEHOLDER_REGEX = Regex("""\$\{image\.(\w+)}""")
