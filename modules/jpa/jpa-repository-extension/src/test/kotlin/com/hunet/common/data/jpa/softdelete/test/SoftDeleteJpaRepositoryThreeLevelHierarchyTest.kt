@@ -1,3 +1,4 @@
+@file:Suppress("NonAsciiCharacters", "SpellCheckingInspection")
 package com.hunet.common.data.jpa.softdelete.test
 
 import com.hunet.common.data.jpa.sequence.GenerateSequentialCode
@@ -44,6 +45,7 @@ import java.util.concurrent.atomic.AtomicLong
     name = "three_level_parent",
     uniqueConstraints = [UniqueConstraint(columnNames = ["parent_code", "deleted_at"])]
 ) // 복합 유니크: 살아있는 행(deleted_at=DATE_TIME_MIN) 하나만 허용, soft-delete 후 새 행 허용
+
 @EntityListeners(AuditingEntityListener::class)
 class ThreeLevelParent(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -116,11 +118,13 @@ class ThreeLevelChild(
         private val localCounter = AtomicLong(0)
     }
 
-    @PrePersist fun prePersist() {
+    @PrePersist
+    fun prePersist() {
         if (seqCode.isNullOrBlank()) seqCode = "C-FB-" + localCounter.incrementAndGet()
     }
 
-    @PreUpdate fun preUpdate() {
+    @PreUpdate
+    fun preUpdate() {
         if (seqCode.isNullOrBlank()) seqCode = "C-FB-" + localCounter.incrementAndGet()
     }
 }
@@ -213,7 +217,8 @@ class SoftDeleteJpaRepositoryThreeLevelHierarchyTest {
         return p
     }
 
-    @Test @Transactional
+    @Test
+    @Transactional
     fun `3단계 upsert & 조회 & 중복 upsertKey merge 동작 테스트`() {
         val parent = buildHierarchy("P100", 2, 3)
         val saved = parentRepo.upsert(parent)
@@ -239,7 +244,8 @@ class SoftDeleteJpaRepositoryThreeLevelHierarchyTest {
         assertTrue(afterGrand.updatedAt!! >= beforeGrandUpdated!!, "LastModifiedDate가 갱신되어야 함")
     }
 
-    @Test @Transactional
+    @Test
+    @Transactional
     fun `parent softDelete 시 child & grandchild 재귀 softDelete + deletedAt 변경 확인`() {
         val saved = parentRepo.upsert(buildHierarchy("PX200", 1, 2))
         val pid = saved.id!!
@@ -258,7 +264,8 @@ class SoftDeleteJpaRepositoryThreeLevelHierarchyTest {
         assertTrue(saved.deletedAt == null || saved.deletedAt!!.isAfter(MYSQL_DATETIME_MIN))
     }
 
-    @Test @Transactional
+    @Test
+    @Transactional
     fun `softDelete 후 동일 UpsertKey 신규 insert 가능 여부 확인`() {
         val saved = parentRepo.upsert(buildHierarchy("P300", 1, 1))
         val oldId = saved.id!!
@@ -279,7 +286,8 @@ class SoftDeleteJpaRepositoryThreeLevelHierarchyTest {
         }
     }
 
-    @Test @Transactional
+    @Test
+    @Transactional
     fun `개별 child softDelete 후 parent 구조 유지 & 해당 child 재삽입 테스트`() {
         val saved = parentRepo.upsert(buildHierarchy("P400", 2, 2))
         val targetChild = saved.children[0]
@@ -295,7 +303,8 @@ class SoftDeleteJpaRepositoryThreeLevelHierarchyTest {
         assertTrue(childRepo.findFirstByField("childCode", targetChild.childCode!!).isPresent)
     }
 
-    @Test @Transactional
+    @Test
+    @Transactional
     fun `모든 grandchildren 에 seqCode 정상 생성 확인`() {
         val saved = parentRepo.upsert(buildHierarchy("P500", 2, 4))
         saved.children.forEach { c ->
@@ -304,20 +313,23 @@ class SoftDeleteJpaRepositoryThreeLevelHierarchyTest {
         }
     }
 
-    @Test @Transactional
+    @Test
+    @Transactional
     fun `softDelete 후 물리적 레코드 유지 및 alive predicate 작동 검증`() {
         val saved = parentRepo.upsert(buildHierarchy("P600", 1, 1))
         val tableName = "three_level_parent"
-        val nativeCountBefore = (entityManager.createNativeQuery("SELECT COUNT(*) FROM $tableName").singleResult as Number).toInt()
+        val countQuery = "SELECT COUNT(*) FROM $tableName"
+        val nativeCountBefore = (entityManager.createNativeQuery(countQuery).singleResult as Number).toInt()
         assertEquals(1, nativeCountBefore)
         assertEquals(1, parentRepo.count())
         parentRepo.softDelete(saved)
-        val nativeCountAfter = (entityManager.createNativeQuery("SELECT COUNT(*) FROM $tableName").singleResult as Number).toInt()
+        val nativeCountAfter = (entityManager.createNativeQuery(countQuery).singleResult as Number).toInt()
         assertEquals(1, nativeCountAfter, "물리 행이 유지되어야 한다.")
         assertEquals(0, parentRepo.count(), "alive 필터가 적용되어야 한다.")
     }
 
-    @Test @Transactional
+    @Test
+    @Transactional
     fun `LAZY 초기화되지 않은 3단계 컬렉션 softDelete 시 LazyInitializationException 없이 재귀 처리`() {
         val original = parentRepo.upsert(buildHierarchy("LZ100", 3, 2))
         val originalId = original.id!!
@@ -345,13 +357,14 @@ class SoftDeleteJpaRepositoryThreeLevelHierarchyTest {
                 val grandCode = "LZ100-C${ci}-G${gi}"
                 assertTrue(
                     grandRepo.findFirstByField("grandCode", grandCode).isEmpty,
-                    "grandchild $grandCode 는 soft delete 되어야 함"
+                    "grandchild ${grandCode}는 soft delete 되어야 함"
                 )
             }
         }
     }
 
-    @Test @Transactional
+    @Test
+    @Transactional
     fun `softDeleteByField로 LAZY 미초기화 parent 삭제 시 예외 없이 재귀 처리`() {
         val code = "BF700"
         val saved = parentRepo.upsert(buildHierarchy(code, 2, 2))

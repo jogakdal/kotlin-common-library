@@ -1,3 +1,4 @@
+@file:Suppress("NonAsciiCharacters", "SpellCheckingInspection")
 package com.hunet.common.data.jpa.softdelete.test
 
 import com.hunet.common.data.jpa.softdelete.UpsertKey
@@ -125,8 +126,11 @@ class SoftDeleteJpaRepositoryMigrationTest {
 
         // 검증
         assertEquals("Updated Name", targetEntity.name) // 일반 필드는 업데이트됨
-        assertEquals(LocalDateTime.of(2022, 12, 1, 9, 0), targetEntity.createdAt) // CreatedDate는 유지됨
-        assertTrue(targetEntity.updatedAt!!.isAfter(LocalDateTime.of(2023, 1, 1, 0, 0))) // LastModifiedDate는 현재 시간으로 갱신됨
+        assertEquals(LocalDateTime.of(2022, 12, 1, 9, 0), targetEntity.createdAt, "CreateDate는 유지되어야 한다")
+        assertTrue(
+            targetEntity.updatedAt!!.isAfter(LocalDateTime.of(2023, 1, 1, 0, 0)),
+            "LastModifiedDate는 현재 시간으로 갱신되어야 한다"
+        )
     }
 
     @Test
@@ -159,7 +163,6 @@ class SoftDeleteJpaRepositoryMigrationTest {
             .filterIsInstance<kotlin.reflect.KMutableProperty1<TestEntity, Any?>>()
             .filter { it.getAnnotation<LastModifiedDate>() != null }
 
-        // 검증
         assertEquals(1, createdProps.size)
         assertEquals("createdAt", createdProps[0].name)
 
@@ -204,8 +207,7 @@ class SoftDeleteJpaRepositoryMigrationTest {
         val javaKeyProp = properties.first { it.name == "javaUpsertKey" }
         val normalProp = properties.first { it.name == "normalField" }
 
-        // Java 필드의 annotation도 getAnnotation으로 찾을 수 있어야 함
-        assertNotNull(javaKeyProp.getAnnotation<UpsertKey>())
+        assertNotNull(javaKeyProp.getAnnotation<UpsertKey>(), "Java 필드의 annotation도 getAnnotation으로 찾을 수 있어야 함")
         assertNull(normalProp.getAnnotation<UpsertKey>())
     }
 }
