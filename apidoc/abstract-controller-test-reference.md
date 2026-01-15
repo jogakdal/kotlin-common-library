@@ -12,7 +12,6 @@
 @AutoConfigureRestDocs
 abstract class AbstractControllerTest {
     @Autowired lateinit var mockMvc: MockMvc
-    @Autowired(required = false) var dataFeed: DataFeed? = null
 
     val objectMapper: ObjectMapper
     val prettyPrinter: ObjectWriter
@@ -40,7 +39,6 @@ abstract class AbstractControllerTest {
 | 이름 | 타입 | 설명 |
 |------|------|------|
 | `mockMvc` | MockMvc | HTTP 요청/응답 시뮬레이션 핵심 객체 |
-| `dataFeed` | DataFeed? | JPA 환경에서만 주입; 시딩/정리 용도 (null 허용) |
 | `objectMapper` | ObjectMapper | Jackson (Kotlin module) 기본 mapper |
 | `prettyPrinter` | ObjectWriter | `objectMapper.writerWithDefaultPrettyPrinter()` 결과 |
 | `respJson` | String | 마지막 ResultActions 의 JSON 본문 |
@@ -78,16 +76,8 @@ open fun dtoToQueryParams(obj: Any): MultiValueMap<String, String>
 | 직렬화 포맷 | override `dtoToParam` | JSON 외 포맷 전송 |
 | QueryParam 규칙 | override `dtoToQueryParams` | 커스텀 포맷, 날짜 변환 |
 | 공통 헤더 주입 | 클래스를 상속하여 `@BeforeEach` 에서 MockMvc request post-processor 설정 | 인증 토큰 삽입 |
-| 공통 시딩 | `@BeforeEach` + `dataFeed` 활용 | 테스트 독립성 확보 |
 
-## 7. DataFeed 연동 주의
-| 상황 | 동작 |
-|------|------|
-| JPA 활성 + common-core 의존 | DataFeed 정상 주입 |
-| JPA 비활성 | null (no-op) |
-| 다중 트랜잭션 사용 | DataFeed per-statement 전략 (각 구문 독립) |
-
-## 8. 사용 패턴 예시 (Type-safe QueryParams)
+## 7. 사용 패턴 예시 (Type-safe QueryParams)
 ```kotlin
 data class FindCond(val status: List<String>, val page: Int)
 
@@ -107,20 +97,19 @@ class FindApiTest : AbstractControllerTest() {
 | 증상 | 원인 | 해결 |
 |------|------|------|
 | `Unable to find a @SpringBootConfiguration` | 패키지 경로에 @SpringBootApplication 없음 | 테스트 루트에 TestApplication 정의 |
-| `dataFeed` null | JPA 설정 누락 | spring-boot-starter-data-jpa + datasource 추가 |
 | JSON Path 매칭 실패 | payload 구조 변경 | 응답 본문 로그 + key 재확인 |
 | 한글 깨짐 | MockMvc 인코딩 필터 설정 누락 | `CharacterEncodingFilter("UTF-8", true)` 추가 |
 
 ## 10. 베스트 프랙티스
-1. 테스트간 격리: DataFeed 로 선 정리(DELETE/TRUNCATE)
+1. 테스트간 격리: 적절한 데이터 정리 전략 사용
 2. 실패 재현 쉬운 시딩: SQL 파일 commit → 리뷰 diff 용이
 3. 공통 header/인증: 상속한 베이스 재정의 or RequestPostProcessor 추상화
 4. REST Docs: 모든 성공 경로 최소 1 스니펫 생성 후 CI 에서 스니펫 검증
 
 ## 11. 향후 개선 아이디어
 - DSL 기반 JSON Path 헬퍼 (타입 세이프)
-- DataFeed 와 연계한 자동 롤백 모드 옵션
+- 자동 롤백 모드 옵션
 - Multi-module test slicing (부분 컨텍스트 로딩)
 
 ## 12. 요약
-`AbstractControllerTest` 는 테스트 부트스트랩/헬퍼를 표준화해 반복 코드를 제거하고, DataFeed 와 조합 시 “준비된 데이터 → 호출 → 검증” 흐름을 단순화합니다.
+`AbstractControllerTest` 는 테스트 부트스트랩/헬퍼를 표준화해 반복 코드를 제거하고, "준비된 데이터 → 호출 → 검증" 흐름을 단순화합니다.

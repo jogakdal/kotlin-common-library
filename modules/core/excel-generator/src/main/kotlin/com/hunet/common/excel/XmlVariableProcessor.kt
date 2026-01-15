@@ -1,5 +1,7 @@
 package com.hunet.common.excel
 
+import com.hunet.common.lib.VariableProcessor
+import com.hunet.common.lib.VariableResolverRegistry
 import com.hunet.common.logging.commonLogger
 import org.apache.poi.openxml4j.opc.OPCPackage
 import java.io.ByteArrayInputStream
@@ -24,12 +26,32 @@ import java.io.ByteArrayOutputStream
  * - 관계 파일 (.rels 확장자)
  * - 콘텐츠 타입 정의 파일
  * - 워크시트 셀 데이터 (JXLS가 처리)
+ *
+ * common-core 모듈의 [VariableProcessor]를 활용하여 변수 치환을 수행합니다.
  */
 internal class XmlVariableProcessor {
     companion object {
         val LOG by commonLogger()
-        private val VARIABLE_PATTERN = Regex("""\$\{(\w+)}""")
         private val EXCLUDE_PATTERNS = listOf(".rels", "[Content_Types].xml", "/docProps/")
+
+        /** VariableProcessor 구분자: ${변수명} 형태 */
+        private val DELIMITERS = VariableProcessor.Delimiters("\${", "}")
+
+        /** VariableProcessor 옵션: 미등록 변수는 원본 유지, 대소문자 구분 */
+        private val OPTIONS = VariableProcessor.Options(
+            delimiters = DELIMITERS,
+            ignoreCase = false,
+            ignoreMissing = true
+        )
+    }
+
+    /**
+     * 단순 값 치환용 VariableResolverRegistry 구현.
+     * Map<String, String>의 값을 XML 이스케이프 처리하여 반환합니다.
+     */
+    private class XmlValueRegistry(values: Map<String, String>) : VariableResolverRegistry {
+        override val resolvers: Map<String, (List<Any?>) -> Any> =
+            values.mapValues { (_, v) -> { _: List<Any?> -> v.escapeXml() } }
     }
 
     fun processVariables(inputBytes: ByteArray, dataProvider: ExcelDataProvider): ByteArray {
@@ -43,12 +65,14 @@ internal class XmlVariableProcessor {
                 return inputBytes
             }
 
+        val processor = VariableProcessor(listOf(XmlValueRegistry(variableValues)))
+
         return OPCPackage.open(ByteArrayInputStream(inputBytes)).use { pkg ->
             val modifiedParts = pkg.parts
                 .filter { it.partName.name.endsWith(".xml") && !shouldExclude(it.partName.name) }
                 .mapNotNull { part ->
                     val originalXml = part.inputStream.bufferedReader().readText()
-                    replaceVariables(originalXml, variableValues)
+                    processor.process(originalXml, OPTIONS)
                         .takeIf { it != originalXml }
                         ?.also { processedXml ->
                             part.outputStream.use { it.write(processedXml.toByteArray(Charsets.UTF_8)) }
@@ -69,9 +93,4 @@ internal class XmlVariableProcessor {
 
     private fun shouldExclude(partName: String) =
         EXCLUDE_PATTERNS.any { it in partName }
-
-    private fun replaceVariables(xml: String, values: Map<String, String>) =
-        VARIABLE_PATTERN.replace(xml) { match ->
-            values[match.groupValues[1]]?.escapeXml() ?: match.value
-        }
 }
