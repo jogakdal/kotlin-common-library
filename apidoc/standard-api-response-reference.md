@@ -213,6 +213,7 @@ typealias DefaultResponse = StandardResponse<BasePayload>
 
 ### 7.2 SkipCaseKeys 처리 예시
 `@NoCaseTransform`이 붙은 property `user_id`에 `@JsonAlias("user-id")`가 추가된 경우:
+
 | 원본 요소 | 추가되는 skipCaseKeys 항목 |
 |-----------|---------------------------|
 | 기본명 `user_id` | `user_id`, `user-id` (underscore ↔ hyphen variant) |
@@ -320,6 +321,7 @@ Edge Case 처리:
 | expandable 판단 | `safeStart + safeHowMany < totalItems` | 마지막 줄 |
 
 Edge Case 표:
+
 | 케이스 | 입력(start, howMany, total) | 결과 start | 결과 end | expandable |
 |--------|---------------------------|------------|----------|------------|
 | 정상 | (10, 5, 100) | 10 | 14 | true |

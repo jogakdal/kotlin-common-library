@@ -1,5 +1,6 @@
 package com.hunet.common.lib.repository
 
+import com.hunet.common.data.jpa.extension.getAnnotation
 import jakarta.persistence.EntityManager
 import jakarta.persistence.Table
 import jakarta.persistence.TemporalType
@@ -49,7 +50,11 @@ class PersistJpaRepositoryImpl<T : Any, ID: Serializable>(
 
     protected val entityType by lazy { entityInformation.javaType }
     protected val entityName by lazy { entityManager.metamodel.entity(entityType).name }
-    protected val tableName by lazy { entityInformation.javaType.getAnnotation(Table::class.java).name }
+    protected val tableName by lazy {
+        entityInformation.getAnnotation<Table>()?.name ?: throw IllegalStateException(
+            "Entity ${entityInformation.javaType.simpleName} must declare @Table(name=...)"
+        )
+    }
 
     @Transactional
     override fun persist(entity: T) = entityManager.persist(entity)

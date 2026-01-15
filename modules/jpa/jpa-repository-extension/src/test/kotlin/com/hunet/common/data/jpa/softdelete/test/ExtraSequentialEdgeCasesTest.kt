@@ -2,7 +2,8 @@ package com.hunet.common.data.jpa.softdelete.test
 
 import com.hunet.common.data.jpa.sequence.GenerateSequentialCode
 import com.hunet.common.data.jpa.sequence.SequenceGenerator
-import com.hunet.common.data.jpa.softdelete.*
+import com.hunet.common.data.jpa.softdelete.SoftDeleteRepositoryRegistry
+import com.hunet.common.data.jpa.softdelete.SoftDeleteJpaRepository
 import com.hunet.common.data.jpa.softdelete.annotation.DeleteMark
 import com.hunet.common.data.jpa.softdelete.internal.DeleteMarkValue
 import com.hunet.common.lib.SpringContextHolder
@@ -16,6 +17,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Primary
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.test.context.TestPropertySource
 
@@ -44,13 +46,17 @@ class EdgeSeqSequenceGeneratorConfig {
     }
 }
 
+@Configuration
+@EnableJpaRepositories(repositoryBaseClass = com.hunet.common.data.jpa.softdelete.SoftDeleteJpaRepositoryImpl::class)
+class TestJpaConfig
+
 @DataJpaTest
 @EntityScan(basePackageClasses = [EdgeSeqEntity::class])
 @TestPropertySource(properties = [
     "logging.level.com.hunet.common.data.jpa.softdelete=INFO"
 ])
 @Import(
-    SoftDeleteJpaRepositoryAutoConfiguration::class,
+    TestJpaConfig::class,
     SoftDeleteRepositoryRegistry::class,
     EdgeSeqSequenceGeneratorConfig::class,
     SpringContextHolder::class,
@@ -82,11 +88,9 @@ class ExtraSequentialEdgeCasesTest {
     @Transactional
     fun mergeDoesNotRegenerateIfCodeAlreadySet() {
         val e1 = repo.upsert(EdgeSeqEntity())
-        val loaded = repo.findOneById(e1.id!!).orElseThrow()
+        val loaded = repo.findOneById(requireNotNull(e1.id)).orElseThrow()
         val prior = loaded.code
-        // code 유지한 채 다른 필드 변화 (없지만 시뮬레이션)
-        val merged = repo.upsert(loaded) // 기존 코드가 blank 아님 -> regenerate 금지
+        val merged = repo.upsert(loaded)
         assertEquals(prior, merged.code)
     }
 }
-
