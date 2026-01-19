@@ -46,63 +46,75 @@ internal class DataValidationProcessor {
      */
     fun backup(template: InputStream): WorkbookValidations =
         XSSFWorkbook(template).use { workbook ->
-            WorkbookValidations(
-                workbook.sheetIterator().asSequence()
-                    .mapIndexedNotNull { index, sheet ->
-                        (sheet as? XSSFSheet)?.let { xssfSheet ->
-                            val validations = xssfSheet.dataValidations.orEmpty().mapNotNull { dv ->
-                                val regions = dv.regions?.cellRangeAddresses?.toList().orEmpty()
-                                regions.takeIf { it.isNotEmpty() }?.let {
-                                    val constraint = dv.validationConstraint
-                                    ValidationInfo(
-                                        ranges = regions.map { r ->
-                                            CellRangeAddress(r.firstRow, r.lastRow, r.firstColumn, r.lastColumn)
-                                        },
-                                        validationType = constraint.validationType,
-                                        operatorType = constraint.operator,
-                                        formula1 = constraint.formula1,
-                                        formula2 = constraint.formula2,
-                                        explicitListValues = constraint.explicitListValues?.toList(),
-                                        showErrorBox = dv.showErrorBox,
-                                        showPromptBox = dv.showPromptBox,
-                                        errorTitle = dv.errorBoxTitle,
-                                        errorText = dv.errorBoxText,
-                                        promptTitle = dv.promptBoxTitle,
-                                        promptText = dv.promptBoxText,
-                                        emptyCellAllowed = dv.emptyCellAllowed
-                                    )
-                                }
-                            }
-                            index to SheetValidations(validations, xssfSheet.lastRowWithData)
-                        }
-                    }.toMap()
-            )
+            backupFromWorkbook(workbook)
         }
+
+    /**
+     * 워크북에서 직접 데이터 유효성 검사 정보를 백업합니다.
+     */
+    fun backupFromWorkbook(workbook: XSSFWorkbook): WorkbookValidations = WorkbookValidations(
+        workbook.sheetIterator().asSequence()
+            .mapIndexedNotNull { index, sheet ->
+                (sheet as? XSSFSheet)?.let { xssfSheet ->
+                    val validations = xssfSheet.dataValidations.orEmpty().mapNotNull { dv ->
+                        val regions = dv.regions?.cellRangeAddresses?.toList().orEmpty()
+                        regions.takeIf { it.isNotEmpty() }?.let {
+                            val constraint = dv.validationConstraint
+                            ValidationInfo(
+                                ranges = regions.map { r ->
+                                    CellRangeAddress(r.firstRow, r.lastRow, r.firstColumn, r.lastColumn)
+                                },
+                                validationType = constraint.validationType,
+                                operatorType = constraint.operator,
+                                formula1 = constraint.formula1,
+                                formula2 = constraint.formula2,
+                                explicitListValues = constraint.explicitListValues?.toList(),
+                                showErrorBox = dv.showErrorBox,
+                                showPromptBox = dv.showPromptBox,
+                                errorTitle = dv.errorBoxTitle,
+                                errorText = dv.errorBoxText,
+                                promptTitle = dv.promptBoxTitle,
+                                promptText = dv.promptBoxText,
+                                emptyCellAllowed = dv.emptyCellAllowed
+                            )
+                        }
+                    }
+                    index to SheetValidations(validations, xssfSheet.lastRowWithData)
+                }
+            }.toMap()
+    )
 
     /**
      * 백업된 데이터 유효성 검사를 확장하여 새로 생성된 행에도 적용합니다.
      */
     fun expand(outputBytes: ByteArray, backup: WorkbookValidations): ByteArray =
         XSSFWorkbook(ByteArrayInputStream(outputBytes)).use { workbook ->
-            backup.sheetValidations
-                .filter { (index, _) -> index < workbook.numberOfSheets }
-                .forEach { (index, sheetValidations) ->
-                    val sheet = workbook.getSheetAt(index) ?: return@forEach
-                    val currentLastDataRow = sheet.lastRowWithData
-                    val helper = sheet.dataValidationHelper
-
-                    sheetValidations.validations.forEach { validationInfo ->
-                        val expandedRanges = validationInfo.ranges.map { range ->
-                            expandRangeIfNeeded(range, sheetValidations.lastDataRow, currentLastDataRow)
-                        }
-
-                        createValidation(helper, validationInfo, expandedRanges)?.let { validation ->
-                            sheet.addValidationData(validation)
-                        }
-                    }
-                }
+            expandInPlace(workbook, backup)
             workbook.toByteArray()
         }
+
+    /**
+     * 백업된 데이터 유효성 검사를 워크북에 직접 확장합니다.
+     */
+    fun expandInPlace(workbook: XSSFWorkbook, backup: WorkbookValidations) {
+        backup.sheetValidations
+            .filter { (index, _) -> index < workbook.numberOfSheets }
+            .forEach { (index, sheetValidations) ->
+                val sheet = workbook.getSheetAt(index) ?: return@forEach
+                val currentLastDataRow = sheet.lastRowWithData
+                val helper = sheet.dataValidationHelper
+
+                sheetValidations.validations.forEach { validationInfo ->
+                    val expandedRanges = validationInfo.ranges.map { range ->
+                        expandRangeIfNeeded(range, sheetValidations.lastDataRow, currentLastDataRow)
+                    }
+
+                    createValidation(helper, validationInfo, expandedRanges)?.let { validation ->
+                        sheet.addValidationData(validation)
+                    }
+                }
+            }
+    }
 
     // ========== 내부 유틸리티 ==========
 

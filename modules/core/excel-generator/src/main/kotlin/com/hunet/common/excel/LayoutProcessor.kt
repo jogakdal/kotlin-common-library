@@ -22,33 +22,45 @@ internal class LayoutProcessor {
      * 템플릿에서 레이아웃 정보를 백업합니다.
      */
     fun backup(template: InputStream) = XSSFWorkbook(template).use { workbook ->
-        WorkbookLayout(
-            (0 until workbook.numberOfSheets).associateWith { index ->
-                workbook.getSheetAt(index).let { sheet ->
-                    SheetLayout(
-                        columnWidths = (0..sheet.lastColumnWithData + 10)
-                            .associateWith { sheet.getColumnWidth(it) },
-                        rowHeights = (0..sheet.lastRowWithData + 10)
-                            .associateWith { sheet.getRow(it)?.height ?: sheet.defaultRowHeight }
-                    )
-                }
-            }
-        )
+        backupFromWorkbook(workbook)
     }
+
+    /**
+     * 워크북에서 직접 레이아웃 정보를 백업합니다.
+     */
+    fun backupFromWorkbook(workbook: XSSFWorkbook) = WorkbookLayout(
+        (0 until workbook.numberOfSheets).associateWith { index ->
+            workbook.getSheetAt(index).let { sheet ->
+                SheetLayout(
+                    columnWidths = (0..sheet.lastColumnWithData + 10)
+                        .associateWith { sheet.getColumnWidth(it) },
+                    rowHeights = (0..sheet.lastRowWithData + 10)
+                        .associateWith { sheet.getRow(it)?.height ?: sheet.defaultRowHeight }
+                )
+            }
+        }
+    )
 
     /**
      * 백업된 레이아웃을 워크북에 복원합니다.
      */
     fun restore(outputBytes: ByteArray, layout: WorkbookLayout) =
         XSSFWorkbook(ByteArrayInputStream(outputBytes)).use { workbook ->
-            layout.sheetLayouts
-                .filterKeys { it < workbook.numberOfSheets }
-                .forEach { (index, sheetLayout) ->
-                    workbook.getSheetAt(index).apply {
-                        sheetLayout.columnWidths.forEach { (col, width) -> setColumnWidth(col, width) }
-                        sheetLayout.rowHeights.forEach { (row, height) -> getRow(row)?.height = height }
-                    }
-                }
+            restoreInPlace(workbook, layout)
             workbook.toByteArray()
         }
+
+    /**
+     * 백업된 레이아웃을 워크북에 직접 복원합니다.
+     */
+    fun restoreInPlace(workbook: XSSFWorkbook, layout: WorkbookLayout) {
+        layout.sheetLayouts
+            .filterKeys { it < workbook.numberOfSheets }
+            .forEach { (index, sheetLayout) ->
+                workbook.getSheetAt(index).apply {
+                    sheetLayout.columnWidths.forEach { (col, width) -> setColumnWidth(col, width) }
+                    sheetLayout.rowHeights.forEach { (row, height) -> getRow(row)?.height = height }
+                }
+            }
+    }
 }

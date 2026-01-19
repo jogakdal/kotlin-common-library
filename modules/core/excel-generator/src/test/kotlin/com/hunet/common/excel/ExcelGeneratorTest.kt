@@ -174,6 +174,10 @@ class ExcelGeneratorTest {
         javaClass.getResourceAsStream("/templates/template.xlsx")
             ?: throw IllegalStateException("템플릿을 찾을 수 없습니다: /templates/template.xlsx")
 
+    private fun loadLargeDataTemplate() =
+        javaClass.getResourceAsStream("/templates/large_data_template.xlsx")
+            ?: throw IllegalStateException("템플릿을 찾을 수 없습니다: /templates/large_data_template.xlsx")
+
     private fun loadImage(fileName: String): ByteArray? =
         javaClass.getResourceAsStream("/$fileName")?.readBytes()
 
@@ -359,9 +363,9 @@ class ExcelGeneratorTest {
     fun `large data should report correct rowsProcessed`() {
         val latch = CountDownLatch(1)
         var result: GenerationResult? = null
-        val largeCount = 100
+        val largeCount = 1000
 
-        val template = loadTemplate()
+        val template = loadLargeDataTemplate()
         val provider = simpleDataProvider {
             value("title", "대용량 테스트")
             value("date", "2024-01-07")
@@ -390,9 +394,32 @@ class ExcelGeneratorTest {
             }
         )
 
-        assertTrue(latch.await(30, TimeUnit.SECONDS))
+        assertTrue(latch.await(60, TimeUnit.SECONDS))
         assertNotNull(result)
         assertEquals(largeCount, result!!.rowsProcessed)
+    }
+
+    @Test
+    fun `stress test with 5000 rows should complete successfully`() {
+        val rowCount = 5000
+
+        val template = loadLargeDataTemplate()
+        val provider = simpleDataProvider {
+            value("title", "스트레스 테스트 $rowCount 행")
+            value("date", "2024-01-07")
+            items("employees") {
+                (1..rowCount).map { i ->
+                    Employee("직원$i", "직급${i % 10}", 3000 + i)
+                }.iterator()
+            }
+        }
+
+        val startTime = System.currentTimeMillis()
+        val bytes = generator.generate(template, provider)
+        val elapsed = System.currentTimeMillis() - startTime
+
+        assertTrue(bytes.isNotEmpty())
+        println("스트레스 테스트 완료: $rowCount 행, ${elapsed}ms, ${bytes.size / 1024}KB")
     }
 
     // ==================== ChartProcessor 변수 치환 테스트 ====================

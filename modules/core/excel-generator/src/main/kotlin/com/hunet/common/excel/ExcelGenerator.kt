@@ -318,42 +318,68 @@ class ExcelGenerator @JvmOverloads constructor(
         val (context, rowsProcessed) = createContext(dataProvider)
         val templateBytes = templatePreprocessor.preprocess(template).readBytes()
 
-        // 전처리된 템플릿으로 워크북 처리
-        val processedBytes = XSSFWorkbook(ByteArrayInputStream(templateBytes)).use { workbook ->
+        val formulaInfos = mutableListOf<FormulaInfo>()
+        var layout: LayoutProcessor.WorkbookLayout? = null
+        var dataValidations: DataValidationProcessor.WorkbookValidations? = null
+
+        val preprocessedBytes = XSSFWorkbook(ByteArrayInputStream(templateBytes)).use { workbook ->
+            // 시트별 전처리 (이미지 플레이스홀더, jx:area 코멘트 등)
             workbook.sheets.forEach { sheet ->
                 preprocessSheet(workbook, sheet, dataProvider)
             }
+
+            // 수식 내 ${변수} 추출 (JXLS가 처리하지 않도록)
+            extractFormulaVariablesInPlace(workbook, formulaInfos)
+
+            // 레이아웃 백업 (조건부)
+            if (config.preserveTemplateLayout) {
+                layout = layoutProcessor.backupFromWorkbook(workbook)
+            }
+
+            // 데이터 유효성 검사 백업
+            dataValidations = dataValidationProcessor.backupFromWorkbook(workbook)
+
             workbook.toByteArray()
         }
 
-        // 수식 내 ${변수}를 포함하는 셀 추출 (JXLS가 처리하지 않도록)
-        val (formulaExtractedBytes, formulaInfos) = extractFormulaVariables(processedBytes)
+        // 피벗 테이블 정보 추출 및 삭제 (ZIP 레벨 작업)
+        val (pivotTableInfos, bytesWithoutPivot) = pivotTableProcessor.extractAndRemove(preprocessedBytes)
 
-        // 레이아웃 및 데이터 유효성 검사 백업
-        val layout = if (config.preserveTemplateLayout) {
-            layoutProcessor.backup(ByteArrayInputStream(formulaExtractedBytes))
-        } else null
-        val dataValidations = dataValidationProcessor.backup(ByteArrayInputStream(formulaExtractedBytes))
-
-        // 피벗 테이블 정보 추출 및 삭제 (JXLS 처리 전)
-        val (pivotTableInfos, bytesWithoutPivot) = pivotTableProcessor.extractAndRemove(formulaExtractedBytes)
-
-        // JXLS 처리 (피벗 테이블 없이)
+        // ========== JXLS 처리 ==========
         val jxlsOutput = ByteArrayOutputStream().also { tempOutput ->
             ByteArrayInputStream(bytesWithoutPivot).use { input ->
                 processJxlsWithFormulaErrorDetection(input, tempOutput, context)
             }
         }
 
-        // 저장해둔 수식 복원 (${변수} 패턴 유지)
-        val formulaRestoredBytes = restoreFormulaVariables(jxlsOutput.toByteArray(), formulaInfos)
+        val postProcessedBytes = XSSFWorkbook(ByteArrayInputStream(jxlsOutput.toByteArray())).use { workbook ->
+            // 수식 복원
+            if (formulaInfos.isNotEmpty()) {
+                restoreFormulaVariablesInPlace(workbook, formulaInfos)
+            }
 
-        // 후처리 (숫자 서식 적용, 레이아웃 복원, 데이터 유효성 검사 확장, 피벗 테이블 재생성, 변수 치환, 메타데이터 적용)
-        val resultBytes = applyNumberFormatToNumericCells(formulaRestoredBytes)
-            .let { bytes -> layout?.let { layoutProcessor.restore(bytes, it) } ?: bytes }
-            .let { bytes -> dataValidationProcessor.expand(bytes, dataValidations) }
-            .let { bytes -> pivotTableProcessor.recreate(bytes, pivotTableInfos) }
+            // 숫자 서식 적용
+            applyNumberFormatToNumericCellsInPlace(workbook)
+
+            // 레이아웃 복원 (조건부)
+            layout?.let { layoutProcessor.restoreInPlace(workbook, it) }
+
+            // 데이터 유효성 검사 확장
+            dataValidations?.let { dataValidationProcessor.expandInPlace(workbook, it) }
+
+            workbook.toByteArray()
+        }
+
+        // ========== ZIP 레벨 후처리 ==========
+        val resultBytes = postProcessedBytes
+            // 피벗 테이블 재생성 (조건부)
+            .let { bytes ->
+                if (pivotTableInfos.isNotEmpty()) pivotTableProcessor.recreate(bytes, pivotTableInfos)
+                else bytes
+            }
+            // XML 변수 치환
             .let { bytes -> xmlVariableProcessor.processVariables(bytes, dataProvider) }
+            // 메타데이터 적용 (조건부)
             .let { bytes -> applyMetadata(bytes, dataProvider.getMetadata()) }
 
         output.write(resultBytes)
@@ -405,30 +431,34 @@ class ExcelGenerator @JvmOverloads constructor(
     private fun extractFormulaVariables(bytes: ByteArray): Pair<ByteArray, List<FormulaInfo>> {
         val formulas = mutableListOf<FormulaInfo>()
         val newBytes = transformWorkbook(bytes) { workbook ->
-            workbook.forEach { sheet ->
-                sheet.forEach { row ->
-                    row.forEach { cell ->
-                        if (cell.cellType == CellType.FORMULA) {
-                            val formula = cell.cellFormula
-                            if ("\${" in formula) {
-                                formulas.add(FormulaInfo(
-                                    sheetName = sheet.sheetName,
-                                    rowIndex = cell.rowIndex,
-                                    columnIndex = cell.columnIndex,
-                                    formula = formula,
-                                    style = cell.cellStyle.index
-                                ))
-                                // 수식 셀을 빈 셀로 변환 (JXLS가 처리하지 않도록)
-                                val style = cell.cellStyle
-                                cell.setBlank()
-                                cell.cellStyle = style
-                            }
+            extractFormulaVariablesInPlace(workbook, formulas)
+        }
+        return newBytes to formulas
+    }
+
+    private fun extractFormulaVariablesInPlace(workbook: XSSFWorkbook, formulas: MutableList<FormulaInfo>) {
+        workbook.forEach { sheet ->
+            sheet.forEach { row ->
+                row.forEach { cell ->
+                    if (cell.cellType == CellType.FORMULA) {
+                        val formula = cell.cellFormula
+                        if ("\${" in formula) {
+                            formulas.add(FormulaInfo(
+                                sheetName = sheet.sheetName,
+                                rowIndex = cell.rowIndex,
+                                columnIndex = cell.columnIndex,
+                                formula = formula,
+                                style = cell.cellStyle.index
+                            ))
+                            // 수식 셀을 빈 셀로 변환 (JXLS가 처리하지 않도록)
+                            val style = cell.cellStyle
+                            cell.setBlank()
+                            cell.cellStyle = style
                         }
                     }
                 }
             }
         }
-        return newBytes to formulas
     }
 
     /**
@@ -439,14 +469,18 @@ class ExcelGenerator @JvmOverloads constructor(
         if (formulas.isEmpty()) return bytes
 
         return transformWorkbook(bytes) { workbook ->
-            formulas.forEach { info ->
-                val sheet = workbook.getSheet(info.sheetName) ?: return@forEach
-                val row = sheet.getRow(info.rowIndex) ?: sheet.createRow(info.rowIndex)
-                val cell = row.getCell(info.columnIndex) ?: row.createCell(info.columnIndex)
-                cell.cellFormula = info.formula
-                if (info.style >= 0) {
-                    cell.cellStyle = workbook.getCellStyleAt(info.style.toInt())
-                }
+            restoreFormulaVariablesInPlace(workbook, formulas)
+        }
+    }
+
+    private fun restoreFormulaVariablesInPlace(workbook: XSSFWorkbook, formulas: List<FormulaInfo>) {
+        formulas.forEach { info ->
+            val sheet = workbook.getSheet(info.sheetName) ?: return@forEach
+            val row = sheet.getRow(info.rowIndex) ?: sheet.createRow(info.rowIndex)
+            val cell = row.getCell(info.columnIndex) ?: row.createCell(info.columnIndex)
+            cell.cellFormula = info.formula
+            if (info.style >= 0) {
+                cell.cellStyle = workbook.getCellStyleAt(info.style.toInt())
             }
         }
     }
@@ -462,24 +496,28 @@ class ExcelGenerator @JvmOverloads constructor(
      */
     private fun applyNumberFormatToNumericCells(bytes: ByteArray): ByteArray =
         transformWorkbook(bytes) { workbook ->
-            workbook.forEach { sheet ->
-                sheet.forEach { row ->
-                    row.forEach { cell ->
-                        if (cell.cellType == CellType.NUMERIC) {
-                            val currentStyle = cell.cellStyle
-                            // 표시 형식이 "일반"(0)인 경우에만 숫자 서식 적용
-                            if (currentStyle.dataFormat.toInt() == 0) {
-                                val value = cell.numericCellValue
-                                val isInteger = value == value.toLong().toDouble()
-                                cell.cellStyle = getOrCreateNumberStyle(
-                                    workbook, currentStyle.index, isInteger
-                                )
-                            }
+            applyNumberFormatToNumericCellsInPlace(workbook)
+        }
+
+    private fun applyNumberFormatToNumericCellsInPlace(workbook: XSSFWorkbook) {
+        workbook.forEach { sheet ->
+            sheet.forEach { row ->
+                row.forEach { cell ->
+                    if (cell.cellType == CellType.NUMERIC) {
+                        val currentStyle = cell.cellStyle
+                        // 표시 형식이 "일반"(0)인 경우에만 숫자 서식 적용
+                        if (currentStyle.dataFormat.toInt() == 0) {
+                            val value = cell.numericCellValue
+                            val isInteger = value == value.toLong().toDouble()
+                            cell.cellStyle = getOrCreateNumberStyle(
+                                workbook, currentStyle.index, isInteger
+                            )
                         }
                     }
                 }
             }
         }
+    }
 
     /**
      * 숫자 서식이 적용된 스타일을 생성하거나 캐시에서 반환합니다.
