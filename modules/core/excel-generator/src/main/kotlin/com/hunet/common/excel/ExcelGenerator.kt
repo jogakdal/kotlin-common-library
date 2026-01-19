@@ -530,7 +530,7 @@ class ExcelGenerator @JvmOverloads constructor(
             logger.addAppender(appender)
 
             JxlsHelper.getInstance()
-                .setUseFastFormulaProcessor(config.formulaProcessingEnabled)
+                .setUseFastFormulaProcessor(true)
                 .processTemplate(input, output, context)
 
             appender.getCapturedError()?.let { error ->

@@ -45,7 +45,6 @@ class ExcelGeneratorAutoConfigurationTest {
             .withPropertyValues(
                 "hunet.excel.streaming-mode=enabled",
                 "hunet.excel.streaming-row-threshold=500",
-                "hunet.excel.formula-processing=false",
                 "hunet.excel.timestamp-format=yyyy-MM-dd",
                 "hunet.excel.progress-report-interval=200"
             )
@@ -54,7 +53,6 @@ class ExcelGeneratorAutoConfigurationTest {
 
                 assertEquals(StreamingMode.ENABLED, config.streamingMode)
                 assertEquals(500, config.streamingRowThreshold)
-                assertEquals(false, config.formulaProcessingEnabled)
                 assertEquals("yyyy-MM-dd", config.timestampFormat)
                 assertEquals(200, config.progressReportInterval)
 

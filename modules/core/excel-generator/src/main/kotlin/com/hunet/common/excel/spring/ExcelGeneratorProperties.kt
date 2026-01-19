@@ -15,7 +15,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *   excel:
  *     streaming-mode: auto            # auto, enabled, disabled
  *     streaming-row-threshold: 1000   # AUTO 모드에서 SXSSF 전환 기준 행 수
- *     formula-processing: true        # 수식 자동 계산
  *     file-naming-mode: timestamp     # none, timestamp
  *     timestamp-format: yyyyMMdd_HHmmss
  *     file-conflict-policy: sequence  # error, sequence
@@ -39,11 +38,6 @@ data class ExcelGeneratorProperties(
      * AUTO 모드에서 SXSSF로 전환되는 행 수 기준.
      */
     var streamingRowThreshold: Int = 1000,
-
-    /**
-     * 수식 자동 계산 활성화 여부.
-     */
-    var formulaProcessing: Boolean = true,
 
     /**
      * 파일명 생성 모드.
@@ -90,7 +84,6 @@ data class ExcelGeneratorProperties(
     fun toConfig(): ExcelGeneratorConfig = ExcelGeneratorConfig(
         streamingMode = streamingMode.toStreamingMode(),
         streamingRowThreshold = streamingRowThreshold,
-        formulaProcessingEnabled = formulaProcessing,
         fileNamingMode = fileNamingMode.toFileNamingMode(),
         timestampFormat = timestampFormat,
         fileConflictPolicy = fileConflictPolicy.toFileConflictPolicy(),

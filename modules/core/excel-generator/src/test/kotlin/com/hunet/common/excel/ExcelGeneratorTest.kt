@@ -84,7 +84,6 @@ class ExcelGeneratorTest {
 
         assertEquals(StreamingMode.AUTO, config.streamingMode)
         assertEquals(1000, config.streamingRowThreshold)
-        assertEquals(true, config.formulaProcessingEnabled)
         assertEquals("yyyyMMdd_HHmmss", config.timestampFormat)
     }
 

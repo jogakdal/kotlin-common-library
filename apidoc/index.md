@@ -24,6 +24,18 @@
 - [User Guide](./variable-processor.md)
 - [Examples](./variable-processor-examples.md)
 
+## Excel Generator (템플릿 기반 Excel 생성기)
+- [User Guide](./excel-generator/user-guide.md)
+- Reference
+  - [Template Syntax](./excel-generator/reference/template-syntax.md)
+  - [API Reference](./excel-generator/reference/api-reference.md)
+  - [Configuration](./excel-generator/reference/configuration.md)
+- Examples
+  - [Basic Examples](./excel-generator/examples/basic-examples.md)
+  - [Advanced Examples](./excel-generator/examples/advanced-examples.md)
+  - [Spring Boot Examples](./excel-generator/examples/spring-boot-examples.md)
+- [Developer Guide](./excel-generator/developer-guide.md)
+
 ## 기타
 - 모듈별 추가 README / 샘플 코드는 각 모듈 디렉터리 참조
 

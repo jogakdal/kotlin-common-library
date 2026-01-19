@@ -5,7 +5,6 @@ package com.hunet.common.excel
  *
  * @property streamingMode 스트리밍 모드 (기본: AUTO)
  * @property streamingRowThreshold AUTO 모드에서 SXSSF로 전환되는 행 수 기준 (기본: 1000)
- * @property formulaProcessingEnabled 수식 자동 계산 활성화 여부 (기본: true)
  * @property fileNamingMode 파일명 생성 모드 (기본: TIMESTAMP)
  * @property timestampFormat 파일명에 추가되는 타임스탬프 형식 (기본: yyyyMMdd_HHmmss)
  * @property fileConflictPolicy 파일명 충돌 시 처리 정책 (기본: SEQUENCE)
@@ -17,7 +16,6 @@ package com.hunet.common.excel
 data class ExcelGeneratorConfig(
     val streamingMode: StreamingMode = StreamingMode.AUTO,
     val streamingRowThreshold: Int = 1000,
-    val formulaProcessingEnabled: Boolean = true,
     val fileNamingMode: FileNamingMode = FileNamingMode.TIMESTAMP,
     val timestampFormat: String = "yyyyMMdd_HHmmss",
     val fileConflictPolicy: FileConflictPolicy = FileConflictPolicy.SEQUENCE,
@@ -63,7 +61,6 @@ data class ExcelGeneratorConfig(
     class Builder {
         private var streamingMode: StreamingMode = StreamingMode.AUTO
         private var streamingRowThreshold: Int = 1000
-        private var formulaProcessingEnabled: Boolean = true
         private var fileNamingMode: FileNamingMode = FileNamingMode.TIMESTAMP
         private var timestampFormat: String = "yyyyMMdd_HHmmss"
         private var fileConflictPolicy: FileConflictPolicy = FileConflictPolicy.SEQUENCE
@@ -74,7 +71,6 @@ data class ExcelGeneratorConfig(
 
         fun streamingMode(mode: StreamingMode) = apply { this.streamingMode = mode }
         fun streamingRowThreshold(threshold: Int) = apply { this.streamingRowThreshold = threshold }
-        fun formulaProcessingEnabled(enabled: Boolean) = apply { this.formulaProcessingEnabled = enabled }
         fun fileNamingMode(mode: FileNamingMode) = apply { this.fileNamingMode = mode }
         fun timestampFormat(format: String) = apply { this.timestampFormat = format }
         fun fileConflictPolicy(policy: FileConflictPolicy) = apply { this.fileConflictPolicy = policy }
@@ -86,7 +82,6 @@ data class ExcelGeneratorConfig(
         fun build() = ExcelGeneratorConfig(
             streamingMode = streamingMode,
             streamingRowThreshold = streamingRowThreshold,
-            formulaProcessingEnabled = formulaProcessingEnabled,
             fileNamingMode = fileNamingMode,
             timestampFormat = timestampFormat,
             fileConflictPolicy = fileConflictPolicy,
