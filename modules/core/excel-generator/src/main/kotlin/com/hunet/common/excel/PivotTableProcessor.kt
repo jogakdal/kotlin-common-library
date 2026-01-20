@@ -44,7 +44,17 @@ internal class PivotTableProcessor(
         val pivotCacheDefXml: String,
         val pivotCacheRecordsXml: String?,
         val originalStyles: PivotTableStyles? = null,
-        val originalFormatsXml: String? = null
+        val originalFormatsXml: String? = null,
+        val pivotTableStyleInfo: PivotTableStyleInfo? = null
+    )
+
+    data class PivotTableStyleInfo(
+        val styleName: String?,
+        val showRowHeaders: Boolean,
+        val showColHeaders: Boolean,
+        val showRowStripes: Boolean,
+        val showColStripes: Boolean,
+        val showLastColumn: Boolean
     )
 
     data class PivotTableStyles(
@@ -99,18 +109,27 @@ internal class PivotTableProcessor(
 
     fun extractAndRemove(inputBytes: ByteArray): Pair<List<PivotTableInfo>, ByteArray> {
         val stylesMap = mutableMapOf<String, PivotTableStyles>()
+        val styleInfoMap = mutableMapOf<String, PivotTableStyleInfo>()
+        val pivotTableLocations = mutableListOf<Pair<String, CellRangeAddress>>()
 
         val hasPivotTable = inputBytes.useWorkbook { workbook ->
-            workbook.sheetSequence()
-                .filterIsInstance<XSSFSheet>()
-                .flatMap { it.pivotTables.orEmpty() }
-                .onEach { pivotTable ->
-                    extractOriginalStyles(pivotTable)?.let { styles ->
-                        val name = pivotTable.ctPivotTableDefinition?.name ?: "PivotTable"
-                        stylesMap[name] = styles
-                    }
+            val sheets = workbook.sheetSequence().filterIsInstance<XSSFSheet>().toList()
+
+            sheets.flatMap { sheet ->
+                sheet.pivotTables.orEmpty().map { pivotTable -> sheet to pivotTable }
+            }.onEach { (sheet, pivotTable) ->
+                val name = pivotTable.ctPivotTableDefinition?.name ?: "PivotTable"
+                extractOriginalStyles(pivotTable, sheet)?.let { styles ->
+                    stylesMap[name] = styles
                 }
-                .any()
+                extractPivotTableStyleInfo(pivotTable)?.let { styleInfo ->
+                    styleInfoMap[name] = styleInfo
+                }
+                // 피벗 테이블 위치 저장 (나중에 셀 비우기용)
+                pivotTable.ctPivotTableDefinition?.location?.ref?.let { ref ->
+                    pivotTableLocations.add(sheet.sheetName to CellRangeAddress.valueOf(ref))
+                }
+            }.any()
         }
 
         if (!hasPivotTable) {
@@ -131,10 +150,44 @@ internal class PivotTableProcessor(
 
             pkg.parts
                 .filter { "/pivotTables/pivotTable" in it.partName.name }
-                .mapNotNull { parsePivotTablePart(it, pkg, cacheSourceMap, stylesMap) }
+                .mapNotNull { parsePivotTablePart(it, pkg, cacheSourceMap, stylesMap, styleInfoMap) }
         }
 
-        return pivotTableInfos to removePivotReferencesFromZip(inputBytes)
+        // 피벗 테이블 영역 셀 비우기 (데이터 확장 시 밀려가지 않도록)
+        val bytesWithClearedPivotCells = if (pivotTableLocations.isNotEmpty()) {
+            clearPivotTableCells(inputBytes, pivotTableLocations)
+        } else {
+            inputBytes
+        }
+
+        return pivotTableInfos to removePivotReferencesFromZip(bytesWithClearedPivotCells)
+    }
+
+    /**
+     * 피벗 테이블 영역의 셀을 비웁니다.
+     * 데이터 반복 처리 시 피벗 테이블 영역의 원본 셀이 함께 확장되어
+     * 잘못된 위치에 나타나는 것을 방지합니다.
+     */
+    private fun clearPivotTableCells(
+        inputBytes: ByteArray,
+        locations: List<Pair<String, CellRangeAddress>>
+    ): ByteArray {
+        return inputBytes.useWorkbook { workbook ->
+            locations.forEach { (sheetName, range) ->
+                val sheet = workbook.getSheet(sheetName) ?: return@forEach
+                for (rowNum in range.firstRow..range.lastRow) {
+                    val row = sheet.getRow(rowNum) ?: continue
+                    for (colNum in range.firstColumn..range.lastColumn) {
+                        // 셀 자체를 제거하여 값과 스타일 모두 삭제
+                        // (데이터 확장 시 스타일이 밀려가지 않도록)
+                        row.getCell(colNum)?.let { cell ->
+                            row.removeCell(cell)
+                        }
+                    }
+                }
+            }
+            workbook.toByteArray()
+        }
     }
 
     fun recreate(inputBytes: ByteArray, pivotTableInfos: List<PivotTableInfo>) =
@@ -149,11 +202,25 @@ internal class PivotTableProcessor(
 
     // ========== 스타일 추출 ==========
 
-    private fun extractOriginalStyles(pivotTable: XSSFPivotTable): PivotTableStyles? = runCatching {
-        val location = pivotTable.ctPivotTableDefinition?.location ?: return null
-        val ref = location.ref ?: return null
+    private fun extractPivotTableStyleInfo(pivotTable: XSSFPivotTable): PivotTableStyleInfo? = runCatching {
+        pivotTable.ctPivotTableDefinition?.pivotTableStyleInfo?.let { styleInfo ->
+            // OpenXML 스펙에서 showRowHeaders와 showColHeaders의 기본값은 true
+            // isSet 메서드로 명시적으로 설정되었는지 확인하고, 아니면 기본값 사용
+            PivotTableStyleInfo(
+                styleName = styleInfo.name,
+                showRowHeaders = if (styleInfo.isSetShowRowHeaders()) styleInfo.showRowHeaders else true,
+                showColHeaders = if (styleInfo.isSetShowColHeaders()) styleInfo.showColHeaders else true,
+                showRowStripes = if (styleInfo.isSetShowRowStripes()) styleInfo.showRowStripes else false,
+                showColStripes = if (styleInfo.isSetShowColStripes()) styleInfo.showColStripes else false,
+                showLastColumn = if (styleInfo.isSetShowLastColumn()) styleInfo.showLastColumn else false
+            )
+        }
+    }.getOrNull()
+
+    private fun extractOriginalStyles(pivotTable: XSSFPivotTable, sheet: XSSFSheet): PivotTableStyles? = runCatching {
+        val location = pivotTable.ctPivotTableDefinition?.location ?: return@runCatching null
+        val ref = location.ref ?: return@runCatching null
         val range = CellRangeAddress.valueOf(ref)
-        val sheet = pivotTable.parentSheet
 
         val headerRowNum = range.firstRow
         val dataRowNum = range.firstRow + 1
@@ -166,7 +233,9 @@ internal class PivotTableProcessor(
         val grandTotalStyles = sheet.getRow(grandTotalRowNum).extractStyleInfos(range)
 
         PivotTableStyles(headerStyles, dataRowStyles, grandTotalStyles)
-    }.onFailure { LOG.warn("원본 스타일 추출 실패: ${it.message}") }.getOrNull()
+    }.onFailure {
+        LOG.warn("원본 스타일 추출 실패: ${it.message}")
+    }.getOrNull()
 
     private fun Row?.extractStyleInfos(range: CellRangeAddress): Map<Int, StyleInfo> =
         this?.let {
@@ -209,29 +278,43 @@ internal class PivotTableProcessor(
         part: PackagePart,
         pkg: OPCPackage,
         cacheSourceMap: Map<String, Pair<String, String>>,
-        stylesMap: Map<String, PivotTableStyles>
+        stylesMap: Map<String, PivotTableStyles>,
+        styleInfoMap: Map<String, PivotTableStyleInfo>
     ): PivotTableInfo? {
-        val xml = part.readText()
+        val pivotTableXml = part.readText()
 
-        val pivotTableName = NAME_ATTR_REGEX.find(xml)?.groupValues?.get(1) ?: "PivotTable"
-        val fullLocationRef = LOCATION_REF_REGEX.find(xml)?.groupValues?.get(1) ?: "A1:A1"
+        val pivotTableName = NAME_ATTR_REGEX.find(pivotTableXml)?.groupValues?.get(1) ?: "PivotTable"
+        val fullLocationRef = LOCATION_REF_REGEX.find(pivotTableXml)?.groupValues?.get(1) ?: "A1:A1"
         val location = fullLocationRef.substringBefore(":")
 
-        val rowLabelFields = ROW_FIELDS_REGEX.find(xml)?.groupValues?.get(1)?.let { content ->
+        val rowLabelFields = ROW_FIELDS_REGEX.find(pivotTableXml)?.groupValues?.get(1)?.let { content ->
             FIELD_X_REGEX.findAll(content).map { it.groupValues[1].toInt() }.toList()
         } ?: emptyList()
 
-        val dataFields = DATA_FIELD_REGEX.findAll(xml)
+        val dataFields = DATA_FIELD_REGEX.findAll(pivotTableXml)
             .mapNotNull { parseDataField(it.value) }
             .toList()
 
-        val rowHeaderCaption = ROW_HEADER_CAPTION_REGEX.find(xml)?.groupValues?.get(1)
-        val grandTotalCaption = GRAND_TOTAL_CAPTION_REGEX.find(xml)?.groupValues?.get(1)
-        val originalFormatsXml = FORMATS_REGEX.find(xml)?.value
+        val rowHeaderCaption = ROW_HEADER_CAPTION_REGEX.find(pivotTableXml)?.groupValues?.get(1)
+        val grandTotalCaption = GRAND_TOTAL_CAPTION_REGEX.find(pivotTableXml)?.groupValues?.get(1)
+        val originalFormatsXml = FORMATS_REGEX.find(pivotTableXml)?.value
 
-        val (sourceSheet, sourceRef) = cacheSourceMap.values.firstOrNull() ?: run {
-            LOG.warn("피벗 테이블 '$pivotTableName' 캐시 소스 정보 없음")
-            return null
+        // 피벗 테이블과 연결된 캐시 정보 찾기
+        val cacheDefPath = findLinkedCacheDefinitionPath(pkg, part.partName.name)
+        val (sourceSheet, sourceRef) = cacheDefPath?.let { cacheSourceMap[it] }
+            ?: cacheSourceMap.values.firstOrNull()
+            ?: run {
+                LOG.warn("피벗 테이블 '$pivotTableName' 캐시 소스 정보 없음")
+                return null
+            }
+
+        // 피벗 캐시 XML 저장
+        val pivotCacheDefXml = cacheDefPath?.let { path ->
+            pkg.parts.find { it.partName.name == path }?.readText()
+        } ?: ""
+        val pivotCacheRecordsXml = cacheDefPath?.let { defPath ->
+            val recordsPath = defPath.replace("pivotCacheDefinition", "pivotCacheRecords")
+            pkg.parts.find { it.partName.name == recordsPath }?.readText()
         }
 
         val pivotTableSheetName = findPivotTableSheetName(pkg, part.partName.name) ?: sourceSheet
@@ -247,12 +330,33 @@ internal class PivotTableProcessor(
             pivotTableName = pivotTableName,
             rowHeaderCaption = rowHeaderCaption,
             grandTotalCaption = grandTotalCaption,
-            pivotTableXml = "",
-            pivotCacheDefXml = "",
-            pivotCacheRecordsXml = null,
+            pivotTableXml = pivotTableXml,
+            pivotCacheDefXml = pivotCacheDefXml,
+            pivotCacheRecordsXml = pivotCacheRecordsXml,
             originalStyles = stylesMap[pivotTableName],
-            originalFormatsXml = originalFormatsXml
+            originalFormatsXml = originalFormatsXml,
+            pivotTableStyleInfo = styleInfoMap[pivotTableName]
         )
+    }
+
+    /**
+     * 피벗 테이블과 연결된 캐시 정의 파일 경로를 찾습니다.
+     */
+    private fun findLinkedCacheDefinitionPath(pkg: OPCPackage, pivotTablePartName: String): String? {
+        // 피벗 테이블의 _rels 파일에서 캐시 참조 찾기
+        val relsPath = pivotTablePartName.replace("/pivotTables/", "/pivotTables/_rels/") + ".rels"
+        val relsPart = pkg.parts.find { it.partName.name == relsPath }
+
+        return relsPart?.readText()?.let { relsXml ->
+            PIVOT_CACHE_DEF_TARGET_REGEX.find(relsXml)?.groupValues?.get(1)?.let { target ->
+                // 상대 경로를 절대 경로로 변환
+                if (target.startsWith("..")) {
+                    "/xl" + target.removePrefix("..")
+                } else {
+                    target
+                }
+            }
+        }
     }
 
     private fun parseDataField(xml: String): DataFieldInfo? {
@@ -330,11 +434,37 @@ internal class PivotTableProcessor(
                 pivotTable.ctPivotTableDefinition.rowHeaderCaption = it
             }
 
+            // 피벗 테이블 스타일 적용
+            info.pivotTableStyleInfo?.let { styleInfo ->
+                val pivotDef = pivotTable.ctPivotTableDefinition
+                // 기존 스타일 정보가 있으면 수정, 없으면 생성
+                val existingStyleInfo = pivotDef.pivotTableStyleInfo
+                if (existingStyleInfo != null) {
+                    existingStyleInfo.name = styleInfo.styleName
+                    existingStyleInfo.showRowHeaders = styleInfo.showRowHeaders
+                    existingStyleInfo.showColHeaders = styleInfo.showColHeaders
+                    existingStyleInfo.showRowStripes = styleInfo.showRowStripes
+                    existingStyleInfo.showColStripes = styleInfo.showColStripes
+                    existingStyleInfo.showLastColumn = styleInfo.showLastColumn
+                } else {
+                    pivotDef.addNewPivotTableStyleInfo().apply {
+                        name = styleInfo.styleName
+                        showRowHeaders = styleInfo.showRowHeaders
+                        showColHeaders = styleInfo.showColHeaders
+                        showRowStripes = styleInfo.showRowStripes
+                        showColStripes = styleInfo.showColStripes
+                        showLastColumn = styleInfo.showLastColumn
+                    }
+                }
+            }
+
             fillPivotTableCells(
                 workbook, pivotSheet, sourceSheet, newSourceRange, pivotLocation,
                 info.rowLabelFields, info.dataFields, info.rowHeaderCaption, info.grandTotalCaption,
                 originalStyles?.headerStyles.orEmpty(),
-                originalStyles?.dataRowStyles.orEmpty()
+                originalStyles?.dataRowStyles.orEmpty(),
+                originalStyles?.grandTotalStyles.orEmpty(),
+                info.pivotTableStyleInfo
             )
         }.onFailure {
             throw IllegalStateException("피벗 테이블 재생성 실패: ${info.pivotTableName}", it)
@@ -379,6 +509,11 @@ internal class PivotTableProcessor(
 
     // ========== 셀 채우기 ==========
 
+    /**
+     * 피벗 테이블 셀을 채웁니다.
+     * 헤더와 총합계 행에는 alignment만 적용하여 피벗 테이블 스타일이 작동하도록 합니다.
+     * 데이터 행에는 원본 스타일을 적용합니다.
+     */
     private fun fillPivotTableCells(
         workbook: XSSFWorkbook,
         pivotSheet: XSSFSheet,
@@ -390,7 +525,9 @@ internal class PivotTableProcessor(
         rowHeaderCaption: String?,
         grandTotalCaption: String?,
         headerStyles: Map<Int, StyleInfo>,
-        dataRowStyles: Map<Int, StyleInfo>
+        dataRowStyles: Map<Int, StyleInfo>,
+        grandTotalStyles: Map<Int, StyleInfo>,
+        pivotTableStyleInfo: PivotTableStyleInfo?
     ) {
         if (rowLabelFields.isEmpty() || dataFields.isEmpty()) return
 
@@ -417,9 +554,10 @@ internal class PivotTableProcessor(
         val startCol = pivotLocation.col.toInt()
         val localStyleCache = mutableMapOf<StyleInfo, XSSFCellStyle>()
 
+        // 총합계 행의 축 레이블 셀용 alignment 스타일
         val axisAlignmentStyle = dataRowStyles[0]?.let { workbook.getOrCreateAlignmentOnlyStyle(it) }
 
-        // 헤더 행
+        // 헤더 행 - alignment만 적용 (피벗 테이블 스타일이 색상, 볼드 등 적용)
         pivotSheet.getOrCreateRow(startRow).apply {
             getOrCreateCell(startCol).apply {
                 setCellValue(rowHeaderCaption ?: headers.getOrNull(axisFieldIdx) ?: "Row Labels")
@@ -434,7 +572,7 @@ internal class PivotTableProcessor(
             }
         }
 
-        // 데이터 행들
+        // 데이터 행들 - 원본 스타일 적용
         uniqueValues.forEachIndexed { rowIdx, axisValue ->
             pivotSheet.getOrCreateRow(startRow + 1 + rowIdx).apply {
                 getOrCreateCell(startCol).apply {
@@ -454,7 +592,7 @@ internal class PivotTableProcessor(
             }
         }
 
-        // 총합계 행
+        // 총합계 행 - alignment와 숫자 형식만 적용 (피벗 테이블 스타일이 볼드, 테두리 등 적용)
         pivotSheet.getOrCreateRow(startRow + 1 + uniqueValues.size).apply {
             getOrCreateCell(startCol).apply {
                 setCellValue(grandTotalCaption ?: "전체")
@@ -467,6 +605,85 @@ internal class PivotTableProcessor(
                     cellStyle = workbook.getNumberFormatOnlyStyle(dataField.function)
                 }
             }
+        }
+    }
+
+    /**
+     * 스타일이 의미 있는 커스텀 스타일인지 확인
+     * 기본값만 있는 스타일이면 null 반환
+     */
+    private fun StyleInfo?.takeIfMeaningful(): StyleInfo? {
+        if (this == null) return null
+
+        // 기본값과 다른 속성이 하나라도 있으면 의미 있는 스타일
+        // 검정색(FF000000, 000000)은 Excel 기본 글꼴 색상이므로 커스텀으로 간주하지 않음
+        val isCustomFontColor = fontColorRgb != null &&
+            fontColorRgb != "FF000000" && fontColorRgb != "000000"
+        val hasCustomFont = fontBold || fontItalic || fontUnderline != Font.U_NONE ||
+            fontStrikeout || isCustomFontColor
+        val hasCustomFill = fillForegroundColorRgb != null && fillPatternType != FillPatternType.NO_FILL
+        val hasCustomBorder = borderTop != BorderStyle.NONE || borderBottom != BorderStyle.NONE ||
+            borderLeft != BorderStyle.NONE || borderRight != BorderStyle.NONE
+        val hasCustomFormat = dataFormat.toInt() != 0
+
+        return if (hasCustomFont || hasCustomFill || hasCustomBorder || hasCustomFormat) this else null
+    }
+
+    // ========== 피벗 테이블 스타일 기본값 ==========
+
+    /**
+     * 피벗 테이블 스타일에 따른 기본 헤더 스타일
+     */
+    private fun getDefaultHeaderStyle(styleInfo: PivotTableStyleInfo): StyleInfo? {
+        if (!styleInfo.showColHeaders && !styleInfo.showRowHeaders) return null
+
+        // PivotStyleLight 계열 스타일의 기본 헤더 스타일
+        return when {
+            styleInfo.styleName?.contains("Light") == true -> StyleInfo(
+                fontBold = true,
+                fillForegroundColorRgb = "FFD9E1F2",  // 밝은 파란색
+                fillPatternType = FillPatternType.SOLID_FOREGROUND,
+                borderBottom = BorderStyle.THIN
+            )
+            styleInfo.styleName?.contains("Medium") == true -> StyleInfo(
+                fontBold = true,
+                fillForegroundColorRgb = "FF4472C4",  // 파란색
+                fillPatternType = FillPatternType.SOLID_FOREGROUND,
+                fontColorRgb = "FFFFFFFF"  // 흰색 글자
+            )
+            styleInfo.styleName?.contains("Dark") == true -> StyleInfo(
+                fontBold = true,
+                fillForegroundColorRgb = "FF203864",  // 진한 파란색
+                fillPatternType = FillPatternType.SOLID_FOREGROUND,
+                fontColorRgb = "FFFFFFFF"  // 흰색 글자
+            )
+            else -> StyleInfo(fontBold = true)
+        }
+    }
+
+    /**
+     * 피벗 테이블 스타일에 따른 기본 Grand Total 스타일
+     */
+    private fun getDefaultGrandTotalStyle(styleInfo: PivotTableStyleInfo): StyleInfo? {
+        // PivotStyleLight 계열 스타일의 기본 Grand Total 스타일
+        return when {
+            styleInfo.styleName?.contains("Light") == true -> StyleInfo(
+                fontBold = true,
+                borderTop = BorderStyle.THIN,
+                borderBottom = BorderStyle.DOUBLE
+            )
+            styleInfo.styleName?.contains("Medium") == true -> StyleInfo(
+                fontBold = true,
+                fillForegroundColorRgb = "FFD9E1F2",
+                fillPatternType = FillPatternType.SOLID_FOREGROUND
+            )
+            styleInfo.styleName?.contains("Dark") == true -> StyleInfo(
+                fontBold = true,
+                fillForegroundColorRgb = "FF4472C4",
+                fillPatternType = FillPatternType.SOLID_FOREGROUND,
+                fontColorRgb = "FFFFFFFF"
+            )
+            else -> StyleInfo(fontBold = true)
         }
     }
 
@@ -526,6 +743,9 @@ internal class PivotTableProcessor(
             }
         }
 
+    /**
+     * alignment만 적용하는 스타일 생성 (피벗 테이블 자동 스타일이 나머지 적용)
+     */
     private fun XSSFWorkbook.getOrCreateAlignmentOnlyStyle(styleInfo: StyleInfo) =
         styleCache.getOrPut(this) { mutableMapOf() }
             .getOrPut("alignOnly_${styleInfo.horizontalAlignment}_${styleInfo.verticalAlignment}") {
@@ -535,6 +755,9 @@ internal class PivotTableProcessor(
                 }
             }
 
+    /**
+     * 숫자 형식만 적용하는 스타일 생성 (피벗 테이블 자동 스타일이 나머지 적용)
+     */
     private fun XSSFWorkbook.getNumberFormatOnlyStyle(function: DataConsolidateFunction) =
         styleCache.getOrPut(this) { mutableMapOf() }
             .getOrPut("numFmtOnly_${function.formatIndex}") {
@@ -566,6 +789,9 @@ internal class PivotTableProcessor(
         val infoByName = pivotTableInfos.associateBy { it.pivotTableName }
 
         return OPCPackage.open(ByteArrayInputStream(inputBytes)).use { pkg ->
+            // dxf 스타일 존재 여부 확인 (SXSSF 모드에서는 누락될 수 있음)
+            val hasDxfStyles = hasDxfStyles(pkg)
+
             pkg.getPartsByContentType(PIVOT_TABLE_CONTENT_TYPE).forEach { part ->
                 var xml = part.readText()
                 var modified = false
@@ -606,6 +832,41 @@ internal class PivotTableProcessor(
                     }
                 }
 
+                // 원본 pivotTableStyleInfo 복원 (POI가 생성한 것 대신 원본 사용)
+                if (info.pivotTableXml.isNotEmpty()) {
+                    val originalStyleInfo = PIVOT_TABLE_STYLE_INFO_REGEX.find(info.pivotTableXml)?.value
+                    if (originalStyleInfo != null) {
+                        val currentStyleInfo = PIVOT_TABLE_STYLE_INFO_REGEX.find(xml)?.value
+                        if (currentStyleInfo != null && currentStyleInfo != originalStyleInfo) {
+                            xml = xml.replace(currentStyleInfo, originalStyleInfo)
+                            modified = true
+                            LOG.debug("pivotTableStyleInfo 복원: $originalStyleInfo")
+                        } else if (currentStyleInfo == null) {
+                            // 현재 XML에 pivotTableStyleInfo가 없으면 추가
+                            xml = xml.replace("</pivotTableDefinition>", "$originalStyleInfo</pivotTableDefinition>")
+                            modified = true
+                            LOG.debug("pivotTableStyleInfo 추가: $originalStyleInfo")
+                        }
+                    }
+                }
+
+                // 원본 formats 복원 (있었다면 + dxf 스타일이 있을 때만)
+                // SXSSF 모드에서는 dxf 스타일이 누락될 수 있으므로 확인 필요
+                if (info.originalFormatsXml != null) {
+                    val currentFormats = FORMATS_REGEX.find(xml)?.value
+                    if (currentFormats == null && hasDxfStyles) {
+                        // formats가 없고 dxf 스타일이 있으면 pivotTableStyleInfo 앞에 추가
+                        val insertPoint = PIVOT_TABLE_STYLE_INFO_REGEX.find(xml)?.range?.first
+                        if (insertPoint != null) {
+                            xml = xml.substring(0, insertPoint) + info.originalFormatsXml + xml.substring(insertPoint)
+                            modified = true
+                            LOG.debug("formats 복원 완료")
+                        }
+                    } else if (!hasDxfStyles) {
+                        LOG.debug("dxf 스타일 없음 - formats 복원 스킵 (SXSSF 모드)")
+                    }
+                }
+
                 if (modified) {
                     part.outputStream.use { it.write(xml.toByteArray(Charsets.UTF_8)) }
                 }
@@ -613,6 +874,15 @@ internal class PivotTableProcessor(
 
             ByteArrayOutputStream().also { pkg.save(it) }.toByteArray()
         }
+    }
+
+    /**
+     * styles.xml에 dxf(differential formatting) 스타일이 있는지 확인합니다.
+     * SXSSF 모드에서는 dxf 스타일이 누락될 수 있습니다.
+     */
+    private fun hasDxfStyles(pkg: OPCPackage): Boolean {
+        val stylesPart = pkg.parts.find { it.partName.name == "/xl/styles.xml" }
+        return stylesPart?.readText()?.contains("<dxf") == true
     }
 
     // ========== ZIP 처리 ==========
@@ -1057,5 +1327,10 @@ internal class PivotTableProcessor(
         private val ITEMS_REGEX = Regex("""<items[^>]*>.*?</items>""", RegexOption.DOT_MATCHES_ALL)
         private val DATA_FIELD_SELF_CLOSING_REGEX = Regex("""<dataField([^>]*)/>""")
         private val FIRST_HEADER_ROW_REGEX = Regex("""firstHeaderRow="\d+"""")
+        private val PIVOT_CACHE_DEF_TARGET_REGEX = Regex("""Target="([^"]*pivotCacheDefinition[^"]*\.xml)"""")
+        private val PIVOT_TABLE_STYLE_INFO_REGEX = Regex(
+            """<pivotTableStyleInfo[^>]*/>|<pivotTableStyleInfo[^>]*>.*?</pivotTableStyleInfo>""",
+            RegexOption.DOT_MATCHES_ALL
+        )
     }
 }

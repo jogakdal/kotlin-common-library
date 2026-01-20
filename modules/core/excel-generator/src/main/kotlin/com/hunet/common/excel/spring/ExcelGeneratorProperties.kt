@@ -13,8 +13,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * ```yaml
  * hunet:
  *   excel:
- *     streaming-mode: auto            # auto, enabled, disabled
- *     streaming-row-threshold: 1000   # AUTO 모드에서 SXSSF 전환 기준 행 수
+ *     streaming-mode: enabled         # enabled, disabled
  *     file-naming-mode: timestamp     # none, timestamp
  *     timestamp-format: yyyyMMdd_HHmmss
  *     file-conflict-policy: sequence  # error, sequence
@@ -28,16 +27,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 data class ExcelGeneratorProperties(
     /**
      * 스트리밍 모드 설정.
-     * - auto: 데이터 크기에 따라 자동 결정 (기본값)
-     * - enabled: 항상 SXSSF 사용 (대용량)
-     * - disabled: 항상 XSSF 사용 (소량)
+     * - enabled: SXSSF 스트리밍 사용 (기본값, 대용량 최적화)
+     * - disabled: 항상 XSSF 사용 (아래 행 참조 수식 필요 시)
      */
-    var streamingMode: StreamingModeProperty = StreamingModeProperty.AUTO,
-
-    /**
-     * AUTO 모드에서 SXSSF로 전환되는 행 수 기준.
-     */
-    var streamingRowThreshold: Int = 1000,
+    var streamingMode: StreamingModeProperty = StreamingModeProperty.ENABLED,
 
     /**
      * 파일명 생성 모드.
@@ -83,7 +76,6 @@ data class ExcelGeneratorProperties(
      */
     fun toConfig(): ExcelGeneratorConfig = ExcelGeneratorConfig(
         streamingMode = streamingMode.toStreamingMode(),
-        streamingRowThreshold = streamingRowThreshold,
         fileNamingMode = fileNamingMode.toFileNamingMode(),
         timestampFormat = timestampFormat,
         fileConflictPolicy = fileConflictPolicy.toFileConflictPolicy(),
@@ -98,10 +90,9 @@ data class ExcelGeneratorProperties(
  * 스트리밍 모드 프로퍼티 (application.yml 바인딩용).
  */
 enum class StreamingModeProperty {
-    AUTO, ENABLED, DISABLED;
+    ENABLED, DISABLED;
 
     fun toStreamingMode(): StreamingMode = when (this) {
-        AUTO -> StreamingMode.AUTO
         ENABLED -> StreamingMode.ENABLED
         DISABLED -> StreamingMode.DISABLED
     }

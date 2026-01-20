@@ -4,6 +4,7 @@ import com.hunet.common.excel.async.DefaultGenerationJob
 import com.hunet.common.excel.async.ExcelGenerationListener
 import com.hunet.common.excel.async.GenerationJob
 import com.hunet.common.excel.async.GenerationResult
+import com.hunet.common.excel.engine.SimpleTemplateEngine
 import kotlinx.coroutines.*
 import kotlinx.coroutines.future.future
 import org.apache.poi.ss.usermodel.Cell
@@ -12,10 +13,8 @@ import org.apache.poi.ss.usermodel.Sheet
 import org.apache.poi.xssf.usermodel.XSSFCellStyle
 import org.apache.poi.xssf.usermodel.XSSFClientAnchor
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
-import ch.qos.logback.classic.Logger
-import org.jxls.common.Context
-import org.jxls.util.JxlsHelper
-import org.slf4j.LoggerFactory
+import org.jxls.builder.JxlsStreaming
+import org.jxls.transform.poi.JxlsPoiTemplateFillerBuilder
 import java.io.*
 import java.nio.file.Files
 import java.nio.file.Path
@@ -71,6 +70,7 @@ class ExcelGenerator @JvmOverloads constructor(
     private val dataValidationProcessor = DataValidationProcessor()
     private val pivotTableProcessor = PivotTableProcessor(config)
     private val xmlVariableProcessor = XmlVariableProcessor()
+    private val chartProcessor = ChartProcessor()
 
     // ========== 동기 API ==========
 
@@ -304,8 +304,20 @@ class ExcelGenerator @JvmOverloads constructor(
     // ========== 내부 데이터 클래스 ==========
 
     private data class ContextResult(
-        val context: Context,
+        val data: Map<String, Any>,
         val rowsProcessed: Int
+    )
+
+    /**
+     * 스트리밍 모드에서 전처리 시 치환된 변수 정보.
+     * SXSSF 행 flush로 인한 데이터 손실 시 후처리에서 복원에 사용.
+     */
+    private data class SubstitutedVariableInfo(
+        val sheetName: String,
+        val rowIndex: Int,
+        val columnIndex: Int,
+        val substitutedValue: String,
+        val styleIndex: Short
     )
 
     // ========== 핵심 처리 로직 ==========
@@ -315,17 +327,96 @@ class ExcelGenerator @JvmOverloads constructor(
         dataProvider: ExcelDataProvider,
         output: OutputStream
     ): Int {
-        val (context, rowsProcessed) = createContext(dataProvider)
-        val templateBytes = templatePreprocessor.preprocess(template).readBytes()
+        return when (config.templateEngine) {
+            TemplateEngine.JXLS -> processTemplateWithJxls(template, dataProvider, output)
+            TemplateEngine.SIMPLE -> processTemplateWithSimpleEngine(template, dataProvider, output)
+        }
+    }
+
+    /**
+     * SimpleTemplateEngine을 사용한 템플릿 처리 (JXLS 없이 동작)
+     *
+     * SIMPLE 엔진은 자체적으로 repeat 마커를 처리하므로 TemplatePreprocessor를 사용하지 않습니다.
+     * TemplatePreprocessor는 JXLS용 jx:each 변환을 수행하므로 건너뜁니다.
+     *
+     * 피벗 테이블/차트 처리 흐름:
+     * 1. 스트리밍 모드에서 차트 추출 및 제거 (SXSSF에서 차트 손실 방지)
+     * 2. 피벗 테이블 정보 추출 및 템플릿에서 제거
+     * 3. SimpleTemplateEngine으로 반복 데이터 처리 (스트리밍 가능)
+     * 4. 확장된 데이터 소스로 피벗 테이블 재생성
+     * 5. 스트리밍 모드에서 차트 복원
+     */
+    private fun processTemplateWithSimpleEngine(
+        template: InputStream,
+        dataProvider: ExcelDataProvider,
+        output: OutputStream
+    ): Int {
+        val (_, rowsProcessed) = createContext(dataProvider)
+        var workingBytes = template.readBytes()
+
+        // 1. 스트리밍 모드에서 차트 추출 (SXSSF에서 차트 손실 방지)
+        val chartInfo = if (config.streamingMode == StreamingMode.ENABLED) {
+            val (info, bytesWithoutChart) = chartProcessor.extractAndRemove(workingBytes)
+            workingBytes = bytesWithoutChart
+            info
+        } else null
+
+        // 2. 피벗 테이블 추출 및 제거
+        val (pivotTableInfos, bytesWithoutPivot) = pivotTableProcessor.extractAndRemove(workingBytes)
+
+        // 3. SimpleTemplateEngine으로 처리 (스트리밍 모드 유지)
+        val engine = SimpleTemplateEngine(config.streamingMode)
+        var resultBytes = engine.process(ByteArrayInputStream(bytesWithoutPivot), dataProvider)
+
+        // 4. 숫자 서식 자동 적용
+        resultBytes = applyNumberFormatToNumericCells(resultBytes)
+
+        // 5. XML 변수 치환 (수식 내 변수 등)
+        resultBytes = xmlVariableProcessor.processVariables(resultBytes, dataProvider)
+
+        // 6. 피벗 테이블 재생성 (확장된 데이터 소스 기반)
+        if (pivotTableInfos.isNotEmpty()) {
+            resultBytes = pivotTableProcessor.recreate(resultBytes, pivotTableInfos)
+        }
+
+        // 7. 차트 복원 (스트리밍 모드) - 변수 치환 포함
+        if (chartInfo != null) {
+            val variableResolver = xmlVariableProcessor.createVariableResolver(dataProvider)
+            resultBytes = chartProcessor.restore(resultBytes, chartInfo, variableResolver)
+        }
+
+        // 8. 메타데이터 적용
+        resultBytes = applyMetadata(resultBytes, dataProvider.getMetadata())
+
+        output.write(resultBytes)
+        return rowsProcessed
+    }
+
+    /**
+     * JXLS 기반 템플릿 처리 (기존 방식)
+     *
+     * 차트 처리 흐름 (스트리밍 모드):
+     * 1. 차트 추출 및 제거 (SXSSF에서 차트 손실 방지)
+     * 2. JXLS 처리
+     * 3. 후처리 후 차트 복원
+     */
+    private fun processTemplateWithJxls(
+        template: InputStream,
+        dataProvider: ExcelDataProvider,
+        output: OutputStream
+    ): Int {
+        val (data, rowsProcessed) = createContext(dataProvider)
+        var workingBytes = templatePreprocessor.preprocess(template).readBytes()
 
         val formulaInfos = mutableListOf<FormulaInfo>()
+        val substitutedVariables = mutableListOf<SubstitutedVariableInfo>()
         var layout: LayoutProcessor.WorkbookLayout? = null
         var dataValidations: DataValidationProcessor.WorkbookValidations? = null
 
-        val preprocessedBytes = XSSFWorkbook(ByteArrayInputStream(templateBytes)).use { workbook ->
+        val preprocessedBytes = XSSFWorkbook(ByteArrayInputStream(workingBytes)).use { workbook ->
             // 시트별 전처리 (이미지 플레이스홀더, jx:area 코멘트 등)
             workbook.sheets.forEach { sheet ->
-                preprocessSheet(workbook, sheet, dataProvider)
+                preprocessSheet(workbook, sheet, dataProvider, substitutedVariables)
             }
 
             // 수식 내 ${변수} 추출 (JXLS가 처리하지 않도록)
@@ -342,13 +433,30 @@ class ExcelGenerator @JvmOverloads constructor(
             workbook.toByteArray()
         }
 
+        // 차트 추출 (스트리밍 모드에서 SXSSF 손실 방지)
+        val chartInfo = if (config.streamingMode == StreamingMode.ENABLED) {
+            val (info, bytesWithoutChart) = chartProcessor.extractAndRemove(preprocessedBytes)
+            workingBytes = bytesWithoutChart
+            info
+        } else {
+            workingBytes = preprocessedBytes
+            null
+        }
+
         // 피벗 테이블 정보 추출 및 삭제 (ZIP 레벨 작업)
-        val (pivotTableInfos, bytesWithoutPivot) = pivotTableProcessor.extractAndRemove(preprocessedBytes)
+        val (pivotTableInfos, bytesWithoutPivot) = pivotTableProcessor.extractAndRemove(workingBytes)
+
+        // 피벗 테이블이 있으면 스트리밍 모드 비활성화 (SXSSF에서 헤더 행 손실 방지)
+        val effectiveStreamingMode = if (pivotTableInfos.isNotEmpty() && config.streamingMode == StreamingMode.ENABLED) {
+            StreamingMode.DISABLED
+        } else {
+            config.streamingMode
+        }
 
         // ========== JXLS 처리 ==========
         val jxlsOutput = ByteArrayOutputStream().also { tempOutput ->
             ByteArrayInputStream(bytesWithoutPivot).use { input ->
-                processJxlsWithFormulaErrorDetection(input, tempOutput, context)
+                processJxls(input, tempOutput, data, effectiveStreamingMode)
             }
         }
 
@@ -358,8 +466,16 @@ class ExcelGenerator @JvmOverloads constructor(
                 restoreFormulaVariablesInPlace(workbook, formulaInfos)
             }
 
+            // 스트리밍 모드에서 손실된 변수값 복원
+            if (substitutedVariables.isNotEmpty()) {
+                restoreSubstitutedVariablesInPlace(workbook, substitutedVariables)
+            }
+
             // 숫자 서식 적용
             applyNumberFormatToNumericCellsInPlace(workbook)
+
+            // 수식 재계산 (스트리밍 모드에서 캐시값 갱신)
+            workbook.creationHelper.createFormulaEvaluator().evaluateAll()
 
             // 레이아웃 복원 (조건부)
             layout?.let { layoutProcessor.restoreInPlace(workbook, it) }
@@ -376,6 +492,13 @@ class ExcelGenerator @JvmOverloads constructor(
             .let { bytes ->
                 if (pivotTableInfos.isNotEmpty()) pivotTableProcessor.recreate(bytes, pivotTableInfos)
                 else bytes
+            }
+            // 차트 복원 (스트리밍 모드) - 변수 치환 포함
+            .let { bytes ->
+                if (chartInfo != null) {
+                    val variableResolver = xmlVariableProcessor.createVariableResolver(dataProvider)
+                    chartProcessor.restore(bytes, chartInfo, variableResolver)
+                } else bytes
             }
             // XML 변수 치환
             .let { bytes -> xmlVariableProcessor.processVariables(bytes, dataProvider) }
@@ -555,34 +678,30 @@ class ExcelGenerator @JvmOverloads constructor(
 
     // ========== JXLS 처리 ==========
 
-    private fun processJxlsWithFormulaErrorDetection(
+    private fun processJxls(
         input: InputStream,
         output: OutputStream,
-        context: Context
+        data: Map<String, Any>,
+        effectiveStreamingMode: StreamingMode = config.streamingMode
     ) {
-        val appender = FormulaErrorCapturingAppender().apply { start() }
-        val logger = LoggerFactory.getLogger("org.jxls.transform.poi.PoiTransformer") as Logger
-        val originalLevel = logger.level
-
-        try {
-            logger.addAppender(appender)
-
-            JxlsHelper.getInstance()
-                .setUseFastFormulaProcessor(true)
-                .processTemplate(input, output, context)
-
-            appender.getCapturedError()?.let { error ->
-                throw FormulaExpansionException(
-                    sheetName = error.sheetName,
-                    cellRef = error.cellRef,
-                    formula = error.formula
-                )
-            }
-        } finally {
-            logger.detachAppender(appender)
-            logger.level = originalLevel
-            appender.stop()
+        val streaming = when (effectiveStreamingMode) {
+            StreamingMode.ENABLED -> JxlsStreaming.STREAMING_ON
+            StreamingMode.DISABLED -> JxlsStreaming.STREAMING_OFF
         }
+
+        JxlsPoiTemplateFillerBuilder.newInstance()
+            .withTemplate(input)
+            .withStreaming(streaming)
+            .withFastFormulaProcessor()
+            .build()
+            .fill(data, JxlsOutputStream(output))
+    }
+
+    /**
+     * JXLS 3.x 출력 스트림 래퍼.
+     */
+    private class JxlsOutputStream(private val output: OutputStream) : org.jxls.builder.JxlsOutput {
+        override fun getOutputStream(): OutputStream = output
     }
 
     // ========== 템플릿 전처리 ==========
@@ -590,11 +709,83 @@ class ExcelGenerator @JvmOverloads constructor(
     private fun preprocessSheet(
         workbook: XSSFWorkbook,
         sheet: Sheet,
-        dataProvider: ExcelDataProvider
+        dataProvider: ExcelDataProvider,
+        substitutedVariables: MutableList<SubstitutedVariableInfo>
     ) {
         convertImagePlaceholders(workbook, sheet)
         completeImageCommands(workbook, sheet, dataProvider)
         ensureJxAreaComment(workbook, sheet)
+
+        // 스트리밍 모드에서 단순 변수 미리 치환 (SXSSF 행 flush 전 데이터 손실 방지)
+        if (config.streamingMode == StreamingMode.ENABLED) {
+            substituteSimpleVariables(sheet, dataProvider, substitutedVariables)
+        }
+    }
+
+    /**
+     * 스트리밍 모드에서 단순 변수(반복 항목 제외)를 미리 치환합니다.
+     * SXSSF는 행을 순차적으로 flush하므로 JXLS가 변수를 치환하기 전에 손실될 수 있습니다.
+     * 치환된 셀 정보는 후처리에서 손실 시 복원을 위해 저장됩니다.
+     */
+    private fun substituteSimpleVariables(
+        sheet: Sheet,
+        dataProvider: ExcelDataProvider,
+        substitutedVariables: MutableList<SubstitutedVariableInfo>
+    ) {
+        val simpleVariables = dataProvider.getAvailableNames()
+            .filter { name -> !name.contains(".") } // 반복 항목 내 필드(예: emp.name) 제외
+            .associateWith { dataProvider.getValue(it)?.toString() ?: "" }
+            .takeIf { it.isNotEmpty() } ?: return
+
+        sheet.cellSequence()
+            .filter { it.cellType == CellType.STRING }
+            .forEach { cell ->
+                val value = cell.stringCellValue ?: return@forEach
+                // repeat 명령어가 포함된 셀은 제외
+                if ("\${" in value && "repeat" !in value.lowercase()) {
+                    var newValue = value
+                    simpleVariables.forEach { (name, replacement) ->
+                        newValue = newValue.replace("\${$name}", replacement)
+                    }
+                    if (newValue != value) {
+                        // 치환 정보 저장 (후처리에서 빈 셀 복원용)
+                        substitutedVariables.add(SubstitutedVariableInfo(
+                            sheetName = sheet.sheetName,
+                            rowIndex = cell.rowIndex,
+                            columnIndex = cell.columnIndex,
+                            substitutedValue = newValue,
+                            styleIndex = cell.cellStyle.index
+                        ))
+                        cell.setCellValue(newValue)
+                    }
+                }
+            }
+    }
+
+    /**
+     * 스트리밍 모드에서 손실된 변수값을 복원합니다.
+     * SXSSF 행 flush로 인해 빈 값이 된 셀에 저장된 치환값을 복원합니다.
+     */
+    private fun restoreSubstitutedVariablesInPlace(
+        workbook: XSSFWorkbook,
+        substitutedVariables: List<SubstitutedVariableInfo>
+    ) {
+        substitutedVariables.forEach { info ->
+            val sheet = workbook.getSheet(info.sheetName) ?: return@forEach
+            val row = sheet.getRow(info.rowIndex) ?: sheet.createRow(info.rowIndex)
+            val cell = row.getCell(info.columnIndex) ?: row.createCell(info.columnIndex)
+
+            // 셀이 비어있거나 빈 문자열인 경우에만 복원
+            val isEmpty = cell.cellType == CellType.BLANK ||
+                    (cell.cellType == CellType.STRING && cell.stringCellValue.isNullOrEmpty())
+
+            if (isEmpty) {
+                cell.setCellValue(info.substitutedValue)
+                if (info.styleIndex >= 0) {
+                    cell.cellStyle = workbook.getCellStyleAt(info.styleIndex.toInt())
+                }
+            }
+        }
     }
 
     private fun convertImagePlaceholders(workbook: XSSFWorkbook, sheet: Sheet) {
@@ -694,23 +885,23 @@ class ExcelGenerator @JvmOverloads constructor(
         cell.cellComment = comment
     }
 
-    // ========== Context 생성 ==========
+    // ========== 데이터 맵 생성 ==========
 
     private fun createContext(dataProvider: ExcelDataProvider): ContextResult {
-        val context = Context()
+        val data = mutableMapOf<String, Any>()
         var totalRows = 0
 
         dataProvider.getAvailableNames().forEach { name ->
-            dataProvider.getValue(name)?.let { context.putVar(name, it) }
+            dataProvider.getValue(name)?.let { data[name] = it }
             dataProvider.getItems(name)?.let { iterator ->
                 val items = iterator.asSequence().toList()
                 totalRows += items.size
-                context.putVar(name, items)
+                data[name] = items
             }
-            dataProvider.getImage(name)?.let { context.putVar(name, it) }
+            dataProvider.getImage(name)?.let { data[name] = it }
         }
 
-        return ContextResult(context, totalRows)
+        return ContextResult(data, totalRows)
     }
 
     // ========== 유틸리티 ==========

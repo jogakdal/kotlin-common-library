@@ -32,8 +32,7 @@ class ExcelGeneratorAutoConfigurationTest {
             assertNotNull(generator)
 
             val config = context.getBean(ExcelGeneratorConfig::class.java)
-            assertEquals(StreamingMode.AUTO, config.streamingMode)
-            assertEquals(1000, config.streamingRowThreshold)
+            assertEquals(StreamingMode.ENABLED, config.streamingMode)
 
             generator.close()
         }
@@ -44,7 +43,6 @@ class ExcelGeneratorAutoConfigurationTest {
         contextRunner
             .withPropertyValues(
                 "hunet.excel.streaming-mode=enabled",
-                "hunet.excel.streaming-row-threshold=500",
                 "hunet.excel.timestamp-format=yyyy-MM-dd",
                 "hunet.excel.progress-report-interval=200"
             )
@@ -52,7 +50,6 @@ class ExcelGeneratorAutoConfigurationTest {
                 val config = context.getBean(ExcelGeneratorConfig::class.java)
 
                 assertEquals(StreamingMode.ENABLED, config.streamingMode)
-                assertEquals(500, config.streamingRowThreshold)
                 assertEquals("yyyy-MM-dd", config.timestampFormat)
                 assertEquals(200, config.progressReportInterval)
 
@@ -68,8 +65,8 @@ class ExcelGeneratorAutoConfigurationTest {
                 val config = context.getBean(ExcelGeneratorConfig::class.java)
 
                 // 커스텀 설정이 적용되어야 함
-                assertEquals(StreamingMode.DISABLED, config.streamingMode)
-                assertEquals(9999, config.streamingRowThreshold)
+                assertEquals(StreamingMode.ENABLED, config.streamingMode)
+                assertEquals(500, config.progressReportInterval)
 
                 context.getBean(ExcelGenerator::class.java).close()
             }
@@ -124,8 +121,8 @@ class ExcelGeneratorAutoConfigurationTest {
     class CustomExcelGeneratorConfig {
         @Bean
         fun excelGeneratorConfig(): ExcelGeneratorConfig = ExcelGeneratorConfig(
-            streamingMode = StreamingMode.DISABLED,
-            streamingRowThreshold = 9999
+            streamingMode = StreamingMode.ENABLED,
+            progressReportInterval = 500
         )
     }
 }

@@ -85,4 +85,20 @@ internal class XmlVariableProcessor {
 
     private fun shouldExclude(partName: String) =
         EXCLUDE_PATTERNS.any { it in partName }
+
+    /**
+     * 변수 치환 함수 생성
+     * 차트 XML 등 개별 문자열에 대한 변수 치환에 사용
+     */
+    fun createVariableResolver(dataProvider: ExcelDataProvider): ((String) -> String)? {
+        val variableValues = dataProvider.getAvailableNames()
+            .associateWith { dataProvider.getValue(it)?.toString() }
+            .filterValues { it != null }
+            .mapValues { it.value!! }
+            .takeIf { it.isNotEmpty() }
+            ?: return null
+
+        val processor = VariableProcessor(listOf(XmlValueRegistry(variableValues)))
+        return { content: String -> processor.process(content, OPTIONS) }
+    }
 }

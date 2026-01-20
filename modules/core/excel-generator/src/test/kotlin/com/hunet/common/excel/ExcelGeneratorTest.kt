@@ -82,8 +82,7 @@ class ExcelGeneratorTest {
     fun `ExcelGeneratorConfig default should have expected values`() {
         val config = ExcelGeneratorConfig.default()
 
-        assertEquals(StreamingMode.AUTO, config.streamingMode)
-        assertEquals(1000, config.streamingRowThreshold)
+        assertEquals(StreamingMode.ENABLED, config.streamingMode)
         assertEquals("yyyyMMdd_HHmmss", config.timestampFormat)
     }
 

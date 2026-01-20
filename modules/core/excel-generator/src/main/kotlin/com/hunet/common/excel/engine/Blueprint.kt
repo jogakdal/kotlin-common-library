@@ -1,0 +1,182 @@
+package com.hunet.common.excel.engine
+
+import org.apache.poi.ss.util.CellRangeAddress
+
+/**
+ * 워크북 청사진 - 템플릿 분석 결과
+ */
+data class WorkbookBlueprint(
+    val sheets: List<SheetBlueprint>
+)
+
+/**
+ * 시트 청사진
+ */
+data class SheetBlueprint(
+    val sheetName: String,
+    val sheetIndex: Int,
+    val rows: List<RowBlueprint>,
+    val mergedRegions: List<CellRangeAddress>,
+    val columnWidths: Map<Int, Int>,
+    val defaultRowHeight: Short,
+    val headerFooter: HeaderFooterInfo? = null,
+    val printSetup: PrintSetupInfo? = null
+)
+
+/**
+ * 헤더/푸터 정보
+ */
+data class HeaderFooterInfo(
+    val leftHeader: String?,
+    val centerHeader: String?,
+    val rightHeader: String?,
+    val leftFooter: String?,
+    val centerFooter: String?,
+    val rightFooter: String?,
+    val differentFirst: Boolean = false,
+    val differentOddEven: Boolean = false,
+    val scaleWithDoc: Boolean = true,
+    val alignWithMargins: Boolean = true,
+    // 첫 페이지용 (differentFirst=true일 때)
+    val firstLeftHeader: String? = null,
+    val firstCenterHeader: String? = null,
+    val firstRightHeader: String? = null,
+    val firstLeftFooter: String? = null,
+    val firstCenterFooter: String? = null,
+    val firstRightFooter: String? = null,
+    // 짝수 페이지용 (differentOddEven=true일 때)
+    val evenLeftHeader: String? = null,
+    val evenCenterHeader: String? = null,
+    val evenRightHeader: String? = null,
+    val evenLeftFooter: String? = null,
+    val evenCenterFooter: String? = null,
+    val evenRightFooter: String? = null
+)
+
+/**
+ * 인쇄 설정 정보
+ */
+data class PrintSetupInfo(
+    val paperSize: Short,
+    val landscape: Boolean,
+    val fitWidth: Short,
+    val fitHeight: Short,
+    val scale: Short,
+    val headerMargin: Double,
+    val footerMargin: Double
+)
+
+/**
+ * 행 청사진
+ */
+sealed class RowBlueprint {
+    abstract val templateRowIndex: Int
+    abstract val height: Short?
+    abstract val cells: List<CellBlueprint>
+
+    /** 일반 행 - 그대로 출력 */
+    data class StaticRow(
+        override val templateRowIndex: Int,
+        override val height: Short?,
+        override val cells: List<CellBlueprint>
+    ) : RowBlueprint()
+
+    /** 반복 영역 시작 - 데이터 개수만큼 확장 */
+    data class RepeatRow(
+        override val templateRowIndex: Int,
+        override val height: Short?,
+        override val cells: List<CellBlueprint>,
+        val collectionName: String,
+        val itemVariable: String,
+        val repeatEndRowIndex: Int,
+        val repeatStartCol: Int = 0,
+        val repeatEndCol: Int = Int.MAX_VALUE,
+        val direction: RepeatDirection = RepeatDirection.DOWN
+    ) : RowBlueprint()
+
+    /** 반복 영역 내부 행 (첫 행 제외) - RepeatRow에 포함되어 처리됨 */
+    data class RepeatContinuation(
+        override val templateRowIndex: Int,
+        override val height: Short?,
+        override val cells: List<CellBlueprint>,
+        val parentRepeatRowIndex: Int
+    ) : RowBlueprint()
+}
+
+/**
+ * 셀 청사진
+ */
+data class CellBlueprint(
+    val columnIndex: Int,
+    val styleIndex: Short,
+    val content: CellContent,
+    val columnSpan: Int = 1  // 병합된 경우 열 범위
+)
+
+/**
+ * 셀 내용 유형
+ */
+sealed class CellContent {
+    /** 빈 셀 */
+    data object Empty : CellContent()
+
+    /** 정적 문자열 */
+    data class StaticString(val value: String) : CellContent()
+
+    /** 정적 숫자 */
+    data class StaticNumber(val value: Double) : CellContent()
+
+    /** 정적 불리언 */
+    data class StaticBoolean(val value: Boolean) : CellContent()
+
+    /** 단순 변수 치환 - ${title} */
+    data class Variable(val variableName: String, val originalText: String) : CellContent()
+
+    /** 반복 항목 필드 - ${emp.name} */
+    data class ItemField(
+        val itemVariable: String,
+        val fieldPath: String,
+        val originalText: String
+    ) : CellContent()
+
+    /** 수식 */
+    data class Formula(val formula: String) : CellContent()
+
+    /** 변수를 포함하는 수식 - HYPERLINK("${url}", "${text}") */
+    data class FormulaWithVariables(
+        val formula: String,
+        val variableNames: List<String>
+    ) : CellContent()
+
+    /** 이미지 마커 - ${image.logo} */
+    data class ImageMarker(val imageName: String) : CellContent()
+
+    /** 반복 마커 - ${repeat(...)} - 분석 후 제거됨 */
+    data class RepeatMarker(
+        val collection: String,
+        val range: String,
+        val variable: String,
+        val direction: RepeatDirection = RepeatDirection.DOWN
+    ) : CellContent()
+}
+
+/**
+ * 반복 방향
+ */
+enum class RepeatDirection {
+    DOWN,   // 아래로 확장 (기본값)
+    RIGHT   // 오른쪽으로 확장
+}
+
+/**
+ * 반복 영역 정보
+ */
+data class RepeatRegionInfo(
+    val collection: String,
+    val variable: String,
+    val startRow: Int,
+    val endRow: Int,
+    val startCol: Int,
+    val endCol: Int,
+    val direction: RepeatDirection = RepeatDirection.DOWN
+)
