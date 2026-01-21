@@ -1,6 +1,31 @@
 package com.hunet.common.excel.engine
 
 /**
+ * 셀 참조 정보를 담는 데이터 클래스
+ */
+private data class CellRef(
+    val colAbs: String,
+    val col: String,
+    val rowAbs: String,
+    val row: Int
+) {
+    val isRowAbsolute get() = rowAbs == "$"
+    val isColAbsolute get() = colAbs == "$"
+
+    fun format(newRow: Int = row, newCol: String = col) = "$colAbs$newCol$rowAbs$newRow"
+}
+
+/**
+ * MatchResult를 CellRef로 변환하는 확장 함수
+ */
+private fun MatchResult.toCellRef() = CellRef(
+    colAbs = groupValues[1],
+    col = groupValues[2].uppercase(),
+    rowAbs = groupValues[3],
+    row = groupValues[4].toInt()
+)
+
+/**
  * 수식 참조 조정기 - 반복 처리로 인한 행 오프셋에 따라 수식 내 셀 참조 조정
  *
  * 스트리밍 모드에서는 POI의 shiftRows()를 사용할 수 없으므로
@@ -164,20 +189,12 @@ object FormulaAdjuster {
         if (rowDiff == 0) return formula
 
         return CELL_REF_PATTERN.replace(formula) { match ->
-            val colAbs = match.groupValues[1]
-            val col = match.groupValues[2]
-            val rowAbs = match.groupValues[3]
-            val row = match.groupValues[4].toInt()
-
-            // 절대 행 참조($)는 조정하지 않음
-            if (rowAbs == "$") {
-                match.value
-            } else {
-                val newRefRow = row + rowDiff
-                if (newRefRow > 0) {
-                    "$colAbs$col$rowAbs$newRefRow"
-                } else {
-                    match.value // 유효하지 않은 참조는 그대로 유지
+            match.toCellRef().run {
+                if (isRowAbsolute) match.value
+                else {
+                    val newRefRow = row + rowDiff
+                    if (newRefRow > 0) format(newRow = newRefRow)
+                    else match.value  // 유효하지 않은 참조는 그대로 유지
                 }
             }
         }
@@ -196,16 +213,9 @@ object FormulaAdjuster {
         if (repeatIndex == 0) return formula
 
         return CELL_REF_PATTERN.replace(formula) { match ->
-            val colAbs = match.groupValues[1]
-            val col = match.groupValues[2]
-            val rowAbs = match.groupValues[3]
-            val row = match.groupValues[4].toInt()
-
-            // 절대 행 참조($)는 조정하지 않음
-            if (rowAbs == "$") {
-                match.value
-            } else {
-                "$colAbs$col$rowAbs${row + repeatIndex}"
+            match.toCellRef().run {
+                if (isRowAbsolute) match.value
+                else format(newRow = row + repeatIndex)
             }
         }
     }

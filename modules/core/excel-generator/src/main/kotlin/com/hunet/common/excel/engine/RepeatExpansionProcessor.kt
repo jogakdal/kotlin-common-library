@@ -1,9 +1,24 @@
 package com.hunet.common.excel.engine
 
 import com.hunet.common.excel.FormulaExpansionException
+import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.CellType
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.XSSFSheet
+
+/**
+ * 셀 값을 다른 셀에서 복사합니다.
+ */
+private fun Cell.copyValueFrom(source: Cell) {
+    when (source.cellType) {
+        CellType.STRING -> setCellValue(source.stringCellValue)
+        CellType.NUMERIC -> setCellValue(source.numericCellValue)
+        CellType.BOOLEAN -> setCellValue(source.booleanCellValue)
+        CellType.FORMULA -> cellFormula = source.cellFormula
+        CellType.BLANK -> setBlank()
+        else -> { }
+    }
+}
 
 /**
  * 반복 영역 확장 처리를 담당하는 프로세서.
@@ -41,36 +56,23 @@ internal class RepeatExpansionProcessor {
         )
 
         // 2. 반복 영역의 모든 행에 대해 열 복사
-        for (rowIdx in repeatRow.templateRowIndex..repeatRow.repeatEndRowIndex) {
-            val row = sheet.getRow(rowIdx) ?: continue
+        (repeatRow.templateRowIndex..repeatRow.repeatEndRowIndex)
+            .mapNotNull(sheet::getRow)
+            .forEach { row ->
+                val templateCells = (repeatRow.repeatStartCol..repeatRow.repeatEndCol)
+                    .mapNotNull(row::getCell)
+                    .withIndex()
 
-            // 템플릿 열의 셀 정보 수집 (스타일, 값)
-            val templateCells = (repeatRow.repeatStartCol..repeatRow.repeatEndCol).map { colIdx ->
-                row.getCell(colIdx)
-            }
-
-            // 데이터 개수만큼 열 복사 (첫 번째 열은 이미 있으므로 1부터 시작)
-            for (itemIdx in 1 until itemCount) {
-                for ((templateOffset, templateCell) in templateCells.withIndex()) {
-                    if (templateCell == null) continue
-
-                    val newColIdx = repeatRow.repeatStartCol + (itemIdx * templateColCount) + templateOffset
-                    val newCell = row.createCell(newColIdx)
-
-                    // 스타일 복사
-                    newCell.cellStyle = templateCell.cellStyle
-
-                    // 값 복사 (변수 치환은 나중에)
-                    when (templateCell.cellType) {
-                        CellType.STRING -> newCell.setCellValue(templateCell.stringCellValue)
-                        CellType.NUMERIC -> newCell.setCellValue(templateCell.numericCellValue)
-                        CellType.BOOLEAN -> newCell.setCellValue(templateCell.booleanCellValue)
-                        CellType.FORMULA -> newCell.cellFormula = templateCell.cellFormula
-                        else -> {}
+                (1 until itemCount).forEach { itemIdx ->
+                    templateCells.forEach { (templateOffset, templateCell) ->
+                        val newColIdx = repeatRow.repeatStartCol + (itemIdx * templateColCount) + templateOffset
+                        row.createCell(newColIdx).apply {
+                            cellStyle = templateCell.cellStyle
+                            copyValueFrom(templateCell)
+                        }
                     }
                 }
             }
-        }
     }
 
     /**

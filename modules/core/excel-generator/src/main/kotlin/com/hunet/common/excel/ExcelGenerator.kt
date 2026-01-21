@@ -156,19 +156,16 @@ class ExcelGenerator @JvmOverloads constructor(
 
         return runCatching {
             val effectivePassword = password.takeUnless { it.isNullOrBlank() }
-            val rowsProcessed = if (effectivePassword != null) {
-                // 암호화가 필요한 경우 메모리에서 처리 후 암호화
-                ByteArrayOutputStream().use { tempOutput ->
-                    val rows = processTemplate(template, dataProvider, tempOutput)
-                    Files.newOutputStream(outputPath).use { fileOutput ->
-                        tempOutput.toByteArray().encryptExcelTo(effectivePassword, fileOutput)
+            val rowsProcessed = effectivePassword?.let { pw ->
+                ByteArrayOutputStream().use { buffer ->
+                    processTemplate(template, dataProvider, buffer).also {
+                        Files.newOutputStream(outputPath).use { out ->
+                            buffer.toByteArray().encryptExcelTo(pw, out)
+                        }
                     }
-                    rows
                 }
-            } else {
-                Files.newOutputStream(outputPath).use { output ->
-                    processTemplate(template, dataProvider, output)
-                }
+            } ?: Files.newOutputStream(outputPath).use { output ->
+                processTemplate(template, dataProvider, output)
             }
             outputPath to rowsProcessed
         }.onFailure {

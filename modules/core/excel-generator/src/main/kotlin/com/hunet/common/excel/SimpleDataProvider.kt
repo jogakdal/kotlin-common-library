@@ -48,24 +48,18 @@ class SimpleDataProvider private constructor(
          */
         @JvmStatic
         fun of(data: Map<String, Any>): SimpleDataProvider {
-            val values = mutableMapOf<String, Any>()
-            val collections = mutableMapOf<String, () -> Iterator<Any>>()
+            val (iterables, others) = data.entries.partition { (_, v) ->
+                v is Iterable<*> || v is Iterator<*> || v is Sequence<*>
+            }
 
-            data.forEach { (key, value) ->
-                when (value) {
-                    is Iterable<*> -> {
-                        @Suppress("UNCHECKED_CAST")
-                        collections[key] = { (value as Iterable<Any>).iterator() }
-                    }
-                    is Iterator<*> -> {
-                        @Suppress("UNCHECKED_CAST")
-                        collections[key] = { value as Iterator<Any> }
-                    }
-                    is Sequence<*> -> {
-                        @Suppress("UNCHECKED_CAST")
-                        collections[key] = { (value as Sequence<Any>).iterator() }
-                    }
-                    else -> values[key] = value
+            val values = others.associate { it.key to it.value }
+            val collections = iterables.associate { (key, value) ->
+                @Suppress("UNCHECKED_CAST")
+                key to when (value) {
+                    is Iterable<*> -> { -> (value as Iterable<Any>).iterator() }
+                    is Iterator<*> -> { -> value as Iterator<Any> }
+                    is Sequence<*> -> { -> (value as Sequence<Any>).iterator() }
+                    else -> throw IllegalStateException("Unexpected type: ${value::class}")
                 }
             }
 

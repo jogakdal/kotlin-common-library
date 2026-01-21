@@ -38,8 +38,8 @@ internal fun Int.toColumnLetter(): String = buildString {
     generateSequence(this@toColumnLetter + 1) { n -> ((n - 1) / 26).takeIf { it > 0 } }
         .map { n -> 'A' + ((n - 1) % 26) }
         .toList()
-        .reversed()
-        .forEach { append(it) }
+        .asReversed()  // 복사 없이 역순 뷰
+        .forEach(::append)
 }
 
 /** 일반 함수 래퍼 (FormulaAdjuster에서 사용) */

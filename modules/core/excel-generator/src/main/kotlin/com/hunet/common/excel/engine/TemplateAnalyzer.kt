@@ -9,6 +9,16 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.InputStream
 
 /**
+ * 셀 좌표 (row, col 모두 0-based)
+ */
+private data class CellCoord(val row: Int, val col: Int)
+
+/**
+ * 셀 범위
+ */
+private data class CellRange(val start: CellCoord, val end: CellCoord)
+
+/**
  * 템플릿 분석기 - 템플릿을 분석하여 청사진 생성
  */
 class TemplateAnalyzer {
@@ -152,28 +162,20 @@ class TemplateAnalyzer {
      * 헤더/푸터 문자열에서 특정 섹션(L/C/R) 추출
      * Excel 형식: "&L왼쪽텍스트&C중앙텍스트&R오른쪽텍스트"
      */
-    private fun parseHeaderFooterSection(headerFooter: String?, section: Char): String? {
-        if (headerFooter.isNullOrEmpty()) return null
+    private fun parseHeaderFooterSection(headerFooter: String?, section: Char): String? =
+        headerFooter?.takeIf { it.isNotEmpty() }?.let { hf ->
+            val marker = "&$section"
+            val startIdx = hf.indexOf(marker, ignoreCase = true).takeIf { it >= 0 } ?: return null
+            val contentStart = startIdx + 2
+            if (contentStart >= hf.length) return null
 
-        val sectionMarker = "&$section"
-        val startIdx = headerFooter.indexOf(sectionMarker, ignoreCase = true)
-        if (startIdx < 0) return null
+            val nextSectionIdx = listOf('L', 'C', 'R')
+                .filter { it != section }
+                .mapNotNull { hf.indexOf("&$it", contentStart, ignoreCase = true).takeIf { idx -> idx >= 0 } }
+                .minOrNull() ?: hf.length
 
-        val contentStart = startIdx + 2  // &L, &C, &R 이후
-        if (contentStart >= headerFooter.length) return null
-
-        // 다음 섹션 마커 찾기
-        val nextSectionIdx = listOf('L', 'C', 'R')
-            .filter { it != section }
-            .mapNotNull { marker ->
-                val idx = headerFooter.indexOf("&$marker", contentStart, ignoreCase = true)
-                if (idx >= 0) idx else null
-            }
-            .minOrNull() ?: headerFooter.length
-
-        val content = headerFooter.substring(contentStart, nextSectionIdx)
-        return content.takeIf { it.isNotEmpty() }
-    }
+            hf.substring(contentStart, nextSectionIdx).takeIf { it.isNotEmpty() }
+        }
 
     /**
      * 인쇄 설정 추출
@@ -259,14 +261,14 @@ class TemplateAnalyzer {
                         val directionStr = match.groupValues[4].uppercase()
                         val direction = if (directionStr == "RIGHT") RepeatDirection.RIGHT else RepeatDirection.DOWN
 
-                        val (startCell, endCell) = parseRange(range)
+                        val cellRange = parseRange(range)
                         regions.add(RepeatRegionInfo(
                             collection = collection,
                             variable = variable,
-                            startRow = startCell.first,
-                            endRow = endCell.first,
-                            startCol = startCell.second,
-                            endCol = endCell.second,
+                            startRow = cellRange.start.row,
+                            endRow = cellRange.end.row,
+                            startCol = cellRange.start.col,
+                            endCol = cellRange.end.col,
                             direction = direction
                         ))
                     }
@@ -278,60 +280,45 @@ class TemplateAnalyzer {
     }
 
     /**
-     * 범위 문자열 파싱 (예: "A6:C8" -> Pair(5,0) to Pair(7,2))
+     * 범위 문자열 파싱 (예: "A6:C8" -> CellRange)
      */
-    private fun parseRange(range: String): Pair<Pair<Int, Int>, Pair<Int, Int>> {
-        val parts = range.split(":")
-        val start = parseCellRef(parts[0])
-        val end = parseCellRef(parts[1])
-        return start to end
+    private fun parseRange(range: String): CellRange {
+        val (startRef, endRef) = range.split(":")
+        return CellRange(parseCellRef(startRef), parseCellRef(endRef))
     }
 
     /**
-     * 셀 참조 파싱 (예: "A6" -> Pair(5, 0), "b7" -> Pair(6, 1))
+     * 셀 참조 파싱 (예: "A6" -> CellCoord(row=5, col=0))
      */
-    private fun parseCellRef(ref: String): Pair<Int, Int> {
-        val colPart = ref.takeWhile { it.isLetter() }.uppercase()
-        val rowPart = ref.dropWhile { it.isLetter() }
-        val col = colPart.fold(0) { acc, c -> acc * 26 + (c - 'A' + 1) } - 1
-        val row = rowPart.toInt() - 1
-        return row to col
+    private fun parseCellRef(ref: String): CellCoord {
+        val colPart = ref.takeWhile(Char::isLetter).uppercase()
+        val rowPart = ref.dropWhile(Char::isLetter)
+        return CellCoord(
+            row = rowPart.toInt() - 1,
+            col = colPart.fold(0) { acc, c -> acc * 26 + (c - 'A' + 1) } - 1
+        )
     }
 
     /**
      * 행별 청사진 생성
      */
     private fun buildRowBlueprints(sheet: Sheet, repeatRegions: List<RepeatRegionInfo>): List<RowBlueprint> {
-        val rows = mutableListOf<RowBlueprint>()
-        val lastRow = sheet.lastRowNum
+        val repeatByStartRow = repeatRegions.associateBy { it.startRow }
 
-        var skipUntil = -1
+        return buildList {
+            var skipUntil = -1
+            for (rowIndex in 0..sheet.lastRowNum) {
+                if (rowIndex <= skipUntil) continue
 
-        for (rowIndex in 0..lastRow) {
-            if (rowIndex <= skipUntil) continue
-
-            val row = sheet.getRow(rowIndex)
-
-            // 이 행이 반복 영역의 시작인지 확인
-            val repeatRegion = repeatRegions.find { it.startRow == rowIndex }
-
-            if (repeatRegion != null) {
-                // 반복 영역 처리
-                rows.add(buildRepeatRow(sheet, rowIndex, repeatRegion))
-
-                // 반복 영역 내 나머지 행들도 처리 - repeatRegion.variable을 직접 전달
-                for (contRowIndex in (rowIndex + 1)..repeatRegion.endRow) {
-                    rows.add(buildRepeatContinuationRow(sheet, contRowIndex, rowIndex, repeatRegion.variable))
-                }
-
-                skipUntil = repeatRegion.endRow
-            } else {
-                // 일반 행
-                rows.add(buildStaticRow(sheet, rowIndex))
+                repeatByStartRow[rowIndex]?.let { region ->
+                    add(buildRepeatRow(sheet, rowIndex, region))
+                    (rowIndex + 1..region.endRow).forEach { contRowIndex ->
+                        add(buildRepeatContinuationRow(sheet, contRowIndex, rowIndex, region.variable))
+                    }
+                    skipUntil = region.endRow
+                } ?: add(buildStaticRow(sheet, rowIndex))
             }
         }
-
-        return rows
     }
 
     private fun buildStaticRow(sheet: Sheet, rowIndex: Int): RowBlueprint.StaticRow {
@@ -386,8 +373,13 @@ class TemplateAnalyzer {
                     val variable = match.groupValues[3].ifEmpty { collection }
                     val directionStr = match.groupValues[4].uppercase()
                     val direction = if (directionStr == "RIGHT") RepeatDirection.RIGHT else RepeatDirection.DOWN
-                    val (startCell, endCell) = parseRange(range)
-                    return RepeatRegionInfo(collection, variable, startCell.first, endCell.first, startCell.second, endCell.second, direction)
+                    val cellRange = parseRange(range)
+                    return RepeatRegionInfo(
+                        collection, variable,
+                        cellRange.start.row, cellRange.end.row,
+                        cellRange.start.col, cellRange.end.col,
+                        direction
+                    )
                 }
             }
         }
@@ -472,11 +464,6 @@ class TemplateAnalyzer {
         return CellContent.StaticString(text)
     }
 
-    private fun Sheet.maxColumnIndex(): Int {
-        var max = 0
-        forEach { row ->
-            row.lastCellNum.let { if (it > max) max = it.toInt() }
-        }
-        return max
-    }
+    private fun Sheet.maxColumnIndex(): Int =
+        maxOfOrNull { row -> row.lastCellNum.toInt() } ?: 0
 }

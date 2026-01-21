@@ -73,16 +73,12 @@ class TemplateRenderingEngine(
         return process(template, data)
     }
 
-    private fun buildDataMap(dataProvider: ExcelDataProvider): Map<String, Any> {
-        val data = mutableMapOf<String, Any>()
+    private fun buildDataMap(dataProvider: ExcelDataProvider): Map<String, Any> = buildMap {
         dataProvider.getAvailableNames().forEach { name ->
-            dataProvider.getValue(name)?.let { data[name] = it }
-            dataProvider.getItems(name)?.let { iterator ->
-                data[name] = iterator.asSequence().toList()
-            }
-            dataProvider.getImage(name)?.let { data["image.$name"] = it }
+            dataProvider.getValue(name)?.let { put(name, it) }
+            dataProvider.getItems(name)?.let { put(name, it.asSequence().toList()) }
+            dataProvider.getImage(name)?.let { put("image.$name", it) }
         }
-        return data
     }
 
     // ========== 유틸리티 ==========
