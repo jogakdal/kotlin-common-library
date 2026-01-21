@@ -214,14 +214,12 @@ class TemplateAnalyzer {
                 // XSSFConditionalFormattingRule에서 dxfId 추출
                 val xssfRule = rule as? org.apache.poi.xssf.usermodel.XSSFConditionalFormattingRule
                 val dxfId = xssfRule?.let {
-                    try {
+                    runCatching {
                         // ctCfRule.dxfId 접근
                         val ctRule = it.javaClass.getDeclaredField("_cfRule").apply { isAccessible = true }.get(it)
                         val getDxfId = ctRule.javaClass.getMethod("getDxfId")
                         (getDxfId.invoke(ctRule) as? Long)?.toInt() ?: -1
-                    } catch (e: Exception) {
-                        -1
-                    }
+                    }.getOrDefault(-1)
                 } ?: -1
 
                 ConditionalFormattingRuleInfo(

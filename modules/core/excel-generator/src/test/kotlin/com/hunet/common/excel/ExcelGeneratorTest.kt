@@ -418,7 +418,6 @@ class ExcelGeneratorTest {
         val elapsed = System.currentTimeMillis() - startTime
 
         assertTrue(bytes.isNotEmpty())
-        println("스트레스 테스트 완료: $rowCount 행, ${elapsed}ms, ${bytes.size / 1024}KB")
     }
 
     // ==================== ChartProcessor 변수 치환 테스트 ====================

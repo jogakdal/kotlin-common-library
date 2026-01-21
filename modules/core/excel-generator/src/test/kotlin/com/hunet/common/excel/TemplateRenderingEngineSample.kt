@@ -5,9 +5,9 @@ import java.nio.file.Path
 import java.time.LocalDate
 
 /**
- * SimpleTemplateEngine 샘플 실행 클래스.
+ * TemplateRenderingEngine 샘플 실행 클래스.
  *
- * JXLS 없이 자체 개발된 경량 템플릿 엔진을 사용하여 Excel 파일을 생성합니다.
+ * 템플릿 엔진을 사용하여 Excel 파일을 생성합니다.
  *
  * ## 지원 문법
  * - `${변수명}` - 단순 변수 치환
@@ -28,7 +28,6 @@ import java.time.LocalDate
  *     @Bean
  *     fun excelGenerator(): ExcelGenerator {
  *         val config = ExcelGeneratorConfig(
- *             templateEngine = TemplateEngine.SIMPLE,
  *             streamingMode = StreamingMode.ENABLED
  *         )
  *         return ExcelGenerator(config)
@@ -36,18 +35,18 @@ import java.time.LocalDate
  * }
  * ```
  */
-object SimpleTemplateEngineSample {
+object TemplateRenderingEngineSample {
 
     data class Employee(val name: String, val position: String, val salary: Int)
 
     @JvmStatic
     fun main(args: Array<String>) {
         val moduleDir = findModuleDir()
-        val outputDir = moduleDir.resolve("build/samples/simple-engine")
+        val outputDir = moduleDir.resolve("build/samples/template-rendering")
         Files.createDirectories(outputDir)
 
         println("=".repeat(60))
-        println("SimpleTemplateEngine 샘플 실행")
+        println("TemplateRenderingEngine 샘플 실행")
         println("=".repeat(60))
 
         // 1. 비스트리밍 모드 (XSSF)
@@ -79,13 +78,12 @@ object SimpleTemplateEngineSample {
         println("-".repeat(40))
 
         val config = ExcelGeneratorConfig(
-            templateEngine = TemplateEngine.SIMPLE,
             streamingMode = StreamingMode.DISABLED
         )
 
         ExcelGenerator(config).use { generator ->
             val data = mapOf(
-                "title" to "SIMPLE 엔진 테스트 (XSSF)",
+                "title" to "템플릿 렌더링 테스트 (XSSF)",
                 "date" to LocalDate.now().toString(),
                 "linkText" to "(주)휴넷 홈페이지",
                 "url" to "https://www.hunet.co.kr",
@@ -126,13 +124,12 @@ object SimpleTemplateEngineSample {
         println("-".repeat(40))
 
         val config = ExcelGeneratorConfig(
-            templateEngine = TemplateEngine.SIMPLE,
             streamingMode = StreamingMode.ENABLED
         )
 
         ExcelGenerator(config).use { generator ->
             val dataProvider = simpleDataProvider {
-                value("title", "SIMPLE 엔진 테스트 (SXSSF)")
+                value("title", "템플릿 렌더링 테스트 (SXSSF)")
                 value("date", LocalDate.now().toString())
                 value("linkText", "(주)휴넷 홈페이지")
                 value("url", "https://www.hunet.co.kr")
@@ -176,7 +173,6 @@ object SimpleTemplateEngineSample {
         println("-".repeat(40))
 
         val config = ExcelGeneratorConfig(
-            templateEngine = TemplateEngine.SIMPLE,
             streamingMode = StreamingMode.ENABLED
         )
 
@@ -184,7 +180,7 @@ object SimpleTemplateEngineSample {
 
         ExcelGenerator(config).use { generator ->
             val dataProvider = simpleDataProvider {
-                value("title", "SIMPLE 엔진 대용량 테스트 (${dataCount}건)")
+                value("title", "템플릿 렌더링 대용량 테스트 (${dataCount}건)")
                 value("date", LocalDate.now().toString())
                 value("linkText", "(주)휴넷 홈페이지")
                 value("url", "https://www.hunet.co.kr")
@@ -231,14 +227,14 @@ object SimpleTemplateEngineSample {
     }
 
     private fun loadTemplate() =
-        SimpleTemplateEngineSample::class.java.getResourceAsStream("/templates/template.xlsx")
+        TemplateRenderingEngineSample::class.java.getResourceAsStream("/templates/template.xlsx")
             ?: throw IllegalStateException("템플릿 파일을 찾을 수 없습니다: /templates/template.xlsx")
 
     private fun loadImage(fileName: String): ByteArray? =
-        SimpleTemplateEngineSample::class.java.getResourceAsStream("/$fileName")?.use { it.readBytes() }
+        TemplateRenderingEngineSample::class.java.getResourceAsStream("/$fileName")?.use { it.readBytes() }
 
     private fun findModuleDir(): Path {
-        val classLocation = SimpleTemplateEngineSample::class.java.protectionDomain.codeSource?.location
+        val classLocation = TemplateRenderingEngineSample::class.java.protectionDomain.codeSource?.location
         if (classLocation != null) {
             val classPath = Path.of(classLocation.toURI())
             var current = classPath

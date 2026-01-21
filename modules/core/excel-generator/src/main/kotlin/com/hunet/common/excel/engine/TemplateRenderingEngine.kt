@@ -7,7 +7,6 @@ import com.hunet.common.excel.toByteArray
 import com.hunet.common.lib.VariableProcessor
 import org.apache.poi.ss.usermodel.CellCopyPolicy
 import org.apache.poi.ss.usermodel.CellType
-import org.apache.poi.ss.usermodel.Workbook
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.streaming.SXSSFSheet
 import org.apache.poi.xssf.streaming.SXSSFWorkbook
@@ -19,7 +18,7 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 
 /**
- * 간이 템플릿 엔진 - JXLS 없이 직접 템플릿 처리
+ * 템플릿 렌더링 엔진 - Excel 템플릿 기반 데이터 바인딩
  *
  * ## 지원 문법
  * - `${변수명}` - 단순 변수 치환
@@ -33,12 +32,16 @@ import java.io.InputStream
  * - **비스트리밍 모드**: XSSF 기반 템플릿 변환 (shiftRows + copyRowFrom)
  * - **스트리밍 모드**: SXSSF 기반 순차 생성 (청사진 기반)
  */
-class SimpleTemplateEngine(
+class TemplateRenderingEngine(
     private val streamingMode: StreamingMode = StreamingMode.DISABLED
 ) {
     private val analyzer = TemplateAnalyzer()
     private val variableProcessor = VariableProcessor(emptyList())
     private val imageInserter = ImageInserter()
+
+    // 리플렉션 결과 캐시 (성능 최적화)
+    private val fieldCache = mutableMapOf<Pair<Class<*>, String>, java.lang.reflect.Field?>()
+    private val getterCache = mutableMapOf<Pair<Class<*>, String>, java.lang.reflect.Method?>()
 
     /**
      * 템플릿에 데이터를 바인딩하여 Excel 생성
@@ -103,7 +106,8 @@ class SimpleTemplateEngine(
         val sheetIndex: Int,
         val imageName: String,
         val rowIndex: Int,
-        val colIndex: Int
+        val colIndex: Int,
+        val mergedRegion: CellRangeAddress? = null
     )
 
     private fun processSheetXssf(
@@ -170,6 +174,11 @@ class SimpleTemplateEngine(
                     }
 
                     rowOffsets[repeatRow.templateRowIndex] = rowsToInsert
+
+                    // 반복 영역 이후 행의 수식 확장
+                    expandFormulasAfterRepeat(
+                        sheet, repeatRow, items.size, templateRowCount, rowsToInsert
+                    )
                 }
 
                 RepeatDirection.RIGHT -> {
@@ -323,11 +332,8 @@ class SimpleTemplateEngine(
                     templateRegion.firstColumn,
                     templateRegion.lastColumn
                 )
-                try {
-                    sheet.addMergedRegion(newRegion)
-                } catch (e: IllegalStateException) {
-                    // 이미 병합된 영역이면 무시
-                }
+                // 이미 병합된 영역이면 무시
+                runCatching { sheet.addMergedRegion(newRegion) }
             }
         }
     }
@@ -381,6 +387,55 @@ class SimpleTemplateEngine(
                 }.toTypedArray()
 
                 scf.addConditionalFormatting(newRanges, rules)
+            }
+        }
+    }
+
+    /**
+     * 반복 영역 이후 행의 수식에서 반복 영역 내 셀 참조를 범위로 확장 (XSSF 모드)
+     *
+     * 예: 반복 영역 A7:B8, 데이터 3개
+     * - B11의 `=SUM(B8)` → B13으로 이동 (shiftRows에 의해)
+     * - 수식을 `=SUM(B8,B10,B12)`로 확장 (2행 템플릿이므로 비연속)
+     */
+    private fun expandFormulasAfterRepeat(
+        sheet: XSSFSheet,
+        repeatRow: RowBlueprint.RepeatRow,
+        itemCount: Int,
+        templateRowCount: Int,
+        rowsInserted: Int
+    ) {
+        if (itemCount <= 1 || rowsInserted <= 0) return
+
+        // shiftRows 후 반복 영역의 끝 위치
+        val newRepeatEndRow = repeatRow.repeatEndRowIndex + rowsInserted
+
+        // 반복 영역 이후의 행에서 수식 셀 찾기
+        for (rowIdx in (newRepeatEndRow + 1)..sheet.lastRowNum) {
+            val row = sheet.getRow(rowIdx) ?: continue
+            row.forEach { cell ->
+                if (cell.cellType == CellType.FORMULA) {
+                    val originalFormula = cell.cellFormula
+                    val (expandedFormula, hasDiscontinuous) = FormulaAdjuster.expandSingleRefToRange(
+                        originalFormula,
+                        repeatRow.templateRowIndex,
+                        repeatRow.repeatEndRowIndex,
+                        itemCount,
+                        templateRowCount
+                    )
+
+                    if (expandedFormula != originalFormula) {
+                        // 비연속 참조이고 인자 수가 255개를 초과하면 경고
+                        if (hasDiscontinuous && itemCount > 255) {
+                            throw com.hunet.common.excel.FormulaExpansionException(
+                                sheetName = sheet.sheetName,
+                                cellRef = cell.address.formatAsString(),
+                                formula = originalFormula
+                            )
+                        }
+                        cell.cellFormula = expandedFormula
+                    }
+                }
             }
         }
     }
@@ -488,12 +543,14 @@ class SimpleTemplateEngine(
         }
     }
 
-    private fun substituteCell(
+    /**
+     * 셀 내용 처리 - XSSF 모드 공통 로직
+     */
+    private fun processCellContent(
         cell: org.apache.poi.ss.usermodel.Cell,
         content: CellContent,
         data: Map<String, Any>,
-        itemVariable: String?,
-        sheet: XSSFSheet,
+        sheetIndex: Int,
         imageLocations: MutableList<ImageLocation>
     ) {
         when (content) {
@@ -519,7 +576,7 @@ class SimpleTemplateEngine(
 
             is CellContent.ImageMarker -> {
                 imageLocations.add(ImageLocation(
-                    sheetIndex = sheet.workbook.getSheetIndex(sheet),
+                    sheetIndex = sheetIndex,
                     imageName = content.imageName,
                     rowIndex = cell.rowIndex,
                     colIndex = cell.columnIndex
@@ -531,8 +588,29 @@ class SimpleTemplateEngine(
                 cell.setBlank()
             }
 
-            else -> {}
+            is CellContent.StaticString -> {
+                // 정적 문자열에도 ${...} 표현식이 있을 수 있음 (예: ${employees.size()}명)
+                val evaluated = evaluateText(content.value, data)
+                if (evaluated != content.value) {
+                    setCellValue(cell, evaluated)
+                }
+            }
+
+            else -> {
+                // 그 외 정적 값(숫자, 불린)은 그대로 유지
+            }
         }
+    }
+
+    private fun substituteCell(
+        cell: org.apache.poi.ss.usermodel.Cell,
+        content: CellContent,
+        data: Map<String, Any>,
+        itemVariable: String?,
+        sheet: XSSFSheet,
+        imageLocations: MutableList<ImageLocation>
+    ) {
+        processCellContent(cell, content, data, sheet.workbook.getSheetIndex(sheet), imageLocations)
     }
 
     private fun substituteRowVariables(
@@ -543,58 +621,10 @@ class SimpleTemplateEngine(
         itemVariable: String?,
         imageLocations: MutableList<ImageLocation>
     ) {
+        val sheetIndex = sheet.workbook.getSheetIndex(sheet)
         for (cellBlueprint in cellBlueprints) {
             val cell = row.getCell(cellBlueprint.columnIndex) ?: continue
-
-            when (val content = cellBlueprint.content) {
-                is CellContent.Variable -> {
-                    val evaluated = evaluateText(content.originalText, data)
-                    setCellValue(cell, evaluated)
-                }
-
-                is CellContent.ItemField -> {
-                    val item = data[content.itemVariable]
-                    val value = resolveFieldPath(item, content.fieldPath)
-                    setCellValue(cell, value)
-                }
-
-                is CellContent.Formula -> {
-                    // 일반 수식은 그대로 유지
-                }
-
-                is CellContent.FormulaWithVariables -> {
-                    // 수식 내 변수 치환
-                    val substitutedFormula = evaluateText(content.formula, data)
-                    cell.cellFormula = substitutedFormula
-                }
-
-                is CellContent.ImageMarker -> {
-                    // 이미지 위치 기록 (나중에 삽입)
-                    imageLocations.add(ImageLocation(
-                        sheetIndex = sheet.workbook.getSheetIndex(sheet),
-                        imageName = content.imageName,
-                        rowIndex = row.rowNum,
-                        colIndex = cellBlueprint.columnIndex
-                    ))
-                    cell.setBlank()
-                }
-
-                is CellContent.RepeatMarker -> {
-                    cell.setBlank()
-                }
-
-                is CellContent.StaticString -> {
-                    // 정적 문자열에도 ${...} 표현식이 있을 수 있음 (예: ${employees.size()}명)
-                    val evaluated = evaluateText(content.value, data)
-                    if (evaluated != content.value) {
-                        setCellValue(cell, evaluated)
-                    }
-                }
-
-                else -> {
-                    // 그 외 정적 값(숫자, 불린)은 그대로 유지
-                }
-            }
+            processCellContent(cell, cellBlueprint.content, data, sheetIndex, imageLocations)
         }
     }
 
@@ -663,7 +693,7 @@ class SimpleTemplateEngine(
                     // 스타일 인덱스로 직접 참조 (이미 템플릿에 있으므로 복사 불필요)
                     workbook.xssfWorkbook.getCellStyleAt(style.index.toInt())
                 }
-                val imageLocations = mutableListOf<SxssfImageLocation>()
+                val imageLocations = mutableListOf<ImageLocation>()
 
                 blueprint.sheets.forEachIndexed { index, sheetBlueprint ->
                     val sheet = workbook.getSheetAt(index) as SXSSFSheet
@@ -673,6 +703,13 @@ class SimpleTemplateEngine(
                 // SXSSF에서는 이미지를 바로 삽입
                 insertImagesSxssf(workbook, imageLocations, data)
 
+                // 수식 강제 재계산 플래그 설정 (Excel이 파일을 열 때 수식 재계산)
+                // SXSSF에서는 스트리밍 특성상 evaluateAll()을 호출할 수 없으므로
+                // Excel에게 재계산을 요청
+                for (i in 0 until workbook.numberOfSheets) {
+                    workbook.getSheetAt(i).forceFormulaRecalculation = true
+                }
+
                 ByteArrayOutputStream().also { out ->
                     workbook.write(out)
                 }.toByteArray()
@@ -681,14 +718,6 @@ class SimpleTemplateEngine(
             templateWorkbook.close()
         }
     }
-
-    private data class SxssfImageLocation(
-        val sheetIndex: Int,
-        val imageName: String,
-        val rowIndex: Int,
-        val colIndex: Int,
-        val mergedRegion: CellRangeAddress? = null
-    )
 
     private fun extractStyles(workbook: XSSFWorkbook): Map<Short, XSSFCellStyle> {
         val styles = mutableMapOf<Short, XSSFCellStyle>()
@@ -704,7 +733,7 @@ class SimpleTemplateEngine(
         blueprint: SheetBlueprint,
         data: Map<String, Any>,
         styleMap: Map<Short, org.apache.poi.ss.usermodel.CellStyle>,
-        imageLocations: MutableList<SxssfImageLocation>,
+        imageLocations: MutableList<ImageLocation>,
         sheetIndex: Int
     ) {
         // 열 너비 설정
@@ -816,7 +845,7 @@ class SimpleTemplateEngine(
         items: List<*>,
         styleMap: Map<Short, org.apache.poi.ss.usermodel.CellStyle>,
         templateMergedRegions: List<CellRangeAddress>,
-        imageLocations: MutableList<SxssfImageLocation>,
+        imageLocations: MutableList<ImageLocation>,
         sheetIndex: Int
     ) {
         val templateColCount = repeatRow.repeatEndCol - repeatRow.repeatStartCol + 1
@@ -896,7 +925,7 @@ class SimpleTemplateEngine(
         itemVariable: String?,
         sheet: SXSSFSheet,
         templateMergedRegions: List<CellRangeAddress>,
-        imageLocations: MutableList<SxssfImageLocation>,
+        imageLocations: MutableList<ImageLocation>,
         sheetIndex: Int,
         rowIndex: Int,
         colIndex: Int
@@ -934,7 +963,7 @@ class SimpleTemplateEngine(
             }
 
             is CellContent.ImageMarker -> {
-                imageLocations.add(SxssfImageLocation(
+                imageLocations.add(ImageLocation(
                     sheetIndex = sheetIndex,
                     imageName = content.imageName,
                     rowIndex = rowIndex,
@@ -961,7 +990,7 @@ class SimpleTemplateEngine(
         rowOffset: Int,
         repeatRegions: Map<Int, RowBlueprint.RepeatRow>,
         templateMergedRegions: List<CellRangeAddress>,
-        imageLocations: MutableList<SxssfImageLocation>,
+        imageLocations: MutableList<ImageLocation>,
         sheetIndex: Int,
         repeatRow: RowBlueprint.RepeatRow? = null  // 다중 행 반복을 위한 반복 영역 정보
     ) {
@@ -1013,6 +1042,7 @@ class SimpleTemplateEngine(
                 is CellContent.Formula -> {
                     // 수식 참조 조정
                     var adjustedFormula = content.formula
+                    var formulaExpanded = false
 
                     // 반복 인덱스에 따른 조정
                     if (repeatIndex > 0) {
@@ -1023,9 +1053,37 @@ class SimpleTemplateEngine(
                     if (rowOffset > 0 && blueprint is RowBlueprint.StaticRow) {
                         val repeatEndRow = repeatRegions.values.maxOfOrNull { it.repeatEndRowIndex } ?: -1
                         if (repeatEndRow >= 0 && blueprint.templateRowIndex > repeatEndRow) {
-                            adjustedFormula = FormulaAdjuster.adjustForRowExpansion(
-                                adjustedFormula, 0, repeatEndRow, rowOffset
-                            )
+                            // 1. 먼저 반복 영역 내 단일 셀 참조를 범위로 확장
+                            for (repeatRegion in repeatRegions.values) {
+                                val items = data[repeatRegion.collectionName] as? List<*> ?: continue
+                                val templateRowCount = repeatRegion.repeatEndRowIndex - repeatRegion.templateRowIndex + 1
+                                val (expanded, hasDiscontinuous) = FormulaAdjuster.expandSingleRefToRange(
+                                    adjustedFormula,
+                                    repeatRegion.templateRowIndex,
+                                    repeatRegion.repeatEndRowIndex,
+                                    items.size,
+                                    templateRowCount
+                                )
+                                if (expanded != adjustedFormula) {
+                                    if (hasDiscontinuous && items.size > 255) {
+                                        throw com.hunet.common.excel.FormulaExpansionException(
+                                            sheetName = sheet.sheetName,
+                                            cellRef = "${FormulaAdjuster.indexToColumnName(cellBlueprint.columnIndex)}${rowIndex + 1}",
+                                            formula = content.formula
+                                        )
+                                    }
+                                    adjustedFormula = expanded
+                                    formulaExpanded = true
+                                }
+                            }
+
+                            // 2. 수식이 확장되지 않은 경우에만 행 오프셋 적용
+                            // (확장된 수식은 이미 올바른 셀 위치를 참조함)
+                            if (!formulaExpanded) {
+                                adjustedFormula = FormulaAdjuster.adjustForRowExpansion(
+                                    adjustedFormula, 0, repeatEndRow, rowOffset
+                                )
+                            }
                         }
                     }
 
@@ -1062,7 +1120,7 @@ class SimpleTemplateEngine(
                     }
 
                     // 이미지 위치 기록 (병합 영역 포함)
-                    imageLocations.add(SxssfImageLocation(
+                    imageLocations.add(ImageLocation(
                         sheetIndex = sheetIndex,
                         imageName = content.imageName,
                         rowIndex = rowIndex,
@@ -1081,7 +1139,7 @@ class SimpleTemplateEngine(
 
     private fun insertImagesSxssf(
         workbook: SXSSFWorkbook,
-        imageLocations: List<SxssfImageLocation>,
+        imageLocations: List<ImageLocation>,
         data: Map<String, Any>
     ) {
         for (location in imageLocations) {
@@ -1126,14 +1184,13 @@ class SimpleTemplateEngine(
                     val key = "$newFirstRow:$newLastRow:${region.firstColumn}:${region.lastColumn}"
 
                     if (key !in addedRegions) {
-                        try {
+                        // 겹치는 영역 무시
+                        runCatching {
                             sheet.addMergedRegion(CellRangeAddress(
                                 newFirstRow, newLastRow, region.firstColumn, region.lastColumn
                             ))
-                            addedRegions.add(key)
-                        } catch (e: IllegalStateException) {
-                            // 겹치는 영역 무시
                         }
+                        addedRegions.add(key)
                     }
                 }
             } else {
@@ -1146,14 +1203,13 @@ class SimpleTemplateEngine(
                 val key = "$newFirstRow:$newLastRow:${region.firstColumn}:${region.lastColumn}"
 
                 if (key !in addedRegions) {
-                    try {
+                    // 겹치는 영역 무시
+                    runCatching {
                         sheet.addMergedRegion(CellRangeAddress(
                             newFirstRow, newLastRow, region.firstColumn, region.lastColumn
                         ))
-                        addedRegions.add(key)
-                    } catch (e: IllegalStateException) {
-                        // 겹치는 영역 무시
                     }
+                    addedRegions.add(key)
                 }
             }
         }
@@ -1222,7 +1278,7 @@ class SimpleTemplateEngine(
             // POI의 SheetConditionalFormatting을 사용하여 규칙 추가
             // dxfId를 유지하기 위해 리플렉션으로 내부 CTCfRule에 접근
             val rules = cfInfo.rules.mapNotNull { ruleInfo ->
-                try {
+                runCatching {
                     val rule = when (ruleInfo.conditionType) {
                         org.apache.poi.ss.usermodel.ConditionType.CELL_VALUE_IS -> {
                             scf.createConditionalFormattingRule(
@@ -1239,7 +1295,7 @@ class SimpleTemplateEngine(
 
                     // dxfId 설정 (리플렉션 사용)
                     if (rule != null && ruleInfo.dxfId >= 0) {
-                        try {
+                        runCatching {
                             val xssfRule = rule as? org.apache.poi.xssf.usermodel.XSSFConditionalFormattingRule
                             if (xssfRule != null) {
                                 // XSSFConditionalFormattingRule의 _cfRule 필드에 접근
@@ -1248,15 +1304,11 @@ class SimpleTemplateEngine(
                                 val ctCfRule = cfRuleField.get(xssfRule) as org.openxmlformats.schemas.spreadsheetml.x2006.main.CTCfRule
                                 ctCfRule.dxfId = ruleInfo.dxfId.toLong()
                             }
-                        } catch (e: Exception) {
-                            // 리플렉션 실패 시 dxfId 없이 진행
-                        }
+                        } // 리플렉션 실패 시 dxfId 없이 진행
                     }
 
                     rule
-                } catch (e: Exception) {
-                    null
-                }
+                }.getOrNull()
             }.toTypedArray()
 
             if (rules.isNotEmpty()) {
@@ -1297,40 +1349,49 @@ class SimpleTemplateEngine(
         )
 
         if (oddHeaderStr != null || oddFooterStr != null) {
-            val hf = xssfSheet.oddHeader
-            val footer = xssfSheet.oddFooter
-            oddHeaderStr?.let { hf.left = ""; hf.center = ""; hf.right = "" }  // 초기화
-            headerFooter.leftHeader?.let { hf.left = evaluateText(it, data) }
-            headerFooter.centerHeader?.let { hf.center = evaluateText(it, data) }
-            headerFooter.rightHeader?.let { hf.right = evaluateText(it, data) }
-            headerFooter.leftFooter?.let { footer.left = evaluateText(it, data) }
-            headerFooter.centerFooter?.let { footer.center = evaluateText(it, data) }
-            headerFooter.rightFooter?.let { footer.right = evaluateText(it, data) }
+            oddHeaderStr?.let { xssfSheet.oddHeader.apply { left = ""; center = ""; right = "" } }
+            applyHeaderFooterParts(
+                xssfSheet.oddHeader, xssfSheet.oddFooter, data,
+                headerFooter.leftHeader, headerFooter.centerHeader, headerFooter.rightHeader,
+                headerFooter.leftFooter, headerFooter.centerFooter, headerFooter.rightFooter
+            )
         }
 
         // 첫 페이지용 (differentFirst=true일 때)
         if (headerFooter.differentFirst) {
-            val firstHf = xssfSheet.firstHeader
-            val firstFooter = xssfSheet.firstFooter
-            headerFooter.firstLeftHeader?.let { firstHf.left = evaluateText(it, data) }
-            headerFooter.firstCenterHeader?.let { firstHf.center = evaluateText(it, data) }
-            headerFooter.firstRightHeader?.let { firstHf.right = evaluateText(it, data) }
-            headerFooter.firstLeftFooter?.let { firstFooter.left = evaluateText(it, data) }
-            headerFooter.firstCenterFooter?.let { firstFooter.center = evaluateText(it, data) }
-            headerFooter.firstRightFooter?.let { firstFooter.right = evaluateText(it, data) }
+            applyHeaderFooterParts(
+                xssfSheet.firstHeader, xssfSheet.firstFooter, data,
+                headerFooter.firstLeftHeader, headerFooter.firstCenterHeader, headerFooter.firstRightHeader,
+                headerFooter.firstLeftFooter, headerFooter.firstCenterFooter, headerFooter.firstRightFooter
+            )
         }
 
         // 짝수 페이지용 (differentOddEven=true일 때)
         if (headerFooter.differentOddEven) {
-            val evenHf = xssfSheet.evenHeader
-            val evenFooter = xssfSheet.evenFooter
-            headerFooter.evenLeftHeader?.let { evenHf.left = evaluateText(it, data) }
-            headerFooter.evenCenterHeader?.let { evenHf.center = evaluateText(it, data) }
-            headerFooter.evenRightHeader?.let { evenHf.right = evaluateText(it, data) }
-            headerFooter.evenLeftFooter?.let { evenFooter.left = evaluateText(it, data) }
-            headerFooter.evenCenterFooter?.let { evenFooter.center = evaluateText(it, data) }
-            headerFooter.evenRightFooter?.let { evenFooter.right = evaluateText(it, data) }
+            applyHeaderFooterParts(
+                xssfSheet.evenHeader, xssfSheet.evenFooter, data,
+                headerFooter.evenLeftHeader, headerFooter.evenCenterHeader, headerFooter.evenRightHeader,
+                headerFooter.evenLeftFooter, headerFooter.evenCenterFooter, headerFooter.evenRightFooter
+            )
         }
+    }
+
+    /**
+     * 헤더/푸터 부분 적용 (중복 코드 제거용 헬퍼)
+     */
+    private fun applyHeaderFooterParts(
+        header: org.apache.poi.ss.usermodel.Header,
+        footer: org.apache.poi.ss.usermodel.Footer,
+        data: Map<String, Any>,
+        leftH: String?, centerH: String?, rightH: String?,
+        leftF: String?, centerF: String?, rightF: String?
+    ) {
+        leftH?.let { header.left = evaluateText(it, data) }
+        centerH?.let { header.center = evaluateText(it, data) }
+        rightH?.let { header.right = evaluateText(it, data) }
+        leftF?.let { footer.left = evaluateText(it, data) }
+        centerF?.let { footer.center = evaluateText(it, data) }
+        rightF?.let { footer.right = evaluateText(it, data) }
     }
 
     /**
@@ -1384,25 +1445,40 @@ class SimpleTemplateEngine(
         for (field in fields) {
             current = when (current) {
                 is Map<*, *> -> current[field]
-                else -> {
-                    try {
-                        val prop = current!!::class.java.getDeclaredField(field)
-                        prop.isAccessible = true
-                        prop.get(current)
-                    } catch (e: Exception) {
-                        try {
-                            val getter = current!!::class.java.getMethod("get${field.replaceFirstChar { it.uppercase() }}")
-                            getter.invoke(current)
-                        } catch (e2: Exception) {
-                            null
-                        }
-                    }
-                }
+                else -> resolveField(current!!, field)
             }
             if (current == null) break
         }
 
         return current
+    }
+
+    /**
+     * 리플렉션으로 필드/getter 값을 가져옴 (캐싱 적용)
+     */
+    private fun resolveField(obj: Any, field: String): Any? {
+        val clazz = obj::class.java
+        val cacheKey = clazz to field
+
+        // 1. 필드 캐시 확인
+        val cachedField = fieldCache.getOrPut(cacheKey) {
+            runCatching {
+                clazz.getDeclaredField(field).apply { isAccessible = true }
+            }.getOrNull()
+        }
+
+        if (cachedField != null) {
+            return runCatching { cachedField.get(obj) }.getOrNull()
+        }
+
+        // 2. getter 캐시 확인
+        val cachedGetter = getterCache.getOrPut(cacheKey) {
+            runCatching {
+                clazz.getMethod("get${field.replaceFirstChar { it.uppercase() }}")
+            }.getOrNull()
+        }
+
+        return cachedGetter?.let { runCatching { it.invoke(obj) }.getOrNull() }
     }
 
     private fun setCellValue(cell: org.apache.poi.ss.usermodel.Cell, value: Any?) {

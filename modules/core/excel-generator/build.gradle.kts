@@ -16,18 +16,17 @@ dependencies {
     implementation(commonLibs.springBootAutoconfigure)
     kapt(commonLibs.springBootConfigProcessor)
 
-    // JXLS 3.x (Apache POI 기반 템플릿 엔진, 스트리밍 지원)
-    implementation("org.jxls:jxls-poi:3.0.0")
+    // Apache POI (Excel 처리)
+    implementation("org.apache.poi:poi-ooxml:5.2.5")
 
     // Apache POI full schemas (피벗 테이블 XML 조작용)
-    // JXLS 3.0 권장: POI 5.2.2 이하
-    implementation("org.apache.poi:poi-ooxml-full:5.2.2")
+    implementation("org.apache.poi:poi-ooxml-full:5.2.5")
 
     // Kotlin Coroutines (비동기 지원)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.8.1")
 
-    // Logback (JXLS 수식 에러 로그 캡처용)
+    // Logback
     implementation("ch.qos.logback:logback-classic")
 
     testImplementation(platform(commonLibs.springBootDependencies))
@@ -72,12 +71,12 @@ tasks.register<JavaExec>("runSpringBootJavaSample") {
     mainClass.set("com.hunet.common.excel.spring.ExcelGeneratorSpringBootJavaSample")
 }
 
-// SimpleTemplateEngine 샘플 실행 태스크
-tasks.register<JavaExec>("runSimpleEngineSample") {
+// TemplateRenderingEngine 샘플 실행 태스크
+tasks.register<JavaExec>("runRenderingEngineSample") {
     group = "application"
-    description = "SimpleTemplateEngine 샘플 실행"
+    description = "TemplateRenderingEngine 샘플 실행"
     classpath = sourceSets["test"].runtimeClasspath
-    mainClass.set("com.hunet.common.excel.SimpleTemplateEngineSample")
+    mainClass.set("com.hunet.common.excel.TemplateRenderingEngineSample")
 }
 
 // 테스트 클래스패스 출력 (java 명령 실행용)

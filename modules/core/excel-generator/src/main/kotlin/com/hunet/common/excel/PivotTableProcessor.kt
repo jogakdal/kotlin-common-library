@@ -547,7 +547,9 @@ internal class PivotTableProcessor(
         if (dataRows.isEmpty()) return
 
         val axisFieldIdx = rowLabelFields.first()
-        val uniqueValues = dataRows.mapNotNull { it.values[axisFieldIdx]?.toString() }.distinct()
+        // O(n) 그룹화로 O(n²) 필터링 제거
+        val groupedData = dataRows.groupBy { it.values[axisFieldIdx]?.toString() }
+        val uniqueValues = groupedData.keys.filterNotNull()
         if (uniqueValues.isEmpty()) return
 
         val startRow = pivotLocation.row
@@ -572,7 +574,7 @@ internal class PivotTableProcessor(
             }
         }
 
-        // 데이터 행들 - 원본 스타일 적용
+        // 데이터 행들 - 원본 스타일 적용 (그룹화된 데이터 사용으로 O(n) 처리)
         uniqueValues.forEachIndexed { rowIdx, axisValue ->
             pivotSheet.getOrCreateRow(startRow + 1 + rowIdx).apply {
                 getOrCreateCell(startCol).apply {
@@ -580,7 +582,7 @@ internal class PivotTableProcessor(
                     dataRowStyles[0]?.let { cellStyle = workbook.getOrCreateStyle(it, localStyleCache) }
                 }
 
-                val matchingRows = dataRows.filter { it.values[axisFieldIdx]?.toString() == axisValue }
+                val matchingRows = groupedData[axisValue] ?: emptyList()
                 dataFields.forEachIndexed { dataIdx, dataField ->
                     getOrCreateCell(startCol + 1 + dataIdx).apply {
                         setCellValue(matchingRows.aggregateForField(dataField))

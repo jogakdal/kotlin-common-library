@@ -243,6 +243,84 @@ object FormulaAdjuster {
     }
 
     /**
+     * 반복 영역 내 단일 셀 참조를 범위로 확장
+     *
+     * 반복 영역 외부의 수식에서 반복 영역 내 셀을 참조하는 경우,
+     * 해당 참조를 확장된 범위로 변환합니다.
+     *
+     * @param formula 원본 수식
+     * @param repeatStartRow 반복 영역 시작 행 (0-based)
+     * @param repeatEndRow 반복 영역 끝 행 (0-based)
+     * @param itemCount 반복 아이템 수
+     * @param templateRowCount 템플릿 행 수 (repeatEndRow - repeatStartRow + 1)
+     * @return 확장된 수식과 비연속 참조 여부
+     *
+     * 예 (1행 템플릿):
+     *   =SUM(B8), repeatStartRow=7, itemCount=3, templateRowCount=1
+     *   → =SUM(B8:B10) (연속 범위)
+     *
+     * 예 (2행 템플릿):
+     *   =SUM(B8), repeatStartRow=6, repeatEndRow=7, itemCount=3, templateRowCount=2
+     *   → =SUM(B8,B10,B12) (비연속 - B8은 템플릿 2번째 행, 각 아이템마다 +2)
+     */
+    fun expandSingleRefToRange(
+        formula: String,
+        repeatStartRow: Int,
+        repeatEndRow: Int,
+        itemCount: Int,
+        templateRowCount: Int
+    ): Pair<String, Boolean> {
+        if (itemCount <= 1) return formula to false
+
+        var hasDiscontinuous = false
+
+        // 이미 범위 참조인 것은 제외하기 위해 범위 위치 수집
+        val rangePattern = Regex("""\$?[A-Z]+\$?\d+:\$?[A-Z]+\$?\d+""", RegexOption.IGNORE_CASE)
+        val ranges = rangePattern.findAll(formula).map { it.range }.toList()
+
+        val result = CELL_REF_PATTERN.replace(formula) { match ->
+            // 이 매치가 범위의 일부인지 확인
+            val isPartOfRange = ranges.any { range ->
+                match.range.first >= range.first && match.range.last <= range.last
+            }
+
+            if (isPartOfRange) {
+                match.value
+            } else {
+                val colAbs = match.groupValues[1]
+                val col = match.groupValues[2].uppercase()
+                val rowAbs = match.groupValues[3]
+                val row = match.groupValues[4].toInt()
+                val rowIndex = row - 1  // 0-based
+
+                // 반복 영역 내의 셀인지 확인
+                if (rowIndex >= repeatStartRow && rowIndex <= repeatEndRow) {
+                    // 절대 참조는 확장하지 않음
+                    if (rowAbs == "$") {
+                        match.value
+                    } else if (templateRowCount == 1) {
+                        // 1행 템플릿: 연속 범위로 확장
+                        val endRow = row + (itemCount - 1)
+                        "$colAbs$col$rowAbs$row:$colAbs$col$rowAbs$endRow"
+                    } else {
+                        // 다중 행 템플릿: 비연속 셀 나열
+                        hasDiscontinuous = true
+                        val cells = (0 until itemCount).map { idx ->
+                            val newRow = row + (idx * templateRowCount)
+                            "$colAbs$col$rowAbs$newRow"
+                        }
+                        cells.joinToString(",")
+                    }
+                } else {
+                    match.value
+                }
+            }
+        }
+
+        return result to hasDiscontinuous
+    }
+
+    /**
      * 열 이름을 인덱스로 변환 (A=0, B=1, ..., Z=25, AA=26, ...)
      */
     private fun columnNameToIndex(colName: String): Int {
@@ -252,7 +330,7 @@ object FormulaAdjuster {
     /**
      * 인덱스를 열 이름으로 변환 (0=A, 1=B, ..., 25=Z, 26=AA, ...)
      */
-    private fun indexToColumnName(index: Int): String {
+    fun indexToColumnName(index: Int): String {
         val sb = StringBuilder()
         var n = index + 1
         while (n > 0) {

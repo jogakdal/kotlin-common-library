@@ -72,15 +72,20 @@ internal class ChartProcessor {
         val drawingFiles = mutableMapOf<String, ByteArray>()
         val drawingRelsFiles = mutableMapOf<String, ByteArray>()
         val contentTypeEntries = mutableListOf<String>()
+        var contentTypesXml: String? = null
 
         var hasChart = false
 
+        // 단일 ZIP 순회로 모든 필요한 데이터 수집
         ZipInputStream(ByteArrayInputStream(inputBytes)).use { zis ->
             var entry = zis.nextEntry
             while (entry != null) {
                 val path = "/" + entry.name
 
                 when {
+                    entry.name == "[Content_Types].xml" -> {
+                        contentTypesXml = String(zis.readBytes(), Charsets.UTF_8)
+                    }
                     CHART_PATH_PATTERN.matches(path) && !path.contains("/_rels/") -> {
                         chartFiles[path] = zis.readBytes()
                         hasChart = true
@@ -111,15 +116,9 @@ internal class ChartProcessor {
 
         LOG.debug("차트 추출: charts=${chartFiles.keys}, drawings=${chartRelatedDrawings.drawingFiles.keys}")
 
-        ZipInputStream(ByteArrayInputStream(inputBytes)).use { zis ->
-            var entry = zis.nextEntry
-            while (entry != null) {
-                if (entry.name == "[Content_Types].xml") {
-                    val content = String(zis.readBytes(), Charsets.UTF_8)
-                    contentTypeEntries.addAll(extractChartAndDrawingContentTypes(content, chartRelatedDrawings))
-                }
-                entry = zis.nextEntry
-            }
+        // 저장된 [Content_Types].xml에서 차트/드로잉 콘텐츠 타입 추출
+        contentTypesXml?.let { xml ->
+            contentTypeEntries.addAll(extractChartAndDrawingContentTypes(xml, chartRelatedDrawings))
         }
 
         val chartInfo = ChartInfo(
@@ -151,34 +150,14 @@ internal class ChartProcessor {
 
         LOG.debug("차트 복원 시작: charts=${chartInfo.chartFiles.keys}, drawings=${chartInfo.drawingFiles.keys}")
 
-        // 현재 파일의 드로잉 관계 파일 수집 (rId 매핑 계산용)
-        val currentDrawingRels = mutableMapOf<String, String>()
-
-        ZipInputStream(ByteArrayInputStream(inputBytes)).use { zis ->
-            var entry = zis.nextEntry
-            while (entry != null) {
-                val path = "/" + entry.name
-                if (DRAWING_RELS_PATH_PATTERN.matches(path)) {
-                    currentDrawingRels[path] = String(zis.readBytes(), Charsets.UTF_8)
-                }
-                entry = zis.nextEntry
-            }
-        }
-
-        // 각 드로잉에 대한 rId 매핑 계산 (원본 rId -> 새 rId)
-        val ridMappings = mutableMapOf<String, Map<String, String>>()
-        chartInfo.drawingRelsFiles.forEach { (relsPath, originalRelsBytes) ->
-            val currentRelsXml = currentDrawingRels[relsPath]
-            if (currentRelsXml != null) {
-                val originalRelsXml = String(originalRelsBytes, Charsets.UTF_8)
-                ridMappings[relsPath] = calculateRidMapping(currentRelsXml, originalRelsXml)
-            }
-        }
-
         val output = ByteArrayOutputStream()
 
+        // 단일 ZIP 순회로 드로잉 관계 파일 수집과 복원 작업 통합
         ZipOutputStream(output).use { zos ->
             val writtenEntries = mutableSetOf<String>()
+            val currentDrawingRels = mutableMapOf<String, String>()
+            val pendingDrawingFiles = mutableListOf<Triple<String, String, ByteArray>>() // path, entryName, content
+            val pendingDrawingRelsFiles = mutableListOf<Triple<String, String, ByteArray>>()
 
             ZipInputStream(ByteArrayInputStream(inputBytes)).use { zis ->
                 var entry = zis.nextEntry
@@ -195,58 +174,15 @@ internal class ChartProcessor {
                             zos.closeEntry()
                             writtenEntries.add(entryName)
                         }
-                        // 드로잉 파일 병합 (차트 + 도형 + 텍스트 상자 + WordArt 등)
+                        // 드로잉 파일 - 나중에 처리하기 위해 보관
                         DRAWING_PATH_PATTERN.matches(path) && !path.contains("/_rels/") -> {
-                            val currentContent = zis.readBytes()
-                            // 차트 관련 드로잉 또는 전체 드로잉에서 원본 찾기
-                            val originalDrawing = chartInfo.drawingFiles[path]
-                                ?: chartInfo.allDrawingFiles[path]
-
-                            // 해당 드로잉의 rels 파일 경로
-                            val drawingName = path.substringAfterLast("/")
-                            val relsPath = "/xl/drawings/_rels/$drawingName.rels"
-                            val ridMapping = ridMappings[relsPath] ?: emptyMap()
-
-                            var mergedContent = if (originalDrawing != null) {
-                                mergeDrawingXml(
-                                    String(currentContent, Charsets.UTF_8),
-                                    String(originalDrawing, Charsets.UTF_8),
-                                    ridMapping
-                                )
-                            } else {
-                                String(currentContent, Charsets.UTF_8)
-                            }
-
-                            // 드로잉 내 텍스트(도형, 텍스트 상자, WordArt 등)에서 변수 치환
-                            if (variableResolver != null) {
-                                mergedContent = variableResolver(mergedContent)
-                            }
-
-                            zos.putNextEntry(ZipEntry(entryName))
-                            zos.write(mergedContent.toByteArray(Charsets.UTF_8))
-                            zos.closeEntry()
-                            writtenEntries.add(entryName)
+                            pendingDrawingFiles.add(Triple(path, entryName, zis.readBytes()))
                         }
-                        // 드로잉 관계 파일 병합
+                        // 드로잉 관계 파일 - rId 매핑 계산용으로 보관
                         DRAWING_RELS_PATH_PATTERN.matches(path) -> {
-                            val currentContent = zis.readBytes()
-                            val originalRels = chartInfo.drawingRelsFiles[path]
-                            val ridMapping = ridMappings[path] ?: emptyMap()
-
-                            val mergedContent = if (originalRels != null) {
-                                mergeDrawingRelsXml(
-                                    String(currentContent, Charsets.UTF_8),
-                                    String(originalRels, Charsets.UTF_8),
-                                    ridMapping
-                                )
-                            } else {
-                                String(currentContent, Charsets.UTF_8)
-                            }
-
-                            zos.putNextEntry(ZipEntry(entryName))
-                            zos.write(mergedContent.toByteArray(Charsets.UTF_8))
-                            zos.closeEntry()
-                            writtenEntries.add(entryName)
+                            val content = zis.readBytes()
+                            currentDrawingRels[path] = String(content, Charsets.UTF_8)
+                            pendingDrawingRelsFiles.add(Triple(path, entryName, content))
                         }
                         else -> {
                             zos.putNextEntry(ZipEntry(entryName))
@@ -257,6 +193,66 @@ internal class ChartProcessor {
                     }
                     entry = zis.nextEntry
                 }
+            }
+
+            // rId 매핑 계산 (드로잉 관계 파일 수집 후)
+            val ridMappings = mutableMapOf<String, Map<String, String>>()
+            chartInfo.drawingRelsFiles.forEach { (relsPath, originalRelsBytes) ->
+                val currentRelsXml = currentDrawingRels[relsPath]
+                if (currentRelsXml != null) {
+                    val originalRelsXml = String(originalRelsBytes, Charsets.UTF_8)
+                    ridMappings[relsPath] = calculateRidMapping(currentRelsXml, originalRelsXml)
+                }
+            }
+
+            // 보관된 드로잉 파일 처리
+            pendingDrawingFiles.forEach { (path, entryName, currentContent) ->
+                val originalDrawing = chartInfo.drawingFiles[path]
+                    ?: chartInfo.allDrawingFiles[path]
+
+                val drawingName = path.substringAfterLast("/")
+                val relsPath = "/xl/drawings/_rels/$drawingName.rels"
+                val ridMapping = ridMappings[relsPath] ?: emptyMap()
+
+                var mergedContent = if (originalDrawing != null) {
+                    mergeDrawingXml(
+                        String(currentContent, Charsets.UTF_8),
+                        String(originalDrawing, Charsets.UTF_8),
+                        ridMapping
+                    )
+                } else {
+                    String(currentContent, Charsets.UTF_8)
+                }
+
+                if (variableResolver != null) {
+                    mergedContent = variableResolver(mergedContent)
+                }
+
+                zos.putNextEntry(ZipEntry(entryName))
+                zos.write(mergedContent.toByteArray(Charsets.UTF_8))
+                zos.closeEntry()
+                writtenEntries.add(entryName)
+            }
+
+            // 보관된 드로잉 관계 파일 처리
+            pendingDrawingRelsFiles.forEach { (path, entryName, currentContent) ->
+                val originalRels = chartInfo.drawingRelsFiles[path]
+                val ridMapping = ridMappings[path] ?: emptyMap()
+
+                val mergedContent = if (originalRels != null) {
+                    mergeDrawingRelsXml(
+                        String(currentContent, Charsets.UTF_8),
+                        String(originalRels, Charsets.UTF_8),
+                        ridMapping
+                    )
+                } else {
+                    String(currentContent, Charsets.UTF_8)
+                }
+
+                zos.putNextEntry(ZipEntry(entryName))
+                zos.write(mergedContent.toByteArray(Charsets.UTF_8))
+                zos.closeEntry()
+                writtenEntries.add(entryName)
             }
 
             // 차트 파일 추가 (변수 치환 적용)
