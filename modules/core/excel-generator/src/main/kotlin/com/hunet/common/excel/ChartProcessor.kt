@@ -1,6 +1,6 @@
 package com.hunet.common.excel
 
-import org.slf4j.LoggerFactory
+import com.hunet.common.logging.commonLogger
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.util.zip.ZipEntry
@@ -20,7 +20,7 @@ import java.util.zip.ZipOutputStream
 internal class ChartProcessor {
 
     companion object {
-        private val LOG = LoggerFactory.getLogger(ChartProcessor::class.java)
+        private val LOG by commonLogger()
 
         private const val CHART_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
         private const val CHART_STYLE_CONTENT_TYPE = "application/vnd.ms-office.chartstyle+xml"

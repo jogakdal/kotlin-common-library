@@ -42,6 +42,8 @@ class TemplateRenderingEngine(
     private val analyzer = TemplateAnalyzer()
     private val variableProcessor = VariableProcessor(emptyList())
     private val imageInserter = ImageInserter()
+    private val repeatExpansionProcessor = RepeatExpansionProcessor()
+    private val sheetLayoutApplier = SheetLayoutApplier()
 
     // 리플렉션 결과 캐시 (성능 최적화)
     private val fieldCache = mutableMapOf<Pair<Class<*>, String>, java.lang.reflect.Field?>()
@@ -184,16 +186,16 @@ class TemplateRenderingEngine(
                         }
 
                         // 다중 행 템플릿의 병합 영역 복제
-                        copyMergedRegionsForRepeat(sheet, repeatRow, items.size, blueprint.mergedRegions)
+                        repeatExpansionProcessor.copyMergedRegionsForRepeat(sheet, repeatRow, items.size, blueprint.mergedRegions)
 
                         // 조건부 서식 범위 확장
-                        expandConditionalFormattingForRepeat(sheet, repeatRow, items.size)
+                        repeatExpansionProcessor.expandConditionalFormattingForRepeat(sheet, repeatRow, items.size)
                     }
 
                     rowOffsets[repeatRow.templateRowIndex] = rowsToInsert
 
                     // 반복 영역 이후 행의 수식 확장
-                    expandFormulasAfterRepeat(
+                    repeatExpansionProcessor.expandFormulasAfterRepeat(
                         sheet, repeatRow, items.size, templateRowCount, rowsToInsert
                     )
                 }
@@ -205,13 +207,13 @@ class TemplateRenderingEngine(
 
                     if (colsToInsert > 0) {
                         // 템플릿 열을 오른쪽으로 확장
-                        expandColumnsRight(sheet, repeatRow, items.size)
+                        repeatExpansionProcessor.expandColumnsRight(sheet, repeatRow, items.size)
                     }
 
                     colOffsets[repeatRow.templateRowIndex] = colsToInsert
 
                     // 반복 영역 오른쪽 수식 확장
-                    expandFormulasAfterRightRepeat(
+                    repeatExpansionProcessor.expandFormulasAfterRightRepeat(
                         sheet, repeatRow, items.size, templateColCount, colsToInsert
                     )
                 }
@@ -223,300 +225,6 @@ class TemplateRenderingEngine(
 
         // 3. 변수 치환
         substituteVariablesXssf(sheet, blueprint, data, rowOffsets, imageLocations, colOffsets)
-    }
-
-    /**
-     * RIGHT 방향 확장 - 템플릿 열을 오른쪽으로 복사
-     * 확장 시 반복 영역 오른쪽의 기존 셀들을 오른쪽으로 이동
-     */
-    private fun expandColumnsRight(
-        sheet: XSSFSheet,
-        repeatRow: RowBlueprint.RepeatRow,
-        itemCount: Int
-    ) {
-        val templateColCount = repeatRow.repeatEndCol - repeatRow.repeatStartCol + 1
-        val colsToInsert = (itemCount - 1) * templateColCount  // 추가로 삽입할 열 수
-
-        if (colsToInsert <= 0) return
-
-        // 1. 반복 영역 내 행의 오른쪽 기존 셀들만 오른쪽으로 이동
-        val shiftStartCol = repeatRow.repeatEndCol + 1
-        shiftColumnsRight(
-            sheet, shiftStartCol, colsToInsert,
-            repeatRow.templateRowIndex, repeatRow.repeatEndRowIndex
-        )
-
-        // 2. 반복 영역의 모든 행에 대해 열 복사
-        for (rowIdx in repeatRow.templateRowIndex..repeatRow.repeatEndRowIndex) {
-            val row = sheet.getRow(rowIdx) ?: continue
-
-            // 템플릿 열의 셀 정보 수집 (스타일, 값)
-            val templateCells = (repeatRow.repeatStartCol..repeatRow.repeatEndCol).map { colIdx ->
-                row.getCell(colIdx)
-            }
-
-            // 데이터 개수만큼 열 복사 (첫 번째 열은 이미 있으므로 1부터 시작)
-            for (itemIdx in 1 until itemCount) {
-                for ((templateOffset, templateCell) in templateCells.withIndex()) {
-                    if (templateCell == null) continue
-
-                    val newColIdx = repeatRow.repeatStartCol + (itemIdx * templateColCount) + templateOffset
-                    val newCell = row.createCell(newColIdx)
-
-                    // 스타일 복사
-                    newCell.cellStyle = templateCell.cellStyle
-
-                    // 값 복사 (변수 치환은 나중에)
-                    when (templateCell.cellType) {
-                        CellType.STRING -> newCell.setCellValue(templateCell.stringCellValue)
-                        CellType.NUMERIC -> newCell.setCellValue(templateCell.numericCellValue)
-                        CellType.BOOLEAN -> newCell.setCellValue(templateCell.booleanCellValue)
-                        CellType.FORMULA -> newCell.cellFormula = templateCell.cellFormula
-                        else -> {}
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * 지정된 행 범위 내에서 지정된 열부터 오른쪽의 셀을 오른쪽으로 이동
-     */
-    private fun shiftColumnsRight(
-        sheet: XSSFSheet,
-        startCol: Int,
-        shiftAmount: Int,
-        startRow: Int,
-        endRow: Int
-    ) {
-        // 지정된 행 범위 내에서만 처리
-        for (rowIdx in startRow..endRow) {
-            val row = sheet.getRow(rowIdx) ?: continue
-            // 오른쪽에서 왼쪽으로 처리하여 덮어쓰기 방지
-            val cellsToMove = row.toList().filter { it.columnIndex >= startCol }
-                .sortedByDescending { it.columnIndex }
-
-            for (cell in cellsToMove) {
-                val newColIdx = cell.columnIndex + shiftAmount
-                val newCell = row.createCell(newColIdx)
-
-                // 스타일 복사 (같은 워크북 내 스타일이므로 인덱스로 복사)
-                newCell.cellStyle = sheet.workbook.getCellStyleAt(cell.cellStyle.index.toInt())
-
-                // 값 복사
-                when (cell.cellType) {
-                    CellType.STRING -> newCell.setCellValue(cell.stringCellValue)
-                    CellType.NUMERIC -> newCell.setCellValue(cell.numericCellValue)
-                    CellType.BOOLEAN -> newCell.setCellValue(cell.booleanCellValue)
-                    CellType.FORMULA -> {
-                        // 수식의 열 참조 조정
-                        val adjustedFormula = FormulaAdjuster.adjustForColumnExpansion(
-                            cell.cellFormula, startCol, shiftAmount
-                        )
-                        newCell.cellFormula = adjustedFormula
-                    }
-                    CellType.BLANK -> newCell.setBlank()
-                    else -> {}
-                }
-
-                // 원래 셀 비우기
-                row.removeCell(cell)
-            }
-        }
-    }
-
-    /**
-     * 다중 행 반복 템플릿의 병합 영역을 각 아이템에 대해 복제
-     */
-    private fun copyMergedRegionsForRepeat(
-        sheet: XSSFSheet,
-        repeatRow: RowBlueprint.RepeatRow,
-        itemCount: Int,
-        templateMergedRegions: List<CellRangeAddress>
-    ) {
-        val templateRowCount = repeatRow.repeatEndRowIndex - repeatRow.templateRowIndex + 1
-
-        // 반복 영역 내 병합 영역 찾기
-        val repeatMergedRegions = templateMergedRegions.filter { region ->
-            region.firstRow >= repeatRow.templateRowIndex &&
-                region.lastRow <= repeatRow.repeatEndRowIndex &&
-                region.firstColumn >= repeatRow.repeatStartCol &&
-                region.lastColumn <= repeatRow.repeatEndCol
-        }
-
-        // 각 추가 아이템에 대해 병합 영역 복제
-        for (itemIdx in 1 until itemCount) {
-            val rowOffset = itemIdx * templateRowCount
-            for (templateRegion in repeatMergedRegions) {
-                val newRegion = CellRangeAddress(
-                    templateRegion.firstRow + rowOffset,
-                    templateRegion.lastRow + rowOffset,
-                    templateRegion.firstColumn,
-                    templateRegion.lastColumn
-                )
-                // 이미 병합된 영역이면 무시
-                runCatching { sheet.addMergedRegion(newRegion) }
-            }
-        }
-    }
-
-    /**
-     * 조건부 서식 범위를 반복 영역에 맞게 확장 (XSSF 모드)
-     *
-     * 템플릿의 반복 영역에 조건부 서식이 있으면, 각 반복 아이템에 대해
-     * 조건부 서식을 복제합니다.
-     */
-    private fun expandConditionalFormattingForRepeat(
-        sheet: XSSFSheet,
-        repeatRow: RowBlueprint.RepeatRow,
-        itemCount: Int
-    ) {
-        if (itemCount <= 1) return
-
-        val templateRowCount = repeatRow.repeatEndRowIndex - repeatRow.templateRowIndex + 1
-        val scf = sheet.sheetConditionalFormatting
-        val cfCount = scf.numConditionalFormattings
-
-        // 반복 영역과 겹치는 조건부 서식 찾기 및 확장
-        for (i in 0 until cfCount) {
-            val cf = scf.getConditionalFormattingAt(i) ?: continue
-            val ranges = cf.formattingRanges
-
-            // 반복 영역 내의 범위만 필터
-            val repeatRanges = ranges.filter { range ->
-                range.firstRow >= repeatRow.templateRowIndex &&
-                        range.lastRow <= repeatRow.repeatEndRowIndex &&
-                        range.firstColumn >= repeatRow.repeatStartCol &&
-                        (repeatRow.repeatEndCol == Int.MAX_VALUE || range.lastColumn <= repeatRow.repeatEndCol)
-            }
-
-            if (repeatRanges.isEmpty()) continue
-
-            // 규칙 복사
-            val rules = (0 until cf.numberOfRules).mapNotNull { cf.getRule(it) }.toTypedArray()
-            if (rules.isEmpty()) continue
-
-            // 각 추가 아이템에 대해 새 범위 생성 및 추가
-            for (itemIdx in 1 until itemCount) {
-                val rowOffset = itemIdx * templateRowCount
-                val newRanges = repeatRanges.map { range ->
-                    CellRangeAddress(
-                        range.firstRow + rowOffset,
-                        range.lastRow + rowOffset,
-                        range.firstColumn,
-                        range.lastColumn
-                    )
-                }.toTypedArray()
-
-                scf.addConditionalFormatting(newRanges, rules)
-            }
-        }
-    }
-
-    /**
-     * 반복 영역 이후 행의 수식에서 반복 영역 내 셀 참조를 범위로 확장 (XSSF 모드)
-     *
-     * 예: 반복 영역 A7:B8, 데이터 3개
-     * - B11의 `=SUM(B8)` → B13으로 이동 (shiftRows에 의해)
-     * - 수식을 `=SUM(B8,B10,B12)`로 확장 (2행 템플릿이므로 비연속)
-     */
-    private fun expandFormulasAfterRepeat(
-        sheet: XSSFSheet,
-        repeatRow: RowBlueprint.RepeatRow,
-        itemCount: Int,
-        templateRowCount: Int,
-        rowsInserted: Int
-    ) {
-        if (itemCount <= 1 || rowsInserted <= 0) return
-
-        // shiftRows 후 반복 영역의 끝 위치
-        val newRepeatEndRow = repeatRow.repeatEndRowIndex + rowsInserted
-
-        // 반복 영역 이후의 행에서 수식 셀 찾기
-        for (rowIdx in (newRepeatEndRow + 1)..sheet.lastRowNum) {
-            val row = sheet.getRow(rowIdx) ?: continue
-            row.forEach { cell ->
-                if (cell.cellType == CellType.FORMULA) {
-                    val originalFormula = cell.cellFormula
-                    val (expandedFormula, hasDiscontinuous) = FormulaAdjuster.expandSingleRefToRange(
-                        originalFormula,
-                        repeatRow.templateRowIndex,
-                        repeatRow.repeatEndRowIndex,
-                        itemCount,
-                        templateRowCount
-                    )
-
-                    if (expandedFormula != originalFormula) {
-                        // 비연속 참조이고 인자 수가 255개를 초과하면 경고
-                        if (hasDiscontinuous && itemCount > 255) {
-                            throw com.hunet.common.excel.FormulaExpansionException(
-                                sheetName = sheet.sheetName,
-                                cellRef = cell.address.formatAsString(),
-                                formula = originalFormula
-                            )
-                        }
-                        cell.cellFormula = expandedFormula
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * RIGHT 방향 반복 영역 오른쪽의 수식에서 반복 영역 내 셀 참조를 범위로 확장 (XSSF 모드)
-     *
-     * 예: 반복 영역 B7:C8 (2열×2행), 데이터 3개
-     * - G7의 `=SUM(B7)` 수식
-     * - 수식을 `=SUM(B7,D7,F7)`로 확장 (2열 템플릿이므로 비연속)
-     */
-    private fun expandFormulasAfterRightRepeat(
-        sheet: XSSFSheet,
-        repeatRow: RowBlueprint.RepeatRow,
-        itemCount: Int,
-        templateColCount: Int,
-        colsInserted: Int
-    ) {
-        if (itemCount <= 1) return
-
-        // 반복 영역 오른쪽의 새 시작 열
-        val newColStart = repeatRow.repeatEndCol + colsInserted + 1
-
-        // 반복 영역의 행 범위 내에서 수식 셀 찾기
-        for (rowIdx in repeatRow.templateRowIndex..repeatRow.repeatEndRowIndex) {
-            val row = sheet.getRow(rowIdx) ?: continue
-            row.forEach { cell ->
-                // 반복 영역 오른쪽에 있는 수식 셀만 처리
-                if (cell.columnIndex >= newColStart && cell.cellType == CellType.FORMULA) {
-                    val originalFormula = cell.cellFormula
-
-                    // XSSF 모드에서 확장된 데이터 열(repeatStartCol~repeatEndCol + colsInserted)은
-                    // shiftColumnsRight 이후에 생성되므로 추가 열 이동이 필요 없음.
-                    // 순환 참조도 발생하지 않음: 확장 범위(열 1~itemCount*templateColCount)가
-                    // 수식 셀 위치(newColStart 이상)를 포함하지 않음.
-                    val (expandedFormula, hasDiscontinuous) = FormulaAdjuster.expandSingleRefToColumnRange(
-                        originalFormula,
-                        repeatRow.repeatStartCol,
-                        repeatRow.repeatEndCol,
-                        repeatRow.templateRowIndex,
-                        repeatRow.repeatEndRowIndex,
-                        itemCount,
-                        templateColCount
-                    )
-
-                    if (expandedFormula != originalFormula) {
-                        // 비연속 참조이고 인자 수가 255개를 초과하면 경고
-                        if (hasDiscontinuous && itemCount > 255) {
-                            throw com.hunet.common.excel.FormulaExpansionException(
-                                sheetName = sheet.sheetName,
-                                cellRef = cell.address.formatAsString(),
-                                formula = originalFormula
-                            )
-                        }
-                        cell.cellFormula = expandedFormula
-                    }
-                }
-            }
-        }
     }
 
     private fun clearRepeatMarkers(sheet: XSSFSheet) {
@@ -819,10 +527,12 @@ class TemplateRenderingEngine(
         }
 
         // 헤더/푸터 설정 (변수 치환 적용) - 워크북에서 XSSFSheet에 접근
-        applyHeaderFooter(sheet.workbook as SXSSFWorkbook, sheetIndex, blueprint.headerFooter, data)
+        sheetLayoutApplier.applyHeaderFooter(
+            sheet.workbook as SXSSFWorkbook, sheetIndex, blueprint.headerFooter, data, ::evaluateText
+        )
 
         // 인쇄 설정 적용
-        applyPrintSetup(sheet, blueprint.printSetup)
+        sheetLayoutApplier.applyPrintSetup(sheet, blueprint.printSetup)
 
         var currentRowIndex = 0
         var rowOffset = 0  // 반복으로 인한 누적 오프셋
@@ -912,10 +622,10 @@ class TemplateRenderingEngine(
         }
 
         // 병합 영역 설정 (오프셋 적용)
-        applyMergedRegions(sheet, blueprint.mergedRegions, repeatRegions, data, rowOffset)
+        sheetLayoutApplier.applyMergedRegions(sheet, blueprint.mergedRegions, repeatRegions, data, rowOffset)
 
         // 조건부 서식 적용 (오프셋 적용)
-        applyConditionalFormattings(sheet, blueprint.conditionalFormattings, repeatRegions, data, rowOffset)
+        sheetLayoutApplier.applyConditionalFormattings(sheet, blueprint.conditionalFormattings, repeatRegions, data, rowOffset)
     }
 
     /**
@@ -1279,276 +989,6 @@ class TemplateRenderingEngine(
                 location.rowIndex, location.colIndex, location.mergedRegion
             )
         }
-    }
-
-    private fun applyMergedRegions(
-        sheet: SXSSFSheet,
-        mergedRegions: List<CellRangeAddress>,
-        repeatRegions: Map<Int, RowBlueprint.RepeatRow>,
-        data: Map<String, Any>,
-        totalRowOffset: Int
-    ) {
-        // 이미 추가된 병합 영역 추적 (겹침 방지)
-        val addedRegions = mutableSetOf<String>()
-
-        for (region in mergedRegions) {
-            // 반복 영역과 겹치는지 확인
-            val overlappingRepeat = repeatRegions.values.find { repeat ->
-                region.firstRow >= repeat.templateRowIndex && region.firstRow <= repeat.repeatEndRowIndex
-            }
-
-            if (overlappingRepeat != null) {
-                // 반복 영역 내 병합: 각 반복 항목마다 병합 생성
-                val items = data[overlappingRepeat.collectionName] as? List<*> ?: continue
-                val relativeStartRow = region.firstRow - overlappingRepeat.templateRowIndex
-                val rowSpan = region.lastRow - region.firstRow
-
-                items.indices.forEach { index ->
-                    val newFirstRow = overlappingRepeat.templateRowIndex + index + relativeStartRow
-                    val newLastRow = newFirstRow + rowSpan
-                    val key = "$newFirstRow:$newLastRow:${region.firstColumn}:${region.lastColumn}"
-
-                    if (key !in addedRegions) {
-                        // 겹치는 영역 무시
-                        runCatching {
-                            sheet.addMergedRegion(CellRangeAddress(
-                                newFirstRow, newLastRow, region.firstColumn, region.lastColumn
-                            ))
-                        }
-                        addedRegions.add(key)
-                    }
-                }
-            } else {
-                // 반복 영역 외부 병합
-                val maxRepeatEndRow = repeatRegions.values.maxOfOrNull { it.repeatEndRowIndex } ?: -1
-                val offset = if (region.firstRow > maxRepeatEndRow) totalRowOffset else 0
-
-                val newFirstRow = region.firstRow + offset
-                val newLastRow = region.lastRow + offset
-                val key = "$newFirstRow:$newLastRow:${region.firstColumn}:${region.lastColumn}"
-
-                if (key !in addedRegions) {
-                    // 겹치는 영역 무시
-                    runCatching {
-                        sheet.addMergedRegion(CellRangeAddress(
-                            newFirstRow, newLastRow, region.firstColumn, region.lastColumn
-                        ))
-                    }
-                    addedRegions.add(key)
-                }
-            }
-        }
-    }
-
-    /**
-     * 조건부 서식 적용 (SXSSF 모드용)
-     *
-     * 템플릿의 조건부 서식을 SXSSF 시트에 적용합니다.
-     * 반복 영역에 있는 조건부 서식은 각 반복 아이템에 대해 복제됩니다.
-     */
-    private fun applyConditionalFormattings(
-        sheet: SXSSFSheet,
-        conditionalFormattings: List<ConditionalFormattingInfo>,
-        repeatRegions: Map<Int, RowBlueprint.RepeatRow>,
-        data: Map<String, Any>,
-        totalRowOffset: Int
-    ) {
-        if (conditionalFormattings.isEmpty()) return
-
-        // SXSSFWorkbook의 내부 XSSFWorkbook을 통해 XSSFSheet 접근
-        val xssfSheet = (sheet.workbook as SXSSFWorkbook).xssfWorkbook.getSheetAt(sheet.workbook.getSheetIndex(sheet))
-        val scf = xssfSheet.sheetConditionalFormatting
-
-        for (cfInfo in conditionalFormattings) {
-            val allRanges = mutableListOf<CellRangeAddress>()
-
-            for (range in cfInfo.ranges) {
-                // 이 범위가 어떤 반복 영역에 속하는지 확인
-                val overlappingRepeat = repeatRegions.values.find { repeat ->
-                    range.firstRow >= repeat.templateRowIndex && range.lastRow <= repeat.repeatEndRowIndex
-                }
-
-                if (overlappingRepeat != null) {
-                    // 반복 영역 내 조건부 서식: 각 반복 아이템마다 복제
-                    val items = data[overlappingRepeat.collectionName] as? List<*> ?: continue
-                    val templateRowCount = overlappingRepeat.repeatEndRowIndex - overlappingRepeat.templateRowIndex + 1
-                    val relativeStartRow = range.firstRow - overlappingRepeat.templateRowIndex
-                    val rowSpan = range.lastRow - range.firstRow
-
-                    for (itemIdx in items.indices) {
-                        val rowOffset = itemIdx * templateRowCount
-                        val newFirstRow = overlappingRepeat.templateRowIndex + rowOffset + relativeStartRow
-                        val newLastRow = newFirstRow + rowSpan
-                        allRanges.add(CellRangeAddress(
-                            newFirstRow, newLastRow, range.firstColumn, range.lastColumn
-                        ))
-                    }
-                } else {
-                    // 반복 영역 외부: 오프셋만 적용
-                    val maxRepeatEndRow = repeatRegions.values.maxOfOrNull { it.repeatEndRowIndex } ?: -1
-                    val offset = if (range.firstRow > maxRepeatEndRow) totalRowOffset else 0
-
-                    allRanges.add(CellRangeAddress(
-                        range.firstRow + offset,
-                        range.lastRow + offset,
-                        range.firstColumn,
-                        range.lastColumn
-                    ))
-                }
-            }
-
-            if (allRanges.isEmpty()) continue
-
-            // 규칙 생성 및 적용
-            // POI의 SheetConditionalFormatting을 사용하여 규칙 추가
-            // dxfId를 유지하기 위해 리플렉션으로 내부 CTCfRule에 접근
-            val rules = cfInfo.rules.mapNotNull { ruleInfo ->
-                runCatching {
-                    val rule = when (ruleInfo.conditionType) {
-                        org.apache.poi.ss.usermodel.ConditionType.CELL_VALUE_IS -> {
-                            scf.createConditionalFormattingRule(
-                                ruleInfo.comparisonOperator,
-                                ruleInfo.formula1 ?: "",
-                                ruleInfo.formula2
-                            )
-                        }
-                        org.apache.poi.ss.usermodel.ConditionType.FORMULA -> {
-                            scf.createConditionalFormattingRule(ruleInfo.formula1 ?: "TRUE")
-                        }
-                        else -> null
-                    }
-
-                    // dxfId 설정 (리플렉션 사용)
-                    if (rule != null && ruleInfo.dxfId >= 0) {
-                        runCatching {
-                            val xssfRule = rule as? org.apache.poi.xssf.usermodel.XSSFConditionalFormattingRule
-                            if (xssfRule != null) {
-                                // XSSFConditionalFormattingRule의 _cfRule 필드에 접근
-                                val cfRuleField = xssfRule.javaClass.getDeclaredField("_cfRule")
-                                cfRuleField.isAccessible = true
-                                val ctCfRule = cfRuleField.get(xssfRule) as org.openxmlformats.schemas.spreadsheetml.x2006.main.CTCfRule
-                                ctCfRule.dxfId = ruleInfo.dxfId.toLong()
-                            }
-                        } // 리플렉션 실패 시 dxfId 없이 진행
-                    }
-
-                    rule
-                }.getOrNull()
-            }.toTypedArray()
-
-            if (rules.isNotEmpty()) {
-                scf.addConditionalFormatting(allRanges.toTypedArray(), rules)
-            }
-        }
-    }
-
-    // ========== 헤더/푸터 및 인쇄 설정 ==========
-
-    /**
-     * 헤더/푸터 설정 적용 (SXSSF 모드용)
-     * 템플릿의 헤더/푸터를 복사하고 변수 치환 적용
-     *
-     * SXSSFWorkbook에서 내부 XSSFWorkbook을 통해 XSSFSheet에 접근하여 설정
-     */
-    private fun applyHeaderFooter(
-        workbook: SXSSFWorkbook,
-        sheetIndex: Int,
-        headerFooter: HeaderFooterInfo?,
-        data: Map<String, Any>
-    ) {
-        if (headerFooter == null) return
-
-        // SXSSFWorkbook의 내부 XSSFWorkbook을 통해 XSSFSheet 접근
-        val xssfSheet = workbook.xssfWorkbook.getSheetAt(sheetIndex)
-
-        // 홀수 페이지 헤더/푸터 (기본)
-        val oddHeaderStr = buildHeaderFooterString(
-            evaluateTextOrNull(headerFooter.leftHeader, data),
-            evaluateTextOrNull(headerFooter.centerHeader, data),
-            evaluateTextOrNull(headerFooter.rightHeader, data)
-        )
-        val oddFooterStr = buildHeaderFooterString(
-            evaluateTextOrNull(headerFooter.leftFooter, data),
-            evaluateTextOrNull(headerFooter.centerFooter, data),
-            evaluateTextOrNull(headerFooter.rightFooter, data)
-        )
-
-        if (oddHeaderStr != null || oddFooterStr != null) {
-            oddHeaderStr?.let { xssfSheet.oddHeader.apply { left = ""; center = ""; right = "" } }
-            applyHeaderFooterParts(
-                xssfSheet.oddHeader, xssfSheet.oddFooter, data,
-                headerFooter.leftHeader, headerFooter.centerHeader, headerFooter.rightHeader,
-                headerFooter.leftFooter, headerFooter.centerFooter, headerFooter.rightFooter
-            )
-        }
-
-        // 첫 페이지용 (differentFirst=true일 때)
-        if (headerFooter.differentFirst) {
-            applyHeaderFooterParts(
-                xssfSheet.firstHeader, xssfSheet.firstFooter, data,
-                headerFooter.firstLeftHeader, headerFooter.firstCenterHeader, headerFooter.firstRightHeader,
-                headerFooter.firstLeftFooter, headerFooter.firstCenterFooter, headerFooter.firstRightFooter
-            )
-        }
-
-        // 짝수 페이지용 (differentOddEven=true일 때)
-        if (headerFooter.differentOddEven) {
-            applyHeaderFooterParts(
-                xssfSheet.evenHeader, xssfSheet.evenFooter, data,
-                headerFooter.evenLeftHeader, headerFooter.evenCenterHeader, headerFooter.evenRightHeader,
-                headerFooter.evenLeftFooter, headerFooter.evenCenterFooter, headerFooter.evenRightFooter
-            )
-        }
-    }
-
-    /**
-     * 헤더/푸터 부분 적용 (중복 코드 제거용 헬퍼)
-     */
-    private fun applyHeaderFooterParts(
-        header: org.apache.poi.ss.usermodel.Header,
-        footer: org.apache.poi.ss.usermodel.Footer,
-        data: Map<String, Any>,
-        leftH: String?, centerH: String?, rightH: String?,
-        leftF: String?, centerF: String?, rightF: String?
-    ) {
-        leftH?.let { header.left = evaluateText(it, data) }
-        centerH?.let { header.center = evaluateText(it, data) }
-        rightH?.let { header.right = evaluateText(it, data) }
-        leftF?.let { footer.left = evaluateText(it, data) }
-        centerF?.let { footer.center = evaluateText(it, data) }
-        rightF?.let { footer.right = evaluateText(it, data) }
-    }
-
-    /**
-     * 헤더/푸터 문자열 조합 (Excel 형식: &L...&C...&R...)
-     */
-    private fun buildHeaderFooterString(left: String?, center: String?, right: String?): String? {
-        if (left == null && center == null && right == null) return null
-        val sb = StringBuilder()
-        left?.let { sb.append("&L").append(it) }
-        center?.let { sb.append("&C").append(it) }
-        right?.let { sb.append("&R").append(it) }
-        return sb.toString().takeIf { it.isNotEmpty() }
-    }
-
-    private fun evaluateTextOrNull(text: String?, data: Map<String, Any>): String? {
-        return text?.let { evaluateText(it, data) }
-    }
-
-    /**
-     * 인쇄 설정 적용 (SXSSF 모드용)
-     */
-    private fun applyPrintSetup(sheet: SXSSFSheet, printSetup: PrintSetupInfo?) {
-        if (printSetup == null) return
-
-        val ps = sheet.printSetup
-        ps.paperSize = printSetup.paperSize
-        ps.landscape = printSetup.landscape
-        ps.fitWidth = printSetup.fitWidth
-        ps.fitHeight = printSetup.fitHeight
-        ps.scale = printSetup.scale
-        ps.headerMargin = printSetup.headerMargin
-        ps.footerMargin = printSetup.footerMargin
     }
 
     // ========== 유틸리티 ==========

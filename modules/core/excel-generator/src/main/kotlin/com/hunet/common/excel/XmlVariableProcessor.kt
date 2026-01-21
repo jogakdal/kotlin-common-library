@@ -9,7 +9,7 @@ import java.io.ByteArrayOutputStream
 /**
  * Excel 패키지 내 XML 요소의 변수 치환을 담당하는 프로세서.
  *
- * [TemplateRenderingEngine]은 POI API를 통해 워크시트 셀을 처리하지만,
+ * TemplateRenderingEngine은 POI API를 통해 워크시트 셀을 처리하지만,
  * 차트, 도형, 머리글/바닥글 등의 요소는 POI API로 접근하기 어렵습니다.
  * 이 프로세서는 Excel 패키지의 raw XML을 직접 스캔하여 변수를 치환합니다.
  *
@@ -17,18 +17,18 @@ import java.io.ByteArrayOutputStream
  * 모든 XML 파일에서 변수 패턴을 검색하여 치환합니다.
  *
  * 처리 대상:
- * - 차트 타이틀 및 레이블 (xl/charts/*.xml)
- * - 도형 텍스트 (xl/drawings/*.xml)
+ * - 차트 타이틀 및 레이블 (`xl/charts/\*.xml`)
+ * - 도형 텍스트 (`xl/drawings/\*.xml`)
  * - 머리글/바닥글
  * - 텍스트 상자, SmartArt 등 기타 XML 요소
  *
  * 제외 대상:
  * - 관계 파일 (.rels)
- * - 콘텐츠 타입 정의 ([Content_Types].xml)
+ * - 콘텐츠 타입 정의 (`[Content_Types].xml`)
  * - 문서 속성 (/docProps/)
- * - 워크시트 셀 데이터 ([TemplateRenderingEngine]이 처리)
+ * - 워크시트 셀 데이터 (TemplateRenderingEngine이 처리)
  *
- * common-core 모듈의 [VariableProcessor]를 활용하여 변수 치환을 수행합니다.
+ * common-core 모듈의 VariableProcessor를 활용하여 변수 치환을 수행합니다.
  */
 internal class XmlVariableProcessor {
     companion object {
