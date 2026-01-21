@@ -164,6 +164,9 @@ class SimpleTemplateEngine(
 
                         // 다중 행 템플릿의 병합 영역 복제
                         copyMergedRegionsForRepeat(sheet, repeatRow, items.size, blueprint.mergedRegions)
+
+                        // 조건부 서식 범위 확장
+                        expandConditionalFormattingForRepeat(sheet, repeatRow, items.size)
                     }
 
                     rowOffsets[repeatRow.templateRowIndex] = rowsToInsert
@@ -325,6 +328,59 @@ class SimpleTemplateEngine(
                 } catch (e: IllegalStateException) {
                     // 이미 병합된 영역이면 무시
                 }
+            }
+        }
+    }
+
+    /**
+     * 조건부 서식 범위를 반복 영역에 맞게 확장 (XSSF 모드)
+     *
+     * 템플릿의 반복 영역에 조건부 서식이 있으면, 각 반복 아이템에 대해
+     * 조건부 서식을 복제합니다.
+     */
+    private fun expandConditionalFormattingForRepeat(
+        sheet: XSSFSheet,
+        repeatRow: RowBlueprint.RepeatRow,
+        itemCount: Int
+    ) {
+        if (itemCount <= 1) return
+
+        val templateRowCount = repeatRow.repeatEndRowIndex - repeatRow.templateRowIndex + 1
+        val scf = sheet.sheetConditionalFormatting
+        val cfCount = scf.numConditionalFormattings
+
+        // 반복 영역과 겹치는 조건부 서식 찾기 및 확장
+        for (i in 0 until cfCount) {
+            val cf = scf.getConditionalFormattingAt(i) ?: continue
+            val ranges = cf.formattingRanges
+
+            // 반복 영역 내의 범위만 필터
+            val repeatRanges = ranges.filter { range ->
+                range.firstRow >= repeatRow.templateRowIndex &&
+                        range.lastRow <= repeatRow.repeatEndRowIndex &&
+                        range.firstColumn >= repeatRow.repeatStartCol &&
+                        (repeatRow.repeatEndCol == Int.MAX_VALUE || range.lastColumn <= repeatRow.repeatEndCol)
+            }
+
+            if (repeatRanges.isEmpty()) continue
+
+            // 규칙 복사
+            val rules = (0 until cf.numberOfRules).mapNotNull { cf.getRule(it) }.toTypedArray()
+            if (rules.isEmpty()) continue
+
+            // 각 추가 아이템에 대해 새 범위 생성 및 추가
+            for (itemIdx in 1 until itemCount) {
+                val rowOffset = itemIdx * templateRowCount
+                val newRanges = repeatRanges.map { range ->
+                    CellRangeAddress(
+                        range.firstRow + rowOffset,
+                        range.lastRow + rowOffset,
+                        range.firstColumn,
+                        range.lastColumn
+                    )
+                }.toTypedArray()
+
+                scf.addConditionalFormatting(newRanges, rules)
             }
         }
     }
@@ -574,29 +630,55 @@ class SimpleTemplateEngine(
      * - 수식 참조는 미리 계산하여 설정
      */
     private fun processWithSxssf(templateBytes: ByteArray, data: Map<String, Any>): ByteArray {
-        // 1. 템플릿 분석 및 스타일 추출
-        val (blueprint, styleRegistry, templateWorkbook) = XSSFWorkbook(ByteArrayInputStream(templateBytes)).use { workbook ->
-            val bp = analyzer.analyzeFromWorkbook(workbook)
-            val styles = extractStyles(workbook)
-            Triple(bp, styles, workbook)
-        }
+        // 1. 템플릿 XSSFWorkbook을 열고 분석 (dxfs 등 스타일 유지를 위해 닫지 않음)
+        val templateWorkbook = XSSFWorkbook(ByteArrayInputStream(templateBytes))
 
-        // 2. SXSSF 워크북으로 순차 생성
-        return SXSSFWorkbook(100).use { workbook ->
-            val styleMap = copyStylesToWorkbook(workbook, styleRegistry)
-            val imageLocations = mutableListOf<SxssfImageLocation>()
+        try {
+            val blueprint = analyzer.analyzeFromWorkbook(templateWorkbook)
+            val styleRegistry = extractStyles(templateWorkbook)
 
-            blueprint.sheets.forEachIndexed { index, sheetBlueprint ->
-                val sheet = workbook.createSheet(sheetBlueprint.sheetName)
-                processSheetSxssf(sheet, sheetBlueprint, data, styleMap, imageLocations, index)
+            // 2. 템플릿 워크북의 기존 시트 내용을 모두 삭제 (시트 구조는 유지)
+            // 이렇게 하면 dxfs(조건부 서식 스타일) 등이 유지됨
+            for (i in 0 until templateWorkbook.numberOfSheets) {
+                val sheet = templateWorkbook.getSheetAt(i)
+                // 모든 행 삭제
+                val lastRowNum = sheet.lastRowNum
+                for (rowIdx in lastRowNum downTo 0) {
+                    sheet.getRow(rowIdx)?.let { sheet.removeRow(it) }
+                }
+                // 병합 영역 삭제
+                while (sheet.numMergedRegions > 0) {
+                    sheet.removeMergedRegion(0)
+                }
+                // 조건부 서식 삭제 (새로 확장된 범위로 추가할 예정)
+                val scf = sheet.sheetConditionalFormatting
+                while (scf.numConditionalFormattings > 0) {
+                    scf.removeConditionalFormatting(0)
+                }
             }
 
-            // SXSSF에서는 이미지를 바로 삽입
-            insertImagesSxssf(workbook, imageLocations, data)
+            // 3. 템플릿 기반 SXSSF 워크북 생성 (dxfs 유지)
+            return SXSSFWorkbook(templateWorkbook, 100).use { workbook ->
+                val styleMap = styleRegistry.mapValues { (_, style) ->
+                    // 스타일 인덱스로 직접 참조 (이미 템플릿에 있으므로 복사 불필요)
+                    workbook.xssfWorkbook.getCellStyleAt(style.index.toInt())
+                }
+                val imageLocations = mutableListOf<SxssfImageLocation>()
 
-            ByteArrayOutputStream().also { out ->
-                workbook.write(out)
-            }.toByteArray()
+                blueprint.sheets.forEachIndexed { index, sheetBlueprint ->
+                    val sheet = workbook.getSheetAt(index) as SXSSFSheet
+                    processSheetSxssf(sheet, sheetBlueprint, data, styleMap, imageLocations, index)
+                }
+
+                // SXSSF에서는 이미지를 바로 삽입
+                insertImagesSxssf(workbook, imageLocations, data)
+
+                ByteArrayOutputStream().also { out ->
+                    workbook.write(out)
+                }.toByteArray()
+            }
+        } finally {
+            templateWorkbook.close()
         }
     }
 
@@ -615,21 +697,6 @@ class SimpleTemplateEngine(
             styles[i.toShort()] = style
         }
         return styles
-    }
-
-    private fun copyStylesToWorkbook(
-        targetWorkbook: SXSSFWorkbook,
-        sourceStyles: Map<Short, XSSFCellStyle>
-    ): Map<Short, org.apache.poi.ss.usermodel.CellStyle> {
-        val styleMap = mutableMapOf<Short, org.apache.poi.ss.usermodel.CellStyle>()
-
-        sourceStyles.forEach { (index, sourceStyle) ->
-            val targetStyle = targetWorkbook.createCellStyle()
-            targetStyle.cloneStyleFrom(sourceStyle)
-            styleMap[index] = targetStyle
-        }
-
-        return styleMap
     }
 
     private fun processSheetSxssf(
@@ -731,6 +798,9 @@ class SimpleTemplateEngine(
 
         // 병합 영역 설정 (오프셋 적용)
         applyMergedRegions(sheet, blueprint.mergedRegions, repeatRegions, data, rowOffset)
+
+        // 조건부 서식 적용 (오프셋 적용)
+        applyConditionalFormattings(sheet, blueprint.conditionalFormattings, repeatRegions, data, rowOffset)
     }
 
     /**
@@ -1085,6 +1155,112 @@ class SimpleTemplateEngine(
                         // 겹치는 영역 무시
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * 조건부 서식 적용 (SXSSF 모드용)
+     *
+     * 템플릿의 조건부 서식을 SXSSF 시트에 적용합니다.
+     * 반복 영역에 있는 조건부 서식은 각 반복 아이템에 대해 복제됩니다.
+     */
+    private fun applyConditionalFormattings(
+        sheet: SXSSFSheet,
+        conditionalFormattings: List<ConditionalFormattingInfo>,
+        repeatRegions: Map<Int, RowBlueprint.RepeatRow>,
+        data: Map<String, Any>,
+        totalRowOffset: Int
+    ) {
+        if (conditionalFormattings.isEmpty()) return
+
+        // SXSSFWorkbook의 내부 XSSFWorkbook을 통해 XSSFSheet 접근
+        val xssfSheet = (sheet.workbook as SXSSFWorkbook).xssfWorkbook.getSheetAt(sheet.workbook.getSheetIndex(sheet))
+        val scf = xssfSheet.sheetConditionalFormatting
+
+        for (cfInfo in conditionalFormattings) {
+            val allRanges = mutableListOf<CellRangeAddress>()
+
+            for (range in cfInfo.ranges) {
+                // 이 범위가 어떤 반복 영역에 속하는지 확인
+                val overlappingRepeat = repeatRegions.values.find { repeat ->
+                    range.firstRow >= repeat.templateRowIndex && range.lastRow <= repeat.repeatEndRowIndex
+                }
+
+                if (overlappingRepeat != null) {
+                    // 반복 영역 내 조건부 서식: 각 반복 아이템마다 복제
+                    val items = data[overlappingRepeat.collectionName] as? List<*> ?: continue
+                    val templateRowCount = overlappingRepeat.repeatEndRowIndex - overlappingRepeat.templateRowIndex + 1
+                    val relativeStartRow = range.firstRow - overlappingRepeat.templateRowIndex
+                    val rowSpan = range.lastRow - range.firstRow
+
+                    for (itemIdx in items.indices) {
+                        val rowOffset = itemIdx * templateRowCount
+                        val newFirstRow = overlappingRepeat.templateRowIndex + rowOffset + relativeStartRow
+                        val newLastRow = newFirstRow + rowSpan
+                        allRanges.add(CellRangeAddress(
+                            newFirstRow, newLastRow, range.firstColumn, range.lastColumn
+                        ))
+                    }
+                } else {
+                    // 반복 영역 외부: 오프셋만 적용
+                    val maxRepeatEndRow = repeatRegions.values.maxOfOrNull { it.repeatEndRowIndex } ?: -1
+                    val offset = if (range.firstRow > maxRepeatEndRow) totalRowOffset else 0
+
+                    allRanges.add(CellRangeAddress(
+                        range.firstRow + offset,
+                        range.lastRow + offset,
+                        range.firstColumn,
+                        range.lastColumn
+                    ))
+                }
+            }
+
+            if (allRanges.isEmpty()) continue
+
+            // 규칙 생성 및 적용
+            // POI의 SheetConditionalFormatting을 사용하여 규칙 추가
+            // dxfId를 유지하기 위해 리플렉션으로 내부 CTCfRule에 접근
+            val rules = cfInfo.rules.mapNotNull { ruleInfo ->
+                try {
+                    val rule = when (ruleInfo.conditionType) {
+                        org.apache.poi.ss.usermodel.ConditionType.CELL_VALUE_IS -> {
+                            scf.createConditionalFormattingRule(
+                                ruleInfo.comparisonOperator,
+                                ruleInfo.formula1 ?: "",
+                                ruleInfo.formula2
+                            )
+                        }
+                        org.apache.poi.ss.usermodel.ConditionType.FORMULA -> {
+                            scf.createConditionalFormattingRule(ruleInfo.formula1 ?: "TRUE")
+                        }
+                        else -> null
+                    }
+
+                    // dxfId 설정 (리플렉션 사용)
+                    if (rule != null && ruleInfo.dxfId >= 0) {
+                        try {
+                            val xssfRule = rule as? org.apache.poi.xssf.usermodel.XSSFConditionalFormattingRule
+                            if (xssfRule != null) {
+                                // XSSFConditionalFormattingRule의 _cfRule 필드에 접근
+                                val cfRuleField = xssfRule.javaClass.getDeclaredField("_cfRule")
+                                cfRuleField.isAccessible = true
+                                val ctCfRule = cfRuleField.get(xssfRule) as org.openxmlformats.schemas.spreadsheetml.x2006.main.CTCfRule
+                                ctCfRule.dxfId = ruleInfo.dxfId.toLong()
+                            }
+                        } catch (e: Exception) {
+                            // 리플렉션 실패 시 dxfId 없이 진행
+                        }
+                    }
+
+                    rule
+                } catch (e: Exception) {
+                    null
+                }
+            }.toTypedArray()
+
+            if (rules.isNotEmpty()) {
+                scf.addConditionalFormatting(allRanges.toTypedArray(), rules)
             }
         }
     }

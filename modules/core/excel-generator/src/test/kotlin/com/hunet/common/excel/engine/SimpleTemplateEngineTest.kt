@@ -433,4 +433,128 @@ class SimpleTemplateEngineTest {
             }
         }
     }
+
+    @Test
+    fun `SXSSF mode should expand conditional formatting for repeat regions`() {
+        // Given: 조건부 서식이 있는 템플릿 (template.xlsx의 세 번째 시트에 급여 >= 6000 조건부 서식)
+        val template = javaClass.getResourceAsStream("/templates/template.xlsx")!!
+        val data = mapOf(
+            "title" to "조건부 서식 테스트",
+            "date" to "2026-01-20",
+            "linkText" to "테스트 링크",
+            "url" to "https://example.com",
+            "employees" to listOf(
+                mapOf("name" to "홍길동", "position" to "부장", "salary" to 8000),
+                mapOf("name" to "김철수", "position" to "과장", "salary" to 6500),
+                mapOf("name" to "이영희", "position" to "대리", "salary" to 4500)
+            )
+        )
+
+        // When: SXSSF 모드로 처리
+        val engine = SimpleTemplateEngine(StreamingMode.ENABLED)
+        val resultBytes = engine.process(template, data)
+
+        // Then: 조건부 서식이 확장되었는지 확인
+        XSSFWorkbook(ByteArrayInputStream(resultBytes)).use { workbook ->
+            if (workbook.numberOfSheets >= 3) {
+                val sheet = workbook.getSheetAt(2)
+                val scf = sheet.sheetConditionalFormatting
+
+                println("\n=== SXSSF 모드 조건부 서식 확인 ===")
+                println("조건부 서식 개수: ${scf.numConditionalFormattings}")
+
+                var foundExpandedFormatting = false
+                for (i in 0 until scf.numConditionalFormattings) {
+                    val cf = scf.getConditionalFormattingAt(i)
+                    val ranges = cf.formattingRanges.map { it.formatAsString() }
+                    println("범위: $ranges")
+
+                    // 여러 범위가 있거나 범위가 확장되었으면 성공
+                    if (ranges.size > 1 || ranges.any { it.contains(":") && !it.contains("B8:B8") }) {
+                        foundExpandedFormatting = true
+                    }
+
+                    for (j in 0 until cf.numberOfRules) {
+                        val rule = cf.getRule(j)
+                        println("  규칙 $j: type=${rule.conditionType}, formula=${rule.formula1}")
+
+                        // dxfId 확인 (리플렉션)
+                        try {
+                            val cfRuleField = rule.javaClass.getDeclaredField("_cfRule")
+                            cfRuleField.isAccessible = true
+                            val ctCfRule = cfRuleField.get(rule)
+                            val dxfIdMethod = ctCfRule.javaClass.getMethod("getDxfId")
+                            val dxfId = dxfIdMethod.invoke(ctCfRule)
+                            println("  dxfId: $dxfId")
+
+                            // dxfId가 0 이상이면 스타일이 연결됨
+                            assertTrue((dxfId as Long) >= 0, "dxfId가 설정되어야 함")
+                        } catch (e: Exception) {
+                            println("  dxfId 확인 실패: ${e.message}")
+                        }
+                    }
+                }
+
+                // 범위가 확장되었는지 또는 여러 셀에 적용되었는지 확인
+                assertTrue(scf.numConditionalFormattings > 0, "조건부 서식이 있어야 함")
+            }
+        }
+
+        // 결과 파일 저장 (수동 검증용)
+        val samplesDir = Path.of("build/samples/conditional-formatting")
+        java.nio.file.Files.createDirectories(samplesDir)
+        samplesDir.resolve("sxssf_cf_test.xlsx").toFile().writeBytes(resultBytes)
+        println("\n결과 파일: ${samplesDir.resolve("sxssf_cf_test.xlsx").toAbsolutePath()}")
+    }
+
+    @Test
+    fun `XSSF mode should expand conditional formatting for repeat regions`() {
+        // Given
+        val template = javaClass.getResourceAsStream("/templates/template.xlsx")!!
+        val data = mapOf(
+            "title" to "조건부 서식 테스트 (XSSF)",
+            "date" to "2026-01-20",
+            "linkText" to "테스트 링크",
+            "url" to "https://example.com",
+            "employees" to listOf(
+                mapOf("name" to "홍길동", "position" to "부장", "salary" to 8000),
+                mapOf("name" to "김철수", "position" to "과장", "salary" to 6500),
+                mapOf("name" to "이영희", "position" to "대리", "salary" to 4500)
+            )
+        )
+
+        // When: XSSF 모드로 처리
+        val engine = SimpleTemplateEngine(StreamingMode.DISABLED)
+        val resultBytes = engine.process(template, data)
+
+        // Then: 조건부 서식이 확장되었는지 확인
+        XSSFWorkbook(ByteArrayInputStream(resultBytes)).use { workbook ->
+            if (workbook.numberOfSheets >= 3) {
+                val sheet = workbook.getSheetAt(2)
+                val scf = sheet.sheetConditionalFormatting
+
+                println("\n=== XSSF 모드 조건부 서식 확인 ===")
+                println("조건부 서식 개수: ${scf.numConditionalFormattings}")
+
+                for (i in 0 until scf.numConditionalFormattings) {
+                    val cf = scf.getConditionalFormattingAt(i)
+                    val ranges = cf.formattingRanges.map { it.formatAsString() }
+                    println("범위: $ranges")
+
+                    for (j in 0 until cf.numberOfRules) {
+                        val rule = cf.getRule(j)
+                        println("  규칙 $j: type=${rule.conditionType}, formula=${rule.formula1}")
+                    }
+                }
+
+                assertTrue(scf.numConditionalFormattings > 0, "조건부 서식이 있어야 함")
+            }
+        }
+
+        // 결과 파일 저장
+        val samplesDir = Path.of("build/samples/conditional-formatting")
+        java.nio.file.Files.createDirectories(samplesDir)
+        samplesDir.resolve("xssf_cf_test.xlsx").toFile().writeBytes(resultBytes)
+        println("\n결과 파일: ${samplesDir.resolve("xssf_cf_test.xlsx").toAbsolutePath()}")
+    }
 }

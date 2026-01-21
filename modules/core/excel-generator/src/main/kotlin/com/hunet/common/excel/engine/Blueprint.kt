@@ -20,7 +20,8 @@ data class SheetBlueprint(
     val columnWidths: Map<Int, Int>,
     val defaultRowHeight: Short,
     val headerFooter: HeaderFooterInfo? = null,
-    val printSetup: PrintSetupInfo? = null
+    val printSetup: PrintSetupInfo? = null,
+    val conditionalFormattings: List<ConditionalFormattingInfo> = emptyList()
 )
 
 /**
@@ -179,4 +180,27 @@ data class RepeatRegionInfo(
     val startCol: Int,
     val endCol: Int,
     val direction: RepeatDirection = RepeatDirection.DOWN
+)
+
+/**
+ * 조건부 서식 정보 (SXSSF 모드용)
+ *
+ * 템플릿의 조건부 서식을 저장하고, 반복 영역 확장 시 복제에 사용됩니다.
+ */
+data class ConditionalFormattingInfo(
+    val ranges: List<CellRangeAddress>,
+    val rules: List<ConditionalFormattingRuleInfo>
+)
+
+/**
+ * 조건부 서식 규칙 정보
+ */
+data class ConditionalFormattingRuleInfo(
+    val conditionType: org.apache.poi.ss.usermodel.ConditionType,
+    val comparisonOperator: Byte,  // POI API는 Byte 사용
+    val formula1: String?,
+    val formula2: String?,
+    val dxfId: Int,       // 차등 서식 ID
+    val priority: Int,
+    val stopIfTrue: Boolean
 )
