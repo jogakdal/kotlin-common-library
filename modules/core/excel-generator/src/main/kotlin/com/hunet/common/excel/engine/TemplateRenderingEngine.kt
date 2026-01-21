@@ -35,6 +35,10 @@ import java.io.InputStream
 class TemplateRenderingEngine(
     private val streamingMode: StreamingMode = StreamingMode.DISABLED
 ) {
+    companion object {
+        private val REPEAT_MARKER_PATTERN = Regex("""\$\{repeat\s*\(""", RegexOption.IGNORE_CASE)
+    }
+
     private val analyzer = TemplateAnalyzer()
     private val variableProcessor = VariableProcessor(emptyList())
     private val imageInserter = ImageInserter()
@@ -108,6 +112,19 @@ class TemplateRenderingEngine(
         val rowIndex: Int,
         val colIndex: Int,
         val mergedRegion: CellRangeAddress? = null
+    )
+
+    /**
+     * SXSSF 모드 행 작성 컨텍스트 - 시트 전체에서 공유되는 정보
+     */
+    private data class RowWriteContext(
+        val sheet: SXSSFSheet,
+        val sheetIndex: Int,
+        val data: Map<String, Any>,
+        val styleMap: Map<Short, org.apache.poi.ss.usermodel.CellStyle>,
+        val templateMergedRegions: List<CellRangeAddress>,
+        val repeatRegions: Map<Int, RowBlueprint.RepeatRow>,
+        val imageLocations: MutableList<ImageLocation>
     )
 
     private fun processSheetXssf(
@@ -184,7 +201,7 @@ class TemplateRenderingEngine(
                 RepeatDirection.RIGHT -> {
                     val templateColCount = repeatRow.repeatEndCol - repeatRow.repeatStartCol + 1
                     val actualColCount = items.size
-                    val colsToInsert = actualColCount - templateColCount
+                    val colsToInsert = (actualColCount - 1) * templateColCount  // 추가로 삽입할 열 수
 
                     if (colsToInsert > 0) {
                         // 템플릿 열을 오른쪽으로 확장
@@ -192,6 +209,11 @@ class TemplateRenderingEngine(
                     }
 
                     colOffsets[repeatRow.templateRowIndex] = colsToInsert
+
+                    // 반복 영역 오른쪽 수식 확장
+                    expandFormulasAfterRightRepeat(
+                        sheet, repeatRow, items.size, templateColCount, colsToInsert
+                    )
                 }
             }
         }
@@ -440,14 +462,69 @@ class TemplateRenderingEngine(
         }
     }
 
-    private fun clearRepeatMarkers(sheet: XSSFSheet) {
-        val markerPattern = Regex("""\$\{repeat\s*\(""", RegexOption.IGNORE_CASE)
+    /**
+     * RIGHT 방향 반복 영역 오른쪽의 수식에서 반복 영역 내 셀 참조를 범위로 확장 (XSSF 모드)
+     *
+     * 예: 반복 영역 B7:C8 (2열×2행), 데이터 3개
+     * - G7의 `=SUM(B7)` 수식
+     * - 수식을 `=SUM(B7,D7,F7)`로 확장 (2열 템플릿이므로 비연속)
+     */
+    private fun expandFormulasAfterRightRepeat(
+        sheet: XSSFSheet,
+        repeatRow: RowBlueprint.RepeatRow,
+        itemCount: Int,
+        templateColCount: Int,
+        colsInserted: Int
+    ) {
+        if (itemCount <= 1) return
 
+        // 반복 영역 오른쪽의 새 시작 열
+        val newColStart = repeatRow.repeatEndCol + colsInserted + 1
+
+        // 반복 영역의 행 범위 내에서 수식 셀 찾기
+        for (rowIdx in repeatRow.templateRowIndex..repeatRow.repeatEndRowIndex) {
+            val row = sheet.getRow(rowIdx) ?: continue
+            row.forEach { cell ->
+                // 반복 영역 오른쪽에 있는 수식 셀만 처리
+                if (cell.columnIndex >= newColStart && cell.cellType == CellType.FORMULA) {
+                    val originalFormula = cell.cellFormula
+
+                    // XSSF 모드에서 확장된 데이터 열(repeatStartCol~repeatEndCol + colsInserted)은
+                    // shiftColumnsRight 이후에 생성되므로 추가 열 이동이 필요 없음.
+                    // 순환 참조도 발생하지 않음: 확장 범위(열 1~itemCount*templateColCount)가
+                    // 수식 셀 위치(newColStart 이상)를 포함하지 않음.
+                    val (expandedFormula, hasDiscontinuous) = FormulaAdjuster.expandSingleRefToColumnRange(
+                        originalFormula,
+                        repeatRow.repeatStartCol,
+                        repeatRow.repeatEndCol,
+                        repeatRow.templateRowIndex,
+                        repeatRow.repeatEndRowIndex,
+                        itemCount,
+                        templateColCount
+                    )
+
+                    if (expandedFormula != originalFormula) {
+                        // 비연속 참조이고 인자 수가 255개를 초과하면 경고
+                        if (hasDiscontinuous && itemCount > 255) {
+                            throw com.hunet.common.excel.FormulaExpansionException(
+                                sheetName = sheet.sheetName,
+                                cellRef = cell.address.formatAsString(),
+                                formula = originalFormula
+                            )
+                        }
+                        cell.cellFormula = expandedFormula
+                    }
+                }
+            }
+        }
+    }
+
+    private fun clearRepeatMarkers(sheet: XSSFSheet) {
         sheet.forEach { row ->
             row.forEach { cell ->
                 if (cell.cellType == CellType.STRING) {
                     val text = cell.stringCellValue ?: return@forEach
-                    if (markerPattern.containsMatchIn(text)) {
+                    if (REPEAT_MARKER_PATTERN.containsMatchIn(text)) {
                         cell.setBlank()
                     }
                 }
@@ -754,16 +831,23 @@ class TemplateRenderingEngine(
         val repeatRegions = blueprint.rows.filterIsInstance<RowBlueprint.RepeatRow>()
             .associateBy { it.templateRowIndex }
 
+        // 행 작성 컨텍스트 생성 (시트 전체에서 공유)
+        val ctx = RowWriteContext(
+            sheet = sheet,
+            sheetIndex = sheetIndex,
+            data = data,
+            styleMap = styleMap,
+            templateMergedRegions = blueprint.mergedRegions,
+            repeatRegions = repeatRegions,
+            imageLocations = imageLocations
+        )
+
         val processedRepeatRows = mutableSetOf<Int>()
 
         for (rowBlueprint in blueprint.rows) {
             when (rowBlueprint) {
                 is RowBlueprint.StaticRow -> {
-                    writeRowSxssf(
-                        sheet, currentRowIndex, rowBlueprint, data, styleMap,
-                        null, 0, rowOffset, repeatRegions, blueprint.mergedRegions,
-                        imageLocations, sheetIndex
-                    )
+                    writeRowSxssf(ctx, currentRowIndex, rowBlueprint, null, 0, rowOffset)
                     currentRowIndex++
                 }
 
@@ -781,6 +865,9 @@ class TemplateRenderingEngine(
                                     data + (rowBlueprint.itemVariable to item)
                                 } else data
 
+                                // 아이템별 컨텍스트 생성 (data만 다름)
+                                val itemCtx = ctx.copy(data = itemData)
+
                                 // 각 템플릿 행에 대해 작성
                                 for (templateOffset in 0 until templateRowCount) {
                                     val templateRowIdx = rowBlueprint.templateRowIndex + templateOffset
@@ -792,10 +879,9 @@ class TemplateRenderingEngine(
                                     val formulaRepeatIndex = itemIdx * templateRowCount + templateOffset
 
                                     writeRowSxssf(
-                                        sheet, currentRowIndex, currentRowBp, itemData, styleMap,
-                                        rowBlueprint.itemVariable, formulaRepeatIndex, rowOffset, repeatRegions,
-                                        blueprint.mergedRegions, imageLocations, sheetIndex,
-                                        repeatRow = rowBlueprint  // 반복 영역 정보 전달
+                                        itemCtx, currentRowIndex, currentRowBp,
+                                        rowBlueprint.itemVariable, formulaRepeatIndex, rowOffset,
+                                        repeatRow = rowBlueprint
                                     )
                                     currentRowIndex++
                                 }
@@ -877,14 +963,48 @@ class TemplateRenderingEngine(
                     val cell = row.createCell(actualColIndex)
                     styleMap[cellBlueprint.styleIndex]?.let { cell.cellStyle = it }
 
-                    // 수식 내 열 참조도 조정
-                    val adjustedContent = if (colShiftAmount > 0 && cellBlueprint.content is CellContent.Formula) {
-                        val adjustedFormula = FormulaAdjuster.adjustForColumnExpansion(
-                            (cellBlueprint.content as CellContent.Formula).formula,
-                            repeatRow.repeatEndCol + 1,
-                            colShiftAmount
-                        )
-                        CellContent.Formula(adjustedFormula)
+                    // 수식 내 열 참조 처리: 1) 위치 이동 (원래 참조에 대해), 2) 범위 확장
+                    // 순서가 중요함: 먼저 원래 수식의 참조를 이동하고, 그 다음 확장해야
+                    // 확장된 범위가 추가로 이동되지 않음
+                    val adjustedContent = if (cellBlueprint.content is CellContent.Formula) {
+                        var formula = (cellBlueprint.content as CellContent.Formula).formula
+
+                        // 1. 먼저 열 위치 이동 (원래 수식의 참조에 대해)
+                        // 예: SUM(B7)에서 B7(열 1)은 startCol(2) 미만이므로 이동 안 함
+                        if (colShiftAmount > 0) {
+                            formula = FormulaAdjuster.adjustForColumnExpansion(
+                                formula,
+                                repeatRow.repeatEndCol + 1,
+                                colShiftAmount
+                            )
+                        }
+
+                        // 2. 그 다음 범위 확장 (확장된 범위는 추가 이동 없음)
+                        // 예: SUM(B7) → SUM(B7:CW7)
+                        // 확장 범위(열 1~100)가 수식 셀(열 104)을 포함하지 않으므로 순환 참조 없음
+                        if (cellBlueprint.columnIndex > repeatRow.repeatEndCol && items.size > 1) {
+                            val (expandedFormula, hasDiscontinuous) = FormulaAdjuster.expandSingleRefToColumnRange(
+                                formula,
+                                repeatRow.repeatStartCol,
+                                repeatRow.repeatEndCol,
+                                repeatRow.templateRowIndex,
+                                repeatRow.repeatEndRowIndex,
+                                items.size,
+                                templateColCount
+                            )
+                            if (expandedFormula != formula) {
+                                if (hasDiscontinuous && items.size > 255) {
+                                    throw com.hunet.common.excel.FormulaExpansionException(
+                                        sheetName = sheet.sheetName,
+                                        cellRef = "${FormulaAdjuster.indexToColumnName(actualColIndex)}${currentRowIndex + 1}",
+                                        formula = formula
+                                    )
+                                }
+                                formula = expandedFormula
+                            }
+                        }
+
+                        CellContent.Formula(formula)
                     } else {
                         cellBlueprint.content
                     }
@@ -979,22 +1099,27 @@ class TemplateRenderingEngine(
         }
     }
 
+    /**
+     * SXSSF 모드로 한 행 작성
+     *
+     * @param ctx 시트 전체에서 공유되는 컨텍스트
+     * @param rowIndex 출력할 행 인덱스
+     * @param blueprint 행 청사진
+     * @param itemVariable 반복 아이템 변수명
+     * @param repeatIndex 반복 인덱스 (0부터 시작)
+     * @param rowOffset 반복으로 인한 누적 행 오프셋
+     * @param repeatRow 다중 행 반복을 위한 반복 영역 정보
+     */
     private fun writeRowSxssf(
-        sheet: SXSSFSheet,
+        ctx: RowWriteContext,
         rowIndex: Int,
         blueprint: RowBlueprint,
-        data: Map<String, Any>,
-        styleMap: Map<Short, org.apache.poi.ss.usermodel.CellStyle>,
         itemVariable: String?,
         repeatIndex: Int,
         rowOffset: Int,
-        repeatRegions: Map<Int, RowBlueprint.RepeatRow>,
-        templateMergedRegions: List<CellRangeAddress>,
-        imageLocations: MutableList<ImageLocation>,
-        sheetIndex: Int,
-        repeatRow: RowBlueprint.RepeatRow? = null  // 다중 행 반복을 위한 반복 영역 정보
+        repeatRow: RowBlueprint.RepeatRow? = null
     ) {
-        val row = sheet.createRow(rowIndex)
+        val row = ctx.sheet.createRow(rowIndex)
         blueprint.height?.let { row.height = it }
 
         // repeat 열 범위 확인 (RepeatRow 또는 전달된 repeatRow에서)
@@ -1013,14 +1138,14 @@ class TemplateRenderingEngine(
             }
 
             val cell = row.createCell(cellBlueprint.columnIndex)
-            styleMap[cellBlueprint.styleIndex]?.let { cell.cellStyle = it }
+            ctx.styleMap[cellBlueprint.styleIndex]?.let { cell.cellStyle = it }
 
             when (val content = cellBlueprint.content) {
                 is CellContent.Empty -> {}
 
                 is CellContent.StaticString -> {
                     // 정적 문자열에도 표현식이 있을 수 있음
-                    val evaluated = evaluateText(content.value, data)
+                    val evaluated = evaluateText(content.value, ctx.data)
                     cell.setCellValue(evaluated)
                 }
 
@@ -1029,12 +1154,12 @@ class TemplateRenderingEngine(
                 is CellContent.StaticBoolean -> cell.setCellValue(content.value)
 
                 is CellContent.Variable -> {
-                    val evaluated = evaluateText(content.originalText, data)
+                    val evaluated = evaluateText(content.originalText, ctx.data)
                     setCellValue(cell, evaluated)
                 }
 
                 is CellContent.ItemField -> {
-                    val item = data[content.itemVariable]
+                    val item = ctx.data[content.itemVariable]
                     val value = resolveFieldPath(item, content.fieldPath)
                     setCellValue(cell, value)
                 }
@@ -1051,11 +1176,11 @@ class TemplateRenderingEngine(
 
                     // 반복으로 인한 전체 오프셋 적용 (반복 영역 이후 수식)
                     if (rowOffset > 0 && blueprint is RowBlueprint.StaticRow) {
-                        val repeatEndRow = repeatRegions.values.maxOfOrNull { it.repeatEndRowIndex } ?: -1
+                        val repeatEndRow = ctx.repeatRegions.values.maxOfOrNull { it.repeatEndRowIndex } ?: -1
                         if (repeatEndRow >= 0 && blueprint.templateRowIndex > repeatEndRow) {
                             // 1. 먼저 반복 영역 내 단일 셀 참조를 범위로 확장
-                            for (repeatRegion in repeatRegions.values) {
-                                val items = data[repeatRegion.collectionName] as? List<*> ?: continue
+                            for (repeatRegion in ctx.repeatRegions.values) {
+                                val items = ctx.data[repeatRegion.collectionName] as? List<*> ?: continue
                                 val templateRowCount = repeatRegion.repeatEndRowIndex - repeatRegion.templateRowIndex + 1
                                 val (expanded, hasDiscontinuous) = FormulaAdjuster.expandSingleRefToRange(
                                     adjustedFormula,
@@ -1067,7 +1192,7 @@ class TemplateRenderingEngine(
                                 if (expanded != adjustedFormula) {
                                     if (hasDiscontinuous && items.size > 255) {
                                         throw com.hunet.common.excel.FormulaExpansionException(
-                                            sheetName = sheet.sheetName,
+                                            sheetName = ctx.sheet.sheetName,
                                             cellRef = "${FormulaAdjuster.indexToColumnName(cellBlueprint.columnIndex)}${rowIndex + 1}",
                                             formula = content.formula
                                         )
@@ -1092,7 +1217,7 @@ class TemplateRenderingEngine(
 
                 is CellContent.FormulaWithVariables -> {
                     // 수식 내 변수 치환
-                    var substitutedFormula = evaluateText(content.formula, data)
+                    var substitutedFormula = evaluateText(content.formula, ctx.data)
 
                     // 반복 인덱스에 따른 조정
                     if (repeatIndex > 0) {
@@ -1105,7 +1230,7 @@ class TemplateRenderingEngine(
                 is CellContent.ImageMarker -> {
                     // 템플릿 행에서 이미지 셀의 병합 영역 찾기
                     val templateRow = blueprint.templateRowIndex
-                    val mergedRegion = templateMergedRegions.find { region ->
+                    val mergedRegion = ctx.templateMergedRegions.find { region ->
                         templateRow >= region.firstRow && templateRow <= region.lastRow &&
                             cellBlueprint.columnIndex >= region.firstColumn && cellBlueprint.columnIndex <= region.lastColumn
                     }?.let { templateRegion ->
@@ -1120,8 +1245,8 @@ class TemplateRenderingEngine(
                     }
 
                     // 이미지 위치 기록 (병합 영역 포함)
-                    imageLocations.add(ImageLocation(
-                        sheetIndex = sheetIndex,
+                    ctx.imageLocations.add(ImageLocation(
+                        sheetIndex = ctx.sheetIndex,
                         imageName = content.imageName,
                         rowIndex = rowIndex,
                         colIndex = cellBlueprint.columnIndex,

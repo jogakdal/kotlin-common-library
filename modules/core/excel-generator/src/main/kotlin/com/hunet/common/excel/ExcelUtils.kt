@@ -26,6 +26,10 @@ import java.io.OutputStream
 internal fun String.toColumnIndex() =
     uppercase().fold(0) { acc, c -> acc * 26 + (c - 'A' + 1) } - 1
 
+/** 일반 함수 래퍼 (FormulaAdjuster에서 사용) */
+@JvmName("columnNameToIndex")
+internal fun toColumnIndex(colName: String) = colName.toColumnIndex()
+
 /**
  * 0-based 숫자를 Excel 열 문자로 변환합니다.
  * 예: 0 -> "A", 1 -> "B", 25 -> "Z", 26 -> "AA"
@@ -37,6 +41,10 @@ internal fun Int.toColumnLetter(): String = buildString {
         .reversed()
         .forEach { append(it) }
 }
+
+/** 일반 함수 래퍼 (FormulaAdjuster에서 사용) */
+@JvmName("indexToColumnName")
+internal fun toColumnLetter(index: Int) = index.toColumnLetter()
 
 // ========== XML 유틸리티 ==========
 

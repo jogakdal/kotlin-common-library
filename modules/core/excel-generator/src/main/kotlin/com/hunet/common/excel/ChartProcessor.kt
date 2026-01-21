@@ -22,37 +22,53 @@ internal class ChartProcessor {
     companion object {
         private val LOG = LoggerFactory.getLogger(ChartProcessor::class.java)
 
-        private val CHART_PATH_PATTERN = Regex("/xl/charts/[^/]+\\.(xml|rels)")
-        private val CHART_RELS_PATH_PATTERN = Regex("/xl/charts/_rels/.*")
-        private val DRAWING_PATH_PATTERN = Regex("/xl/drawings/[^/]+\\.xml")
-        private val DRAWING_RELS_PATH_PATTERN = Regex("/xl/drawings/_rels/.*")
-
         private const val CHART_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
         private const val CHART_STYLE_CONTENT_TYPE = "application/vnd.ms-office.chartstyle+xml"
         private const val CHART_COLORS_CONTENT_TYPE = "application/vnd.ms-office.chartcolorstyle+xml"
         private const val DRAWING_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.drawing+xml"
 
+        // 지연 초기화: 차트가 없는 템플릿에서는 Regex 컴파일 비용 절약
+        private val CHART_PATH_PATTERN by lazy { Regex("/xl/charts/[^/]+\\.(xml|rels)") }
+        private val CHART_RELS_PATH_PATTERN by lazy { Regex("/xl/charts/_rels/.*") }
+        private val DRAWING_PATH_PATTERN by lazy { Regex("/xl/drawings/[^/]+\\.xml") }
+        private val DRAWING_RELS_PATH_PATTERN by lazy { Regex("/xl/drawings/_rels/.*") }
+
         // 차트 앵커 패턴 (graphicFrame)
-        private val GRAPHIC_FRAME_PATTERN = Regex(
-            "<xdr:twoCellAnchor[^>]*>.*?<xdr:graphicFrame.*?</xdr:graphicFrame>.*?</xdr:twoCellAnchor>",
-            RegexOption.DOT_MATCHES_ALL
-        )
+        private val GRAPHIC_FRAME_PATTERN by lazy {
+            Regex(
+                "<xdr:twoCellAnchor[^>]*>.*?<xdr:graphicFrame.*?</xdr:graphicFrame>.*?</xdr:twoCellAnchor>",
+                RegexOption.DOT_MATCHES_ALL
+            )
+        }
 
         // twoCellAnchor 전체 패턴 (개별 앵커 단위로 추출)
-        private val TWO_CELL_ANCHOR_PATTERN = Regex(
-            "<xdr:twoCellAnchor[^>]*>(?:(?!</xdr:twoCellAnchor>).)*</xdr:twoCellAnchor>",
-            RegexOption.DOT_MATCHES_ALL
-        )
+        private val TWO_CELL_ANCHOR_PATTERN by lazy {
+            Regex(
+                "<xdr:twoCellAnchor[^>]*>(?:(?!</xdr:twoCellAnchor>).)*</xdr:twoCellAnchor>",
+                RegexOption.DOT_MATCHES_ALL
+            )
+        }
 
         // oneCellAnchor 패턴 (절대 위치 도형 등)
-        private val ONE_CELL_ANCHOR_PATTERN = Regex(
-            "<xdr:oneCellAnchor[^>]*>(?:(?!</xdr:oneCellAnchor>).)*</xdr:oneCellAnchor>",
-            RegexOption.DOT_MATCHES_ALL
-        )
+        private val ONE_CELL_ANCHOR_PATTERN by lazy {
+            Regex(
+                "<xdr:oneCellAnchor[^>]*>(?:(?!</xdr:oneCellAnchor>).)*</xdr:oneCellAnchor>",
+                RegexOption.DOT_MATCHES_ALL
+            )
+        }
 
         // rId 패턴
-        private val RID_PATTERN = Regex("r:id=\"(rId\\d+)\"")
-        private val RELS_RID_PATTERN = Regex("Id=\"(rId\\d+)\"")
+        private val RID_PATTERN by lazy { Regex("r:id=\"(rId\\d+)\"") }
+        private val RELS_RID_PATTERN by lazy { Regex("Id=\"(rId\\d+)\"") }
+
+        // 차트 관계 및 콘텐츠 타입 패턴
+        private val CHART_REL_ID_TARGET_PATTERN by lazy { Regex("<Relationship[^>]*Id=\"(rId\\d+)\"[^>]*Target=\"([^\"]*)\"[^>]*/?>") }
+        private val CHART_REL_TARGET_PATTERN by lazy { Regex("<Relationship[^>]*Target=\"[^\"]*charts/[^\"]*\"[^>]*/?>") }
+        private val CHART_TARGET_ATTR_PATTERN by lazy { Regex("Target=\"[^\"]*charts/[^\"]*\"") }
+        private val OVERRIDE_PATTERN by lazy { Regex("<Override[^>]*PartName=\"([^\"]*)\"[^>]*ContentType=\"([^\"]*)\"[^>]*>") }
+        private val CHART_OVERRIDE_PATTERN by lazy { Regex("<Override[^>]*PartName=\"[^\"]*/charts/[^\"]*\"[^>]*>") }
+        private val MULTIPLE_NEWLINES_PATTERN by lazy { Regex("\n\\s*\n") }
+        private val PART_NAME_ATTR_PATTERN by lazy { Regex("PartName=\"([^\"]*)\"") }
     }
 
     data class ChartInfo(
@@ -291,15 +307,20 @@ internal class ChartProcessor {
      * 원본 드로잉 rels의 차트 관계 rId를 새 rId로 매핑 계산
      */
     private fun calculateRidMapping(currentRelsXml: String, originalRelsXml: String): Map<String, String> {
-        val chartRelPattern = Regex("<Relationship[^>]*Id=\"(rId\\d+)\"[^>]*Target=\"([^\"]*)\"[^>]*/?>")
-
         // 현재 rels의 최대 rId
         val currentMaxRid = RELS_RID_PATTERN.findAll(currentRelsXml)
-            .mapNotNull { it.groupValues[1].removePrefix("rId").toIntOrNull() }
+            .mapNotNull { match ->
+                val ridValue = match.groupValues[1]
+                ridValue.removePrefix("rId").toIntOrNull().also { rid ->
+                    if (rid == null) {
+                        LOG.warn("잘못된 rId 형식: $ridValue")
+                    }
+                }
+            }
             .maxOrNull() ?: 0
 
         // 원본에서 차트 관계 추출
-        val chartRels = chartRelPattern.findAll(originalRelsXml)
+        val chartRels = CHART_REL_ID_TARGET_PATTERN.findAll(originalRelsXml)
             .filter { it.groupValues[2].contains("charts/") }
             .toList()
 
@@ -388,8 +409,7 @@ internal class ChartProcessor {
      */
     private fun mergeDrawingRelsXml(currentXml: String, originalXml: String, ridMapping: Map<String, String>): String {
         // 원본에서 차트 참조 추출
-        val chartRelPattern = Regex("<Relationship[^>]*Target=\"[^\"]*charts/[^\"]*\"[^>]*/?>")
-        val chartRels = chartRelPattern.findAll(originalXml).map { it.value }.toList()
+        val chartRels = CHART_REL_TARGET_PATTERN.findAll(originalXml).map { it.value }.toList()
 
         if (chartRels.isEmpty()) {
             return currentXml
@@ -429,10 +449,8 @@ internal class ChartProcessor {
         allDrawings: Map<String, ByteArray>,
         allDrawingRels: Map<String, ByteArray>
     ): ChartRelatedDrawings {
-        val chartRefPattern = Regex("Target=\"[^\"]*charts/[^\"]*\"")
-
         val chartRelatedDrawingRels = allDrawingRels.filter { (_, content) ->
-            chartRefPattern.containsMatchIn(String(content, Charsets.UTF_8))
+            CHART_TARGET_ATTR_PATTERN.containsMatchIn(String(content, Charsets.UTF_8))
         }
 
         val relatedDrawingNames = chartRelatedDrawingRels.keys.map { relsPath ->
@@ -451,11 +469,10 @@ internal class ChartProcessor {
         chartRelatedDrawings: ChartRelatedDrawings
     ): List<String> {
         val entries = mutableListOf<String>()
-        val overridePattern = Regex("<Override[^>]*PartName=\"([^\"]*)\"[^>]*ContentType=\"([^\"]*)\"[^>]*>")
 
         val drawingPaths = chartRelatedDrawings.drawingFiles.keys.map { it.removePrefix("/") }
 
-        overridePattern.findAll(contentTypesXml).forEach { match ->
+        OVERRIDE_PATTERN.findAll(contentTypesXml).forEach { match ->
             val partName = match.groupValues[1]
             val contentType = match.groupValues[2]
 
@@ -512,13 +529,10 @@ internal class ChartProcessor {
         return output.toByteArray()
     }
 
-    private fun removeChartContentTypes(contentTypesXml: String): String {
-        var result = contentTypesXml
-        val chartOverridePattern = Regex("<Override[^>]*PartName=\"[^\"]*/charts/[^\"]*\"[^>]*>")
-        result = result.replace(chartOverridePattern, "")
-        result = result.replace(Regex("\n\\s*\n"), "\n")
-        return result
-    }
+    private fun removeChartContentTypes(contentTypesXml: String): String =
+        contentTypesXml
+            .replace(CHART_OVERRIDE_PATTERN, "")
+            .replace(MULTIPLE_NEWLINES_PATTERN, "\n")
 
     private fun addChartAndDrawingContentTypes(contentTypesXml: String, chartInfo: ChartInfo): String {
         if (chartInfo.contentTypeEntries.isEmpty()) return contentTypesXml
@@ -528,7 +542,7 @@ internal class ChartProcessor {
 
         val entriesToAdd = chartInfo.contentTypeEntries
             .filter { entry ->
-                val partNameMatch = Regex("PartName=\"([^\"]*)\"").find(entry)
+                val partNameMatch = PART_NAME_ATTR_PATTERN.find(entry)
                 val partName = partNameMatch?.groupValues?.get(1) ?: ""
                 !contentTypesXml.contains("PartName=\"$partName\"")
             }

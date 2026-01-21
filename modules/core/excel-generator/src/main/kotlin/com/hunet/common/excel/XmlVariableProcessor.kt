@@ -7,24 +7,26 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 
 /**
- * Excel 패키지 내 모든 XML 요소의 변수 치환을 담당하는 프로세서.
+ * Excel 패키지 내 XML 요소의 변수 치환을 담당하는 프로세서.
  *
- * JXLS는 워크시트 셀만 처리하므로 그 외 요소들(차트, 도형, 머리글/바닥글, 텍스트 상자 등)의
- * 변수 치환은 이 프로세서에서 처리합니다.
+ * [TemplateRenderingEngine]은 POI API를 통해 워크시트 셀을 처리하지만,
+ * 차트, 도형, 머리글/바닥글 등의 요소는 POI API로 접근하기 어렵습니다.
+ * 이 프로세서는 Excel 패키지의 raw XML을 직접 스캔하여 변수를 치환합니다.
  *
  * Excel 파일(.xlsx)은 ZIP 형식의 XML 파일 모음이므로,
  * 모든 XML 파일에서 변수 패턴을 검색하여 치환합니다.
  *
- * 처리 대상 예시:
- * - 차트 타이틀 및 레이블 (xl/charts 폴더의 XML 파일들)
- * - 도형 텍스트 (xl/drawings 폴더의 XML 파일들)
+ * 처리 대상:
+ * - 차트 타이틀 및 레이블 (xl/charts/*.xml)
+ * - 도형 텍스트 (xl/drawings/*.xml)
  * - 머리글/바닥글
- * - 텍스트 상자, SmartArt 등 기타 모든 XML 요소
+ * - 텍스트 상자, SmartArt 등 기타 XML 요소
  *
  * 제외 대상:
- * - 관계 파일 (.rels 확장자)
- * - 콘텐츠 타입 정의 파일
- * - 워크시트 셀 데이터 (JXLS가 처리)
+ * - 관계 파일 (.rels)
+ * - 콘텐츠 타입 정의 ([Content_Types].xml)
+ * - 문서 속성 (/docProps/)
+ * - 워크시트 셀 데이터 ([TemplateRenderingEngine]이 처리)
  *
  * common-core 모듈의 [VariableProcessor]를 활용하여 변수 치환을 수행합니다.
  */

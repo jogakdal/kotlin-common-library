@@ -15,6 +15,7 @@ import org.apache.poi.xssf.usermodel.XSSFSheet
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.util.WeakHashMap
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -25,7 +26,10 @@ import java.util.zip.ZipOutputStream
 internal class PivotTableProcessor(
     private val config: ExcelGeneratorConfig
 ) {
-    private val styleCache = mutableMapOf<XSSFWorkbook, MutableMap<String, XSSFCellStyle>>()
+    // WeakHashMap 사용: 워크북이 GC되면 캐시 엔트리도 자동 정리
+    private val styleCache = WeakHashMap<XSSFWorkbook, MutableMap<String, XSSFCellStyle>>()
+    // 스타일 변환 캐시 (동일 스타일 중복 변환 방지) - WeakHashMap으로 메모리 누수 방지
+    private val styleInfoCache = WeakHashMap<XSSFCellStyle, StyleInfo>()
 
     // ========== 데이터 클래스 ==========
 
@@ -93,6 +97,23 @@ internal class PivotTableProcessor(
     private data class SourceData(
         val records: List<List<Any?>>,
         val fields: List<FieldMeta>
+    )
+
+    /**
+     * 피벗 테이블 셀 채우기에 필요한 컨텍스트
+     */
+    private data class PivotFillContext(
+        val workbook: XSSFWorkbook,
+        val pivotSheet: XSSFSheet,
+        val sourceSheet: XSSFSheet,
+        val sourceRange: CellRangeAddress,
+        val pivotLocation: CellReference,
+        val rowLabelFields: List<Int>,
+        val dataFields: List<DataFieldInfo>,
+        val rowHeaderCaption: String?,
+        val grandTotalCaption: String?,
+        val styles: PivotTableStyles,
+        val pivotTableStyleInfo: PivotTableStyleInfo?
     )
 
     private data class FieldMeta(
@@ -242,7 +263,9 @@ internal class PivotTableProcessor(
             (range.firstColumn..range.lastColumn).mapNotNull { colIdx ->
                 getCell(colIdx)?.let { cell ->
                     (cell.cellStyle as? XSSFCellStyle)?.let { style ->
-                        (colIdx - range.firstColumn) to style.toStyleInfo()
+                        // 캐시에서 조회, 없으면 변환 후 캐시에 저장
+                        val styleInfo = styleInfoCache.getOrPut(style) { style.toStyleInfo() }
+                        (colIdx - range.firstColumn) to styleInfo
                     }
                 }
             }.toMap()
@@ -458,14 +481,23 @@ internal class PivotTableProcessor(
                 }
             }
 
-            fillPivotTableCells(
-                workbook, pivotSheet, sourceSheet, newSourceRange, pivotLocation,
-                info.rowLabelFields, info.dataFields, info.rowHeaderCaption, info.grandTotalCaption,
-                originalStyles?.headerStyles.orEmpty(),
-                originalStyles?.dataRowStyles.orEmpty(),
-                originalStyles?.grandTotalStyles.orEmpty(),
-                info.pivotTableStyleInfo
-            )
+            fillPivotTableCells(PivotFillContext(
+                workbook = workbook,
+                pivotSheet = pivotSheet,
+                sourceSheet = sourceSheet,
+                sourceRange = newSourceRange,
+                pivotLocation = pivotLocation,
+                rowLabelFields = info.rowLabelFields,
+                dataFields = info.dataFields,
+                rowHeaderCaption = info.rowHeaderCaption,
+                grandTotalCaption = info.grandTotalCaption,
+                styles = PivotTableStyles(
+                    headerStyles = originalStyles?.headerStyles.orEmpty(),
+                    dataRowStyles = originalStyles?.dataRowStyles.orEmpty(),
+                    grandTotalStyles = originalStyles?.grandTotalStyles.orEmpty()
+                ),
+                pivotTableStyleInfo = info.pivotTableStyleInfo
+            ))
         }.onFailure {
             throw IllegalStateException("피벗 테이블 재생성 실패: ${info.pivotTableName}", it)
         }
@@ -514,79 +546,74 @@ internal class PivotTableProcessor(
      * 헤더와 총합계 행에는 alignment만 적용하여 피벗 테이블 스타일이 작동하도록 합니다.
      * 데이터 행에는 원본 스타일을 적용합니다.
      */
-    private fun fillPivotTableCells(
-        workbook: XSSFWorkbook,
-        pivotSheet: XSSFSheet,
-        sourceSheet: XSSFSheet,
-        sourceRange: CellRangeAddress,
-        pivotLocation: CellReference,
-        rowLabelFields: List<Int>,
-        dataFields: List<DataFieldInfo>,
-        rowHeaderCaption: String?,
-        grandTotalCaption: String?,
-        headerStyles: Map<Int, StyleInfo>,
-        dataRowStyles: Map<Int, StyleInfo>,
-        grandTotalStyles: Map<Int, StyleInfo>,
-        pivotTableStyleInfo: PivotTableStyleInfo?
-    ) {
-        if (rowLabelFields.isEmpty() || dataFields.isEmpty()) return
+    private fun fillPivotTableCells(ctx: PivotFillContext) {
+        if (ctx.rowLabelFields.isEmpty() || ctx.dataFields.isEmpty()) {
+            LOG.debug("피벗 테이블 필드가 비어있음: rowLabelFields=${ctx.rowLabelFields.size}, dataFields=${ctx.dataFields.size}")
+            return
+        }
 
-        val headerRow = sourceSheet.getRow(sourceRange.firstRow) ?: return
-        val headers = (sourceRange.firstColumn..sourceRange.lastColumn).map { colIdx ->
+        val headerRow = ctx.sourceSheet.getRow(ctx.sourceRange.firstRow)
+            ?: throw IllegalStateException(
+                "피벗 테이블 소스 헤더 행이 없습니다: 행 ${ctx.sourceRange.firstRow + 1}, 시트 '${ctx.sourceSheet.sheetName}'"
+            )
+        val headers = (ctx.sourceRange.firstColumn..ctx.sourceRange.lastColumn).map { colIdx ->
             headerRow.getCell(colIdx)?.stringValue ?: "Field$colIdx"
         }
 
-        val dataRows = ((sourceRange.firstRow + 1)..sourceRange.lastRow).mapNotNull { rowNum ->
-            sourceSheet.getRow(rowNum)?.let { row ->
-                DataRow((sourceRange.firstColumn..sourceRange.lastColumn).associate { colIdx ->
-                    (colIdx - sourceRange.firstColumn) to row.getCell(colIdx)?.cellValue
+        val dataRows = ((ctx.sourceRange.firstRow + 1)..ctx.sourceRange.lastRow).mapNotNull { rowNum ->
+            ctx.sourceSheet.getRow(rowNum)?.let { row ->
+                DataRow((ctx.sourceRange.firstColumn..ctx.sourceRange.lastColumn).associate { colIdx ->
+                    (colIdx - ctx.sourceRange.firstColumn) to row.getCell(colIdx)?.cellValue
                 })
             }
         }
 
         if (dataRows.isEmpty()) return
 
-        val axisFieldIdx = rowLabelFields.first()
+        val axisFieldIdx = ctx.rowLabelFields.first()
         // O(n) 그룹화로 O(n²) 필터링 제거
         val groupedData = dataRows.groupBy { it.values[axisFieldIdx]?.toString() }
         val uniqueValues = groupedData.keys.filterNotNull()
         if (uniqueValues.isEmpty()) return
 
-        val startRow = pivotLocation.row
-        val startCol = pivotLocation.col.toInt()
+        val startRow = ctx.pivotLocation.row
+        val startCol = ctx.pivotLocation.col.toInt()
         val localStyleCache = mutableMapOf<StyleInfo, XSSFCellStyle>()
 
+        val headerStyles = ctx.styles.headerStyles
+        val dataRowStyles = ctx.styles.dataRowStyles
+
         // 총합계 행의 축 레이블 셀용 alignment 스타일
-        val axisAlignmentStyle = dataRowStyles[0]?.let { workbook.getOrCreateAlignmentOnlyStyle(it) }
+        val axisAlignmentStyle = dataRowStyles[0]?.let { ctx.workbook.getOrCreateAlignmentOnlyStyle(it) }
 
         // 헤더 행 - alignment만 적용 (피벗 테이블 스타일이 색상, 볼드 등 적용)
-        pivotSheet.getOrCreateRow(startRow).apply {
+        ctx.pivotSheet.getOrCreateRow(startRow).apply {
             getOrCreateCell(startCol).apply {
-                setCellValue(rowHeaderCaption ?: headers.getOrNull(axisFieldIdx) ?: "Row Labels")
-                (headerStyles[0] ?: dataRowStyles[0])?.let { cellStyle = workbook.getOrCreateAlignmentOnlyStyle(it) }
+                setCellValue(ctx.rowHeaderCaption ?: headers.getOrNull(axisFieldIdx) ?: "Row Labels")
+                (headerStyles[0] ?: dataRowStyles[0])?.let { cellStyle = ctx.workbook.getOrCreateAlignmentOnlyStyle(it) }
             }
 
-            dataFields.forEachIndexed { idx, dataField ->
+            ctx.dataFields.forEachIndexed { idx, dataField ->
                 getOrCreateCell(startCol + 1 + idx).apply {
                     setCellValue(dataField.name ?: "Values")
-                    headerStyles[1 + idx]?.let { cellStyle = workbook.getOrCreateAlignmentOnlyStyle(it) }
+                    headerStyles[1 + idx]?.let { cellStyle = ctx.workbook.getOrCreateAlignmentOnlyStyle(it) }
                 }
             }
         }
 
         // 데이터 행들 - 원본 스타일 적용 (그룹화된 데이터 사용으로 O(n) 처리)
         uniqueValues.forEachIndexed { rowIdx, axisValue ->
-            pivotSheet.getOrCreateRow(startRow + 1 + rowIdx).apply {
+            ctx.pivotSheet.getOrCreateRow(startRow + 1 + rowIdx).apply {
                 getOrCreateCell(startCol).apply {
                     setCellValue(axisValue)
-                    dataRowStyles[0]?.let { cellStyle = workbook.getOrCreateStyle(it, localStyleCache) }
+                    dataRowStyles[0]?.let { cellStyle = ctx.workbook.getOrCreateStyle(it, localStyleCache) }
                 }
 
                 val matchingRows = groupedData[axisValue] ?: emptyList()
-                dataFields.forEachIndexed { dataIdx, dataField ->
+                ctx.dataFields.forEachIndexed { dataIdx, dataField ->
                     getOrCreateCell(startCol + 1 + dataIdx).apply {
                         setCellValue(matchingRows.aggregateForField(dataField))
-                        cellStyle = workbook.getOrCreateStyleWithNumberFormat(
+                        cellStyle = ctx.workbook.getOrCreateStyleWithNumberFormat(
                             dataRowStyles[1 + dataIdx], dataField.function, localStyleCache
                         )
                     }
@@ -595,16 +622,16 @@ internal class PivotTableProcessor(
         }
 
         // 총합계 행 - alignment와 숫자 형식만 적용 (피벗 테이블 스타일이 볼드, 테두리 등 적용)
-        pivotSheet.getOrCreateRow(startRow + 1 + uniqueValues.size).apply {
+        ctx.pivotSheet.getOrCreateRow(startRow + 1 + uniqueValues.size).apply {
             getOrCreateCell(startCol).apply {
-                setCellValue(grandTotalCaption ?: "전체")
+                setCellValue(ctx.grandTotalCaption ?: "전체")
                 axisAlignmentStyle?.let { cellStyle = it }
             }
 
-            dataFields.forEachIndexed { dataIdx, dataField ->
+            ctx.dataFields.forEachIndexed { dataIdx, dataField ->
                 getOrCreateCell(startCol + 1 + dataIdx).apply {
                     setCellValue(dataRows.aggregateForField(dataField))
-                    cellStyle = workbook.getNumberFormatOnlyStyle(dataField.function)
+                    cellStyle = ctx.workbook.getNumberFormatOnlyStyle(dataField.function)
                 }
             }
         }
@@ -618,9 +645,9 @@ internal class PivotTableProcessor(
         if (this == null) return null
 
         // 기본값과 다른 속성이 하나라도 있으면 의미 있는 스타일
-        // 검정색(FF000000, 000000)은 Excel 기본 글꼴 색상이므로 커스텀으로 간주하지 않음
+        // 검정색은 Excel 기본 글꼴 색상이므로 커스텀으로 간주하지 않음
         val isCustomFontColor = fontColorRgb != null &&
-            fontColorRgb != "FF000000" && fontColorRgb != "000000"
+            fontColorRgb != COLOR_BLACK && fontColorRgb != COLOR_BLACK_SHORT
         val hasCustomFont = fontBold || fontItalic || fontUnderline != Font.U_NONE ||
             fontStrikeout || isCustomFontColor
         val hasCustomFill = fillForegroundColorRgb != null && fillPatternType != FillPatternType.NO_FILL
@@ -643,21 +670,21 @@ internal class PivotTableProcessor(
         return when {
             styleInfo.styleName?.contains("Light") == true -> StyleInfo(
                 fontBold = true,
-                fillForegroundColorRgb = "FFD9E1F2",  // 밝은 파란색
+                fillForegroundColorRgb = COLOR_LIGHT_BLUE,
                 fillPatternType = FillPatternType.SOLID_FOREGROUND,
                 borderBottom = BorderStyle.THIN
             )
             styleInfo.styleName?.contains("Medium") == true -> StyleInfo(
                 fontBold = true,
-                fillForegroundColorRgb = "FF4472C4",  // 파란색
+                fillForegroundColorRgb = COLOR_MEDIUM_BLUE,
                 fillPatternType = FillPatternType.SOLID_FOREGROUND,
-                fontColorRgb = "FFFFFFFF"  // 흰색 글자
+                fontColorRgb = COLOR_WHITE
             )
             styleInfo.styleName?.contains("Dark") == true -> StyleInfo(
                 fontBold = true,
-                fillForegroundColorRgb = "FF203864",  // 진한 파란색
+                fillForegroundColorRgb = COLOR_DARK_BLUE,
                 fillPatternType = FillPatternType.SOLID_FOREGROUND,
-                fontColorRgb = "FFFFFFFF"  // 흰색 글자
+                fontColorRgb = COLOR_WHITE
             )
             else -> StyleInfo(fontBold = true)
         }
@@ -676,14 +703,14 @@ internal class PivotTableProcessor(
             )
             styleInfo.styleName?.contains("Medium") == true -> StyleInfo(
                 fontBold = true,
-                fillForegroundColorRgb = "FFD9E1F2",
+                fillForegroundColorRgb = COLOR_LIGHT_BLUE,
                 fillPatternType = FillPatternType.SOLID_FOREGROUND
             )
             styleInfo.styleName?.contains("Dark") == true -> StyleInfo(
                 fontBold = true,
-                fillForegroundColorRgb = "FF4472C4",
+                fillForegroundColorRgb = COLOR_MEDIUM_BLUE,
                 fillPatternType = FillPatternType.SOLID_FOREGROUND,
-                fontColorRgb = "FFFFFFFF"
+                fontColorRgb = COLOR_WHITE
             )
             else -> StyleInfo(fontBold = true)
         }
@@ -1116,107 +1143,121 @@ internal class PivotTableProcessor(
             .replace(TRUE_FALSE_ATTR_REGEX) { if (it.groupValues[1] == "true") """"1"""" else """"0"""" }
             .replace(UPDATED_VERSION_REGEX, """updatedVersion="8"""")
 
-        // location ref 업데이트
-        LOCATION_REF_FULL_REGEX.find(xml)?.let { locationMatch ->
-            val refValue = locationMatch.groupValues[1]
-            val parts = refValue.split(":")
-            if (parts.size == 2) {
-                val startCell = parts[0]
-                val startCol = startCell.replace(Regex("""\d+"""), "")
-                val startRowNum = startCell.replace(Regex("""[A-Z]+"""), "").toIntOrNull() ?: 1
+        xml = updateLocationRef(xml, fields)
 
-                val uniqueValuesCount = fields.filter { it.isAxisField }
-                    .flatMap { it.sharedItems }
-                    .distinct().size
-
-                val dataFieldsCount = xml.split("<dataField").size - 1
-                val newEndCol = (startCol.toColumnIndex() + dataFieldsCount).toColumnLetter()
-                val newEndRow = startRowNum + uniqueValuesCount + 1
-
-                xml = xml.replace("""ref="$refValue"""", """ref="$startCell:$newEndCol$newEndRow"""")
-            }
-        }
-
-        // pivotField items 수정
         val axisFields = fields.mapIndexedNotNull { idx, f -> idx.takeIf { f.isAxisField } }.toSet()
+        xml = updatePivotFieldItems(xml, axisFields, fields)
+        xml = addRowItems(xml, axisFields, fields)
 
-        xml = PIVOT_FIELD_REGEX.replace(xml) { matchResult ->
-            if (AXIS_ATTR_REGEX.find(matchResult.value) != null) {
-                val axisFieldIdx = axisFields.firstOrNull() ?: return@replace matchResult.value
-                val sharedItems = fields.getOrNull(axisFieldIdx)?.sharedItems ?: return@replace matchResult.value
-
-                val itemsXml = buildString {
-                    append("""<items count="${sharedItems.size + 1}">""")
-                    sharedItems.indices.forEach { i -> append("""<item x="$i"/>""") }
-                    append("""<item t="default"/>""")
-                    append("</items>")
-                }
-
-                matchResult.value.replace(ITEMS_REGEX, itemsXml)
-            } else {
-                matchResult.value
-            }
-        }
-
-        // rowItems 추가
-        if ("<rowItems" !in xml && axisFields.isNotEmpty()) {
-            val sharedItems = fields.getOrNull(axisFields.first())?.sharedItems.orEmpty()
-
-            if (sharedItems.isNotEmpty()) {
-                val rowItemsXml = buildString {
-                    append("""<rowItems count="${sharedItems.size + 1}">""")
-                    append("<i><x/></i>")
-                    (1 until sharedItems.size).forEach { i -> append("""<i><x v="$i"/></i>""") }
-                    append("""<i t="grand"><x/></i>""")
-                    append("</rowItems>")
-                }
-
-                xml = when {
-                    "</rowFields>" in xml -> xml.replace("</rowFields>", "</rowFields>$rowItemsXml")
-                    else -> xml.replace("</pivotFields>", "</pivotFields>$rowItemsXml")
-                }
-            }
-        }
-
-        // colItems 추가
         val dataFieldsCount = xml.split("<dataField").size - 1
-        if ("<colItems" !in xml && dataFieldsCount > 0) {
-            val colItemsXml = if (dataFieldsCount > 1) {
-                buildString {
-                    append("""<colItems count="$dataFieldsCount">""")
-                    (0 until dataFieldsCount).forEach { i ->
-                        append(if (i == 0) "<i><x/></i>" else """<i><x v="$i"/></i>""")
-                    }
-                    append("</colItems>")
-                }
-            } else {
-                """<colItems count="1"><i/></colItems>"""
-            }
+        xml = addColItems(xml, dataFieldsCount)
+        xml = addBaseFieldToDataFields(xml)
+        xml = addColFieldsIfNeeded(xml, dataFieldsCount)
+        xml = ensureFirstHeaderRow(xml)
 
-            xml = when {
-                "</colFields>" in xml -> xml.replace("</colFields>", "</colFields>$colItemsXml")
-                "</rowItems>" in xml -> xml.replace("</rowItems>", "</rowItems>$colItemsXml")
-                else -> xml.replace("</rowFields>", "</rowFields>$colItemsXml")
+        return xml
+    }
+
+    /** location ref 업데이트 */
+    private fun updateLocationRef(xml: String, fields: List<FieldMeta>): String {
+        val locationMatch = LOCATION_REF_FULL_REGEX.find(xml) ?: return xml
+        val refValue = locationMatch.groupValues[1]
+        val parts = refValue.split(":")
+        if (parts.size != 2) return xml
+
+        val startCell = parts[0]
+        val startCol = startCell.replace(DIGIT_PATTERN, "")
+        val startRowNum = startCell.replace(LETTER_PATTERN, "").toIntOrNull() ?: 1
+
+        val uniqueValuesCount = fields.filter { it.isAxisField }
+            .flatMap { it.sharedItems }
+            .distinct().size
+
+        val dataFieldsCount = xml.split("<dataField").size - 1
+        val newEndCol = (startCol.toColumnIndex() + dataFieldsCount).toColumnLetter()
+        val newEndRow = startRowNum + uniqueValuesCount + 1
+
+        return xml.replace("""ref="$refValue"""", """ref="$startCell:$newEndCol$newEndRow"""")
+    }
+
+    /** pivotField items 수정 */
+    private fun updatePivotFieldItems(xml: String, axisFields: Set<Int>, fields: List<FieldMeta>): String =
+        PIVOT_FIELD_REGEX.replace(xml) { matchResult ->
+            if (AXIS_ATTR_REGEX.find(matchResult.value) == null) return@replace matchResult.value
+
+            val axisFieldIdx = axisFields.firstOrNull() ?: return@replace matchResult.value
+            val sharedItems = fields.getOrNull(axisFieldIdx)?.sharedItems ?: return@replace matchResult.value
+
+            val itemsXml = buildString {
+                append("""<items count="${sharedItems.size + 1}">""")
+                sharedItems.indices.forEach { i -> append("""<item x="$i"/>""") }
+                append("""<item t="default"/>""")
+                append("</items>")
             }
+            matchResult.value.replace(ITEMS_REGEX, itemsXml)
         }
 
-        // dataField에 baseField/baseItem 추가
-        xml = DATA_FIELD_SELF_CLOSING_REGEX.replace(xml) { match ->
+    /** rowItems 추가 */
+    private fun addRowItems(xml: String, axisFields: Set<Int>, fields: List<FieldMeta>): String {
+        if ("<rowItems" in xml || axisFields.isEmpty()) return xml
+
+        val sharedItems = fields.getOrNull(axisFields.first())?.sharedItems.orEmpty()
+        if (sharedItems.isEmpty()) return xml
+
+        val rowItemsXml = buildString {
+            append("""<rowItems count="${sharedItems.size + 1}">""")
+            append("<i><x/></i>")
+            (1 until sharedItems.size).forEach { i -> append("""<i><x v="$i"/></i>""") }
+            append("""<i t="grand"><x/></i>""")
+            append("</rowItems>")
+        }
+
+        return when {
+            "</rowFields>" in xml -> xml.replace("</rowFields>", "</rowFields>$rowItemsXml")
+            else -> xml.replace("</pivotFields>", "</pivotFields>$rowItemsXml")
+        }
+    }
+
+    /** colItems 추가 */
+    private fun addColItems(xml: String, dataFieldsCount: Int): String {
+        if ("<colItems" in xml || dataFieldsCount <= 0) return xml
+
+        val colItemsXml = if (dataFieldsCount > 1) {
+            buildString {
+                append("""<colItems count="$dataFieldsCount">""")
+                (0 until dataFieldsCount).forEach { i ->
+                    append(if (i == 0) "<i><x/></i>" else """<i><x v="$i"/></i>""")
+                }
+                append("</colItems>")
+            }
+        } else {
+            """<colItems count="1"><i/></colItems>"""
+        }
+
+        return when {
+            "</colFields>" in xml -> xml.replace("</colFields>", "</colFields>$colItemsXml")
+            "</rowItems>" in xml -> xml.replace("</rowItems>", "</rowItems>$colItemsXml")
+            else -> xml.replace("</rowFields>", "</rowFields>$colItemsXml")
+        }
+    }
+
+    /** dataField에 baseField/baseItem 추가 */
+    private fun addBaseFieldToDataFields(xml: String): String =
+        DATA_FIELD_SELF_CLOSING_REGEX.replace(xml) { match ->
             val attrs = match.groupValues[1]
             if ("baseField" !in attrs) """<dataField$attrs baseField="0" baseItem="0"/>""" else match.value
         }
 
-        // colFields 추가 (다중 데이터 필드용)
-        if (dataFieldsCount > 1 && "<colFields" !in xml) {
-            xml = xml.replace("</rowItems>", """</rowItems><colFields count="1"><field x="-2"/></colFields>""")
-        }
+    /** colFields 추가 (다중 데이터 필드용) */
+    private fun addColFieldsIfNeeded(xml: String, dataFieldsCount: Int): String {
+        if (dataFieldsCount <= 1 || "<colFields" in xml) return xml
+        return xml.replace("</rowItems>", """</rowItems><colFields count="1"><field x="-2"/></colFields>""")
+    }
 
-        // firstHeaderRow="0" 항상 적용
-        if ("""firstHeaderRow="0"""" !in xml) {
-            xml = xml.replace(FIRST_HEADER_ROW_REGEX, """firstHeaderRow="0"""")
-        }
-
-        return xml
+    /** firstHeaderRow="0" 보장 */
+    private fun ensureFirstHeaderRow(xml: String): String {
+        if ("""firstHeaderRow="0"""" in xml) return xml
+        return xml.replace(FIRST_HEADER_ROW_REGEX, """firstHeaderRow="0"""")
     }
 
     // ========== 확장 함수 ==========
@@ -1289,50 +1330,64 @@ internal class PivotTableProcessor(
         private const val SPREADSHEET_NS =
             "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 
-        // 정규식 패턴들 (재사용을 위해 컴파일)
-        private val SHEET_ATTR_REGEX = Regex("""sheet="([^"]+)"""")
-        private val WORKSHEET_SOURCE_REF_REGEX = Regex("""<worksheetSource[^>]*ref="([^"]+)"""")
-        private val NAME_ATTR_REGEX = Regex("""name="([^"]+)"""")
-        private val LOCATION_REF_REGEX = Regex("""<location[^>]*ref="([^"]+)"""")
-        private val ROW_FIELDS_REGEX = Regex("""<rowFields[^>]*>(.+?)</rowFields>""")
-        private val FIELD_X_REGEX = Regex("""<field x="(\d+)"""")
-        private val DATA_FIELD_REGEX = Regex("""<dataField[^>]+>""")
-        private val ROW_HEADER_CAPTION_REGEX = Regex("""rowHeaderCaption="([^"]+)"""")
-        private val GRAND_TOTAL_CAPTION_REGEX = Regex("""grandTotalCaption="([^"]+)"""")
-        private val FORMATS_REGEX = Regex("""<formats\s+count="\d+">(.*?)</formats>""", RegexOption.DOT_MATCHES_ALL)
-        private val FLD_ATTR_REGEX = Regex("""fld="(\d+)"""")
-        private val SUBTOTAL_ATTR_REGEX = Regex("""subtotal="([^"]*)"""")
-        private val SHEET_NAME_REGEX = Regex("""<sheet[^>]*name="([^"]+)"[^>]*r:id="rId\d+"""")
-        private val COL_ITEMS_COUNT_REGEX = Regex("""<colItems\s+count="(\d+)">""")
-        private val COL_ITEMS_FULL_REGEX = Regex(
-            """<colItems\s+count="\d+">(.*?)</colItems>""", RegexOption.DOT_MATCHES_ALL
-        )
-        private val I_ELEMENT_REGEX = Regex("""<i[^>]*/>|<i[^>]*>.*?</i>""", RegexOption.DOT_MATCHES_ALL)
-        private val LOCATION_WITH_REF_REGEX = Regex("""(<location[^>]*ref=")([^"]+)(")""")
-        private val PIVOT_CACHE_OVERRIDE_REGEX = Regex("""<Override[^>]*pivotCache[^>]*/>\s*""")
-        private val PIVOT_TABLE_OVERRIDE_REGEX = Regex("""<Override[^>]*pivotTable[^>]*/>\s*""")
-        private val PIVOT_TABLE_REL_REGEX = Regex("""<Relationship[^>]*pivotTable[^>]*/>\s*""")
-        private val PIVOT_CACHES_REGEX = Regex("""<pivotCaches>.*?</pivotCaches>""", RegexOption.DOT_MATCHES_ALL)
-        private val PIVOT_CACHES_EMPTY_REGEX = Regex("""<pivotCaches/>""")
-        private val PIVOT_CACHE_REL_REGEX = Regex("""<Relationship[^>]*pivotCache[^>]*/>\s*""")
-        private val REFRESH_ON_LOAD_REGEX = Regex("""refreshOnLoad="(true|1)"""")
-        private val REFRESHED_VERSION_REGEX = Regex("""refreshedVersion="\d+"""")
-        private val RECORD_COUNT_REGEX = Regex("""recordCount="\d+"""")
-        private val SHARED_ITEMS_REGEX = Regex(
-            """<sharedItems[^>]*/>|<sharedItems[^>]*>.*?</sharedItems>""", RegexOption.DOT_MATCHES_ALL
-        )
-        private val TRUE_FALSE_ATTR_REGEX = Regex(""""(true|false)"""")
-        private val UPDATED_VERSION_REGEX = Regex("""updatedVersion="\d+"""")
-        private val LOCATION_REF_FULL_REGEX = Regex("""<location[^>]*ref="([^"]+)"[^>]*/?>""")
-        private val PIVOT_FIELD_REGEX = Regex("""<pivotField[^>]*>(.*?)</pivotField>""", RegexOption.DOT_MATCHES_ALL)
-        private val AXIS_ATTR_REGEX = Regex("""axis="([^"]+)"""")
-        private val ITEMS_REGEX = Regex("""<items[^>]*>.*?</items>""", RegexOption.DOT_MATCHES_ALL)
-        private val DATA_FIELD_SELF_CLOSING_REGEX = Regex("""<dataField([^>]*)/>""")
-        private val FIRST_HEADER_ROW_REGEX = Regex("""firstHeaderRow="\d+"""")
-        private val PIVOT_CACHE_DEF_TARGET_REGEX = Regex("""Target="([^"]*pivotCacheDefinition[^"]*\.xml)"""")
-        private val PIVOT_TABLE_STYLE_INFO_REGEX = Regex(
-            """<pivotTableStyleInfo[^>]*/>|<pivotTableStyleInfo[^>]*>.*?</pivotTableStyleInfo>""",
-            RegexOption.DOT_MATCHES_ALL
-        )
+        // 피벗 테이블 스타일 색상 상수
+        private const val COLOR_BLACK = "FF000000"
+        private const val COLOR_BLACK_SHORT = "000000"
+        private const val COLOR_WHITE = "FFFFFFFF"
+        private const val COLOR_LIGHT_BLUE = "FFD9E1F2"
+        private const val COLOR_MEDIUM_BLUE = "FF4472C4"
+        private const val COLOR_DARK_BLUE = "FF203864"
+
+        // 정규식 패턴들 (지연 초기화: 피벗 테이블이 없는 템플릿에서는 컴파일 비용 절약)
+        private val SHEET_ATTR_REGEX by lazy { Regex("""sheet="([^"]+)"""") }
+        private val WORKSHEET_SOURCE_REF_REGEX by lazy { Regex("""<worksheetSource[^>]*ref="([^"]+)"""") }
+        private val NAME_ATTR_REGEX by lazy { Regex("""name="([^"]+)"""") }
+        private val LOCATION_REF_REGEX by lazy { Regex("""<location[^>]*ref="([^"]+)"""") }
+        private val ROW_FIELDS_REGEX by lazy { Regex("""<rowFields[^>]*>(.+?)</rowFields>""") }
+        private val FIELD_X_REGEX by lazy { Regex("""<field x="(\d+)"""") }
+        private val DATA_FIELD_REGEX by lazy { Regex("""<dataField[^>]+>""") }
+        private val ROW_HEADER_CAPTION_REGEX by lazy { Regex("""rowHeaderCaption="([^"]+)"""") }
+        private val GRAND_TOTAL_CAPTION_REGEX by lazy { Regex("""grandTotalCaption="([^"]+)"""") }
+        private val FORMATS_REGEX by lazy { Regex("""<formats\s+count="\d+">(.*?)</formats>""", RegexOption.DOT_MATCHES_ALL) }
+        private val FLD_ATTR_REGEX by lazy { Regex("""fld="(\d+)"""") }
+        private val SUBTOTAL_ATTR_REGEX by lazy { Regex("""subtotal="([^"]*)"""") }
+        private val SHEET_NAME_REGEX by lazy { Regex("""<sheet[^>]*name="([^"]+)"[^>]*r:id="rId\d+"""") }
+        private val COL_ITEMS_COUNT_REGEX by lazy { Regex("""<colItems\s+count="(\d+)">""") }
+        private val COL_ITEMS_FULL_REGEX by lazy {
+            Regex("""<colItems\s+count="\d+">(.*?)</colItems>""", RegexOption.DOT_MATCHES_ALL)
+        }
+        private val I_ELEMENT_REGEX by lazy { Regex("""<i[^>]*/>|<i[^>]*>.*?</i>""", RegexOption.DOT_MATCHES_ALL) }
+        private val LOCATION_WITH_REF_REGEX by lazy { Regex("""(<location[^>]*ref=")([^"]+)(")""") }
+        private val PIVOT_CACHE_OVERRIDE_REGEX by lazy { Regex("""<Override[^>]*pivotCache[^>]*/>\s*""") }
+        private val PIVOT_TABLE_OVERRIDE_REGEX by lazy { Regex("""<Override[^>]*pivotTable[^>]*/>\s*""") }
+        private val PIVOT_TABLE_REL_REGEX by lazy { Regex("""<Relationship[^>]*pivotTable[^>]*/>\s*""") }
+        private val PIVOT_CACHES_REGEX by lazy { Regex("""<pivotCaches>.*?</pivotCaches>""", RegexOption.DOT_MATCHES_ALL) }
+        private val PIVOT_CACHES_EMPTY_REGEX by lazy { Regex("""<pivotCaches/>""") }
+        private val PIVOT_CACHE_REL_REGEX by lazy { Regex("""<Relationship[^>]*pivotCache[^>]*/>\s*""") }
+        private val REFRESH_ON_LOAD_REGEX by lazy { Regex("""refreshOnLoad="(true|1)"""") }
+        private val REFRESHED_VERSION_REGEX by lazy { Regex("""refreshedVersion="\d+"""") }
+        private val RECORD_COUNT_REGEX by lazy { Regex("""recordCount="\d+"""") }
+        private val SHARED_ITEMS_REGEX by lazy {
+            Regex("""<sharedItems[^>]*/>|<sharedItems[^>]*>.*?</sharedItems>""", RegexOption.DOT_MATCHES_ALL)
+        }
+        private val TRUE_FALSE_ATTR_REGEX by lazy { Regex(""""(true|false)"""") }
+        private val UPDATED_VERSION_REGEX by lazy { Regex("""updatedVersion="\d+"""") }
+        private val LOCATION_REF_FULL_REGEX by lazy { Regex("""<location[^>]*ref="([^"]+)"[^>]*/?>""") }
+        private val PIVOT_FIELD_REGEX by lazy { Regex("""<pivotField[^>]*>(.*?)</pivotField>""", RegexOption.DOT_MATCHES_ALL) }
+        private val AXIS_ATTR_REGEX by lazy { Regex("""axis="([^"]+)"""") }
+        private val ITEMS_REGEX by lazy { Regex("""<items[^>]*>.*?</items>""", RegexOption.DOT_MATCHES_ALL) }
+        private val DATA_FIELD_SELF_CLOSING_REGEX by lazy { Regex("""<dataField([^>]*)/>""") }
+        private val FIRST_HEADER_ROW_REGEX by lazy { Regex("""firstHeaderRow="\d+"""") }
+        private val PIVOT_CACHE_DEF_TARGET_REGEX by lazy { Regex("""Target="([^"]*pivotCacheDefinition[^"]*\.xml)"""") }
+        private val PIVOT_TABLE_STYLE_INFO_REGEX by lazy {
+            Regex(
+                """<pivotTableStyleInfo[^>]*/>|<pivotTableStyleInfo[^>]*>.*?</pivotTableStyleInfo>""",
+                RegexOption.DOT_MATCHES_ALL
+            )
+        }
+
+        // 셀 참조 파싱용 패턴
+        private val DIGIT_PATTERN by lazy { Regex("""\d+""") }
+        private val LETTER_PATTERN by lazy { Regex("""[A-Z]+""") }
     }
 }
