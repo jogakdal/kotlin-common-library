@@ -548,7 +548,6 @@ internal class PivotTableProcessor(
      */
     private fun fillPivotTableCells(ctx: PivotFillContext) {
         if (ctx.rowLabelFields.isEmpty() || ctx.dataFields.isEmpty()) {
-            LOG.debug("피벗 테이블 필드가 비어있음: rowLabelFields=${ctx.rowLabelFields.size}, dataFields=${ctx.dataFields.size}")
             return
         }
 
@@ -634,85 +633,6 @@ internal class PivotTableProcessor(
                     cellStyle = ctx.workbook.getNumberFormatOnlyStyle(dataField.function)
                 }
             }
-        }
-    }
-
-    /**
-     * 스타일이 의미 있는 커스텀 스타일인지 확인
-     * 기본값만 있는 스타일이면 null 반환
-     */
-    private fun StyleInfo?.takeIfMeaningful(): StyleInfo? {
-        if (this == null) return null
-
-        // 기본값과 다른 속성이 하나라도 있으면 의미 있는 스타일
-        // 검정색은 Excel 기본 글꼴 색상이므로 커스텀으로 간주하지 않음
-        val isCustomFontColor = fontColorRgb != null &&
-            fontColorRgb != COLOR_BLACK && fontColorRgb != COLOR_BLACK_SHORT
-        val hasCustomFont = fontBold || fontItalic || fontUnderline != Font.U_NONE ||
-            fontStrikeout || isCustomFontColor
-        val hasCustomFill = fillForegroundColorRgb != null && fillPatternType != FillPatternType.NO_FILL
-        val hasCustomBorder = borderTop != BorderStyle.NONE || borderBottom != BorderStyle.NONE ||
-            borderLeft != BorderStyle.NONE || borderRight != BorderStyle.NONE
-        val hasCustomFormat = dataFormat.toInt() != 0
-
-        return if (hasCustomFont || hasCustomFill || hasCustomBorder || hasCustomFormat) this else null
-    }
-
-    // ========== 피벗 테이블 스타일 기본값 ==========
-
-    /**
-     * 피벗 테이블 스타일에 따른 기본 헤더 스타일
-     */
-    private fun getDefaultHeaderStyle(styleInfo: PivotTableStyleInfo): StyleInfo? {
-        if (!styleInfo.showColHeaders && !styleInfo.showRowHeaders) return null
-
-        // PivotStyleLight 계열 스타일의 기본 헤더 스타일
-        return when {
-            styleInfo.styleName?.contains("Light") == true -> StyleInfo(
-                fontBold = true,
-                fillForegroundColorRgb = COLOR_LIGHT_BLUE,
-                fillPatternType = FillPatternType.SOLID_FOREGROUND,
-                borderBottom = BorderStyle.THIN
-            )
-            styleInfo.styleName?.contains("Medium") == true -> StyleInfo(
-                fontBold = true,
-                fillForegroundColorRgb = COLOR_MEDIUM_BLUE,
-                fillPatternType = FillPatternType.SOLID_FOREGROUND,
-                fontColorRgb = COLOR_WHITE
-            )
-            styleInfo.styleName?.contains("Dark") == true -> StyleInfo(
-                fontBold = true,
-                fillForegroundColorRgb = COLOR_DARK_BLUE,
-                fillPatternType = FillPatternType.SOLID_FOREGROUND,
-                fontColorRgb = COLOR_WHITE
-            )
-            else -> StyleInfo(fontBold = true)
-        }
-    }
-
-    /**
-     * 피벗 테이블 스타일에 따른 기본 Grand Total 스타일
-     */
-    private fun getDefaultGrandTotalStyle(styleInfo: PivotTableStyleInfo): StyleInfo? {
-        // PivotStyleLight 계열 스타일의 기본 Grand Total 스타일
-        return when {
-            styleInfo.styleName?.contains("Light") == true -> StyleInfo(
-                fontBold = true,
-                borderTop = BorderStyle.THIN,
-                borderBottom = BorderStyle.DOUBLE
-            )
-            styleInfo.styleName?.contains("Medium") == true -> StyleInfo(
-                fontBold = true,
-                fillForegroundColorRgb = COLOR_LIGHT_BLUE,
-                fillPatternType = FillPatternType.SOLID_FOREGROUND
-            )
-            styleInfo.styleName?.contains("Dark") == true -> StyleInfo(
-                fontBold = true,
-                fillForegroundColorRgb = COLOR_MEDIUM_BLUE,
-                fillPatternType = FillPatternType.SOLID_FOREGROUND,
-                fontColorRgb = COLOR_WHITE
-            )
-            else -> StyleInfo(fontBold = true)
         }
     }
 
@@ -869,12 +789,10 @@ internal class PivotTableProcessor(
                         if (currentStyleInfo != null && currentStyleInfo != originalStyleInfo) {
                             xml = xml.replace(currentStyleInfo, originalStyleInfo)
                             modified = true
-                            LOG.debug("pivotTableStyleInfo 복원: $originalStyleInfo")
                         } else if (currentStyleInfo == null) {
                             // 현재 XML에 pivotTableStyleInfo가 없으면 추가
                             xml = xml.replace("</pivotTableDefinition>", "$originalStyleInfo</pivotTableDefinition>")
                             modified = true
-                            LOG.debug("pivotTableStyleInfo 추가: $originalStyleInfo")
                         }
                     }
                 }
@@ -889,10 +807,7 @@ internal class PivotTableProcessor(
                         if (insertPoint != null) {
                             xml = xml.substring(0, insertPoint) + info.originalFormatsXml + xml.substring(insertPoint)
                             modified = true
-                            LOG.debug("formats 복원 완료")
                         }
-                    } else if (!hasDxfStyles) {
-                        LOG.debug("dxf 스타일 없음 - formats 복원 스킵 (SXSSF 모드)")
                     }
                 }
 
@@ -1329,14 +1244,6 @@ internal class PivotTableProcessor(
 
         private const val SPREADSHEET_NS =
             "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
-
-        // 피벗 테이블 스타일 색상 상수
-        private const val COLOR_BLACK = "FF000000"
-        private const val COLOR_BLACK_SHORT = "000000"
-        private const val COLOR_WHITE = "FFFFFFFF"
-        private const val COLOR_LIGHT_BLUE = "FFD9E1F2"
-        private const val COLOR_MEDIUM_BLUE = "FF4472C4"
-        private const val COLOR_DARK_BLUE = "FF203864"
 
         // 정규식 패턴들 (지연 초기화: 피벗 테이블이 없는 템플릿에서는 컴파일 비용 절약)
         private val SHEET_ATTR_REGEX by lazy { Regex("""sheet="([^"]+)"""") }
