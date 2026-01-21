@@ -1,9 +1,7 @@
 package com.hunet.common.excel.engine
 
-import org.apache.poi.ss.usermodel.Cell
-import org.apache.poi.ss.usermodel.CellType
-import org.apache.poi.ss.usermodel.Sheet
-import org.apache.poi.ss.util.CellRangeAddress
+import org.apache.poi.ss.usermodel.*
+import org.apache.poi.xssf.usermodel.XSSFConditionalFormattingRule
 import org.apache.poi.xssf.usermodel.XSSFSheet
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.InputStream
@@ -67,26 +65,15 @@ class TemplateAnalyzer {
     }
 
     private fun analyzeSheet(workbook: XSSFWorkbook, sheet: Sheet, sheetIndex: Int): SheetBlueprint {
-        // 1. 반복 마커 찾기
         val repeatRegions = findRepeatRegions(sheet)
-
-        // 2. 행별 청사진 생성
         val rows = buildRowBlueprints(sheet, repeatRegions)
-
-        // 3. 병합 영역 수집
         val mergedRegions = (0 until sheet.numMergedRegions).map { sheet.getMergedRegion(it) }
 
-        // 4. 열 너비 수집
         val lastCol = sheet.maxColumnIndex()
         val columnWidths = (0..lastCol).associateWith { sheet.getColumnWidth(it) }
 
-        // 5. 헤더/푸터 정보 추출
         val headerFooter = extractHeaderFooter(sheet)
-
-        // 6. 인쇄 설정 추출
         val printSetup = extractPrintSetup(sheet)
-
-        // 7. 조건부 서식 추출
         val conditionalFormattings = extractConditionalFormattings(sheet)
 
         return SheetBlueprint(
@@ -111,11 +98,8 @@ class TemplateAnalyzer {
      */
     private fun extractHeaderFooter(sheet: Sheet): HeaderFooterInfo? {
         val xssfSheet = sheet as? XSSFSheet ?: return null
-
-        // ctWorksheet를 통해 headerFooter 요소에 직접 접근 (부작용 없음)
         val ctHf = xssfSheet.ctWorksheet?.headerFooter ?: return null
 
-        // 헤더/푸터 값 추출 (null이면 빈 문자열이 아닌 null)
         val oddHeader = ctHf.oddHeader?.takeIf { it.isNotEmpty() }
         val oddFooter = ctHf.oddFooter?.takeIf { it.isNotEmpty() }
         val evenHeader = ctHf.evenHeader?.takeIf { it.isNotEmpty() }
@@ -123,15 +107,13 @@ class TemplateAnalyzer {
         val firstHeader = ctHf.firstHeader?.takeIf { it.isNotEmpty() }
         val firstFooter = ctHf.firstFooter?.takeIf { it.isNotEmpty() }
 
-        // 헤더/푸터가 설정되어 있는지 확인
         val hasAnyHeaderFooter = listOf(
             oddHeader, oddFooter, evenHeader, evenFooter, firstHeader, firstFooter
         ).any { it != null }
 
         if (!hasAnyHeaderFooter) return null
 
-        // Excel 헤더/푸터 형식: &L, &C, &R로 좌/중/우 구분
-        // 예: "&L왼쪽&C중앙&R오른쪽"
+        // Excel 헤더/푸터 형식: &L, &C, &R로 좌/중/우 구분 (예: "&L왼쪽&C중앙&R오른쪽")
         return HeaderFooterInfo(
             leftHeader = parseHeaderFooterSection(oddHeader, 'L'),
             centerHeader = parseHeaderFooterSection(oddHeader, 'C'),
@@ -214,7 +196,7 @@ class TemplateAnalyzer {
                 val rule = cf.getRule(ruleIndex) ?: return@mapNotNull null
 
                 // XSSFConditionalFormattingRule에서 dxfId 추출
-                val xssfRule = rule as? org.apache.poi.xssf.usermodel.XSSFConditionalFormattingRule
+                val xssfRule = rule as? XSSFConditionalFormattingRule
                 val dxfId = xssfRule?.let {
                     runCatching {
                         // ctCfRule.dxfId 접근
@@ -225,8 +207,8 @@ class TemplateAnalyzer {
                 } ?: -1
 
                 ConditionalFormattingRuleInfo(
-                    conditionType = rule.conditionType ?: org.apache.poi.ss.usermodel.ConditionType.CELL_VALUE_IS,
-                    comparisonOperator = rule.comparisonOperation ?: org.apache.poi.ss.usermodel.ComparisonOperator.NO_COMPARISON,
+                    conditionType = rule.conditionType ?: ConditionType.CELL_VALUE_IS,
+                    comparisonOperator = rule.comparisonOperation ?: ComparisonOperator.NO_COMPARISON,
                     formula1 = rule.formula1,
                     formula2 = rule.formula2,
                     dxfId = dxfId,
@@ -364,7 +346,7 @@ class TemplateAnalyzer {
         )
     }
 
-    private fun findRepeatRegionInRow(row: org.apache.poi.ss.usermodel.Row): RepeatRegionInfo? {
+    private fun findRepeatRegionInRow(row: Row): RepeatRegionInfo? {
         row.forEach { cell ->
             if (cell.cellType == CellType.STRING) {
                 REPEAT_PATTERN.find(cell.stringCellValue ?: "")?.let { match ->
@@ -387,7 +369,7 @@ class TemplateAnalyzer {
     }
 
     private fun buildCellBlueprints(
-        row: org.apache.poi.ss.usermodel.Row?,
+        row: Row?,
         repeatItemVariable: String?
     ): List<CellBlueprint> {
         if (row == null) return emptyList()
@@ -427,7 +409,7 @@ class TemplateAnalyzer {
     private fun analyzeStringContent(text: String?, repeatItemVariable: String?): CellContent {
         if (text.isNullOrEmpty()) return CellContent.Empty
 
-        // 1. 반복 마커 확인
+        // 반복 마커
         REPEAT_PATTERN.find(text)?.let { match ->
             val directionStr = match.groupValues[4].uppercase()
             val direction = if (directionStr == "RIGHT") RepeatDirection.RIGHT else RepeatDirection.DOWN
@@ -439,28 +421,26 @@ class TemplateAnalyzer {
             )
         }
 
-        // 2. 이미지 마커 확인
+        // 이미지 마커
         IMAGE_PATTERN.find(text)?.let { match ->
             return CellContent.ImageMarker(match.groupValues[1])
         }
 
-        // 3. 아이템 필드 확인 (${emp.name})
+        // 아이템 필드 (반복 영역 내 변수와 일치하는지 확인)
         ITEM_FIELD_PATTERN.find(text)?.let { match ->
             val itemVar = match.groupValues[1]
             val fieldPath = match.groupValues[2]
-            // 반복 영역 내 변수와 일치하는지 확인
             if (repeatItemVariable != null && itemVar == repeatItemVariable) {
                 return CellContent.ItemField(itemVar, fieldPath, text)
             }
         }
 
-        // 4. 단순 변수 확인 (${title})
+        // 단순 변수
         if (VARIABLE_PATTERN.containsMatchIn(text)) {
             val varName = VARIABLE_PATTERN.find(text)!!.groupValues[1]
             return CellContent.Variable(varName, text)
         }
 
-        // 5. 일반 문자열
         return CellContent.StaticString(text)
     }
 

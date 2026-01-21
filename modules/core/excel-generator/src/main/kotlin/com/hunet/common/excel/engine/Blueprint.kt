@@ -1,5 +1,6 @@
 package com.hunet.common.excel.engine
 
+import org.apache.poi.ss.usermodel.ConditionType
 import org.apache.poi.ss.util.CellRangeAddress
 
 /**
@@ -196,7 +197,7 @@ data class ConditionalFormattingInfo(
  * 조건부 서식 규칙 정보
  */
 data class ConditionalFormattingRuleInfo(
-    val conditionType: org.apache.poi.ss.usermodel.ConditionType,
+    val conditionType: ConditionType,
     val comparisonOperator: Byte,  // POI API는 Byte 사용
     val formula1: String?,
     val formula2: String?,

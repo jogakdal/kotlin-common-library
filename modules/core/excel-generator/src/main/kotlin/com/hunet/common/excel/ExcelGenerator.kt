@@ -307,14 +307,14 @@ class ExcelGenerator @JvmOverloads constructor(
      * 템플릿 처리 (Pipeline Pattern)
      *
      * 파이프라인 처리 흐름:
-     * 1. ChartExtractProcessor - 스트리밍 모드에서 차트 추출 (SXSSF에서 차트 손실 방지)
-     * 2. PivotExtractProcessor - 피벗 테이블 정보 추출 및 템플릿에서 제거
-     * 3. TemplateRenderProcessor - 반복 데이터 처리 (스트리밍 가능)
-     * 4. NumberFormatProcessor - 숫자 서식 자동 적용
-     * 5. XmlVariableReplaceProcessor - XML 변수 치환 (수식 내 변수 등)
-     * 6. PivotRecreateProcessor - 확장된 데이터 소스로 피벗 테이블 재생성
-     * 7. ChartRestoreProcessor - 차트 복원 (스트리밍 모드)
-     * 8. MetadataProcessor - 문서 메타데이터 적용
+     * - ChartExtractProcessor: 스트리밍 모드에서 차트 추출 (SXSSF에서 차트 손실 방지)
+     * - PivotExtractProcessor: 피벗 테이블 정보 추출 및 템플릿에서 제거
+     * - TemplateRenderProcessor: 반복 데이터 처리 (스트리밍 가능)
+     * - NumberFormatProcessor: 숫자 서식 자동 적용
+     * - XmlVariableReplaceProcessor: XML 변수 치환 (수식 내 변수 등)
+     * - PivotRecreateProcessor: 확장된 데이터 소스로 피벗 테이블 재생성
+     * - ChartRestoreProcessor: 차트 복원 (스트리밍 모드)
+     * - MetadataProcessor: 문서 메타데이터 적용
      */
     private fun processTemplate(
         template: InputStream,

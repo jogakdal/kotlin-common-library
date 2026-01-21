@@ -2,6 +2,7 @@ package com.hunet.common.excel.engine
 
 import com.hunet.common.excel.FormulaExpansionException
 import com.hunet.common.excel.toByteArray
+import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.CellStyle
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.streaming.SXSSFSheet
@@ -35,33 +36,15 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
         data: Map<String, Any>,
         context: RenderingContext
     ): ByteArray {
-        // 1. 템플릿 XSSFWorkbook을 열고 분석 (dxfs 등 스타일 유지를 위해 닫지 않음)
+        // dxfs 스타일 유지를 위해 템플릿 워크북을 닫지 않고 재사용
         val templateWorkbook = XSSFWorkbook(ByteArrayInputStream(templateBytes))
 
         try {
             val blueprint = context.analyzer.analyzeFromWorkbook(templateWorkbook)
             val styleRegistry = extractStyles(templateWorkbook)
 
-            // 2. 템플릿 워크북의 기존 시트 내용을 모두 삭제 (시트 구조는 유지)
-            for (i in 0 until templateWorkbook.numberOfSheets) {
-                val sheet = templateWorkbook.getSheetAt(i)
-                // 모든 행 삭제
-                val lastRowNum = sheet.lastRowNum
-                for (rowIdx in lastRowNum downTo 0) {
-                    sheet.getRow(rowIdx)?.let { sheet.removeRow(it) }
-                }
-                // 병합 영역 삭제
-                while (sheet.numMergedRegions > 0) {
-                    sheet.removeMergedRegion(0)
-                }
-                // 조건부 서식 삭제
-                val scf = sheet.sheetConditionalFormatting
-                while (scf.numConditionalFormattings > 0) {
-                    scf.removeConditionalFormatting(0)
-                }
-            }
+            clearSheetContents(templateWorkbook)
 
-            // 3. 템플릿 기반 SXSSF 워크북 생성 (dxfs 유지)
             return SXSSFWorkbook(templateWorkbook, 100).use { workbook ->
                 val styleMap = styleRegistry.mapValues { (_, style) ->
                     workbook.xssfWorkbook.getCellStyleAt(style.index.toInt())
@@ -73,10 +56,8 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
                     processSheetSxssf(sheet, sheetBlueprint, data, styleMap, imageLocations, index, context)
                 }
 
-                // SXSSF에서는 이미지를 바로 삽입
                 insertImagesSxssf(workbook, imageLocations, data, context)
 
-                // 수식 강제 재계산 플래그 설정
                 for (i in 0 until workbook.numberOfSheets) {
                     workbook.getSheetAt(i).forceFormulaRecalculation = true
                 }
@@ -87,6 +68,22 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
             }
         } finally {
             templateWorkbook.close()
+        }
+    }
+
+    private fun clearSheetContents(workbook: XSSFWorkbook) {
+        for (i in 0 until workbook.numberOfSheets) {
+            val sheet = workbook.getSheetAt(i)
+            for (rowIdx in sheet.lastRowNum downTo 0) {
+                sheet.getRow(rowIdx)?.let { sheet.removeRow(it) }
+            }
+            while (sheet.numMergedRegions > 0) {
+                sheet.removeMergedRegion(0)
+            }
+            val scf = sheet.sheetConditionalFormatting
+            while (scf.numConditionalFormattings > 0) {
+                scf.removeConditionalFormatting(0)
+            }
         }
     }
 
@@ -108,27 +105,18 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
         sheetIndex: Int,
         context: RenderingContext
     ) {
-        // 열 너비 설정
-        blueprint.columnWidths.forEach { (col, width) ->
-            sheet.setColumnWidth(col, width)
-        }
-
-        // 헤더/푸터 설정 (변수 치환 적용)
+        blueprint.columnWidths.forEach { (col, width) -> sheet.setColumnWidth(col, width) }
         context.sheetLayoutApplier.applyHeaderFooter(
             sheet.workbook as SXSSFWorkbook, sheetIndex, blueprint.headerFooter, data, context.evaluateText
         )
-
-        // 인쇄 설정 적용
         context.sheetLayoutApplier.applyPrintSetup(sheet, blueprint.printSetup)
 
         var currentRowIndex = 0
         var rowOffset = 0
 
-        // 반복 영역 정보 수집
         val repeatRegions = blueprint.rows.filterIsInstance<RowBlueprint.RepeatRow>()
             .associateBy { it.templateRowIndex }
 
-        // 행 작성 컨텍스트 생성
         val ctx = RowWriteContext(
             sheet = sheet,
             sheetIndex = sheetIndex,
@@ -474,7 +462,7 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
     }
 
     private fun writeCellContentSxssf(
-        cell: org.apache.poi.ss.usermodel.Cell,
+        cell: Cell,
         content: CellContent,
         data: Map<String, Any>,
         itemVariable: String?,
@@ -557,7 +545,7 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
         }
     }
 
-    private fun setCellValue(cell: org.apache.poi.ss.usermodel.Cell, value: Any?) {
+    private fun setCellValue(cell: Cell, value: Any?) {
         when (value) {
             null -> cell.setBlank()
             is String -> cell.setCellValue(value)

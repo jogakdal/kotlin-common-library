@@ -2,8 +2,10 @@ package com.hunet.common.excel.engine
 
 import com.hunet.common.excel.findMergedRegion
 import com.hunet.common.excel.toByteArray
+import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.CellCopyPolicy
 import org.apache.poi.ss.usermodel.CellType
+import org.apache.poi.ss.usermodel.Row
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.XSSFSheet
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
@@ -63,7 +65,7 @@ internal class XssfRenderingStrategy : RenderingStrategy {
         imageLocations: MutableList<ImageLocation>,
         context: RenderingContext
     ) {
-        // 1. 반복 영역 확장 (뒤에서부터 처리하여 인덱스 꼬임 방지)
+        // 반복 영역 확장 (뒤에서부터 처리하여 인덱스 꼬임 방지)
         val repeatRows = blueprint.rows.filterIsInstance<RowBlueprint.RepeatRow>().reversed()
         val rowOffsets = mutableMapOf<Int, Int>()
 
@@ -138,10 +140,7 @@ internal class XssfRenderingStrategy : RenderingStrategy {
             }
         }
 
-        // 2. 반복 마커 셀 비우기
         clearRepeatMarkers(sheet)
-
-        // 3. 변수 치환
         substituteVariablesXssf(sheet, blueprint, data, rowOffsets, imageLocations, context)
     }
 
@@ -248,7 +247,7 @@ internal class XssfRenderingStrategy : RenderingStrategy {
 
     private fun substituteRowVariables(
         sheet: XSSFSheet,
-        row: org.apache.poi.ss.usermodel.Row,
+        row: Row,
         cellBlueprints: List<CellBlueprint>,
         data: Map<String, Any>,
         imageLocations: MutableList<ImageLocation>,
@@ -262,7 +261,7 @@ internal class XssfRenderingStrategy : RenderingStrategy {
     }
 
     private fun processCellContent(
-        cell: org.apache.poi.ss.usermodel.Cell,
+        cell: Cell,
         content: CellContent,
         data: Map<String, Any>,
         sheetIndex: Int,
@@ -340,7 +339,7 @@ internal class XssfRenderingStrategy : RenderingStrategy {
         }
     }
 
-    private fun setCellValue(cell: org.apache.poi.ss.usermodel.Cell, value: Any?) {
+    private fun setCellValue(cell: Cell, value: Any?) {
         when (value) {
             null -> cell.setBlank()
             is String -> cell.setCellValue(value)

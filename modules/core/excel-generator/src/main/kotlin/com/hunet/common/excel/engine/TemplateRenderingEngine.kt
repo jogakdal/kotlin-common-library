@@ -34,11 +34,9 @@ class TemplateRenderingEngine(
     private val repeatExpansionProcessor = RepeatExpansionProcessor()
     private val sheetLayoutApplier = SheetLayoutApplier()
 
-    // 리플렉션 결과 캐시 (성능 최적화)
     private val fieldCache = mutableMapOf<Pair<Class<*>, String>, java.lang.reflect.Field?>()
     private val getterCache = mutableMapOf<Pair<Class<*>, String>, java.lang.reflect.Method?>()
 
-    // 렌더링 전략 (Strategy Pattern)
     private val strategy: RenderingStrategy = when (streamingMode) {
         StreamingMode.DISABLED -> XssfRenderingStrategy()
         StreamingMode.ENABLED -> SxssfRenderingStrategy()
@@ -81,11 +79,6 @@ class TemplateRenderingEngine(
         }
     }
 
-    // ========== 유틸리티 ==========
-
-    /**
-     * 텍스트 내 ${...} 표현식을 평가하여 치환
-     */
     private fun evaluateText(text: String, data: Map<String, Any>): String {
         @Suppress("UNCHECKED_CAST")
         return variableProcessor.processWithData(text, data as Map<String, Any?>)
@@ -115,7 +108,6 @@ class TemplateRenderingEngine(
         val clazz = obj::class.java
         val cacheKey = clazz to field
 
-        // 1. 필드 캐시 확인
         val cachedField = fieldCache.getOrPut(cacheKey) {
             runCatching {
                 clazz.getDeclaredField(field).apply { isAccessible = true }
@@ -126,7 +118,6 @@ class TemplateRenderingEngine(
             return runCatching { cachedField.get(obj) }.getOrNull()
         }
 
-        // 2. getter 캐시 확인
         val cachedGetter = getterCache.getOrPut(cacheKey) {
             runCatching {
                 clazz.getMethod("get${field.replaceFirstChar { it.uppercase() }}")

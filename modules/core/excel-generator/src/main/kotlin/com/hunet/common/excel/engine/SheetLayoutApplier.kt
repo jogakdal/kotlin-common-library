@@ -1,8 +1,13 @@
 package com.hunet.common.excel.engine
 
+import org.apache.poi.ss.usermodel.ConditionType
+import org.apache.poi.ss.usermodel.Footer
+import org.apache.poi.ss.usermodel.Header
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.streaming.SXSSFSheet
 import org.apache.poi.xssf.streaming.SXSSFWorkbook
+import org.apache.poi.xssf.usermodel.XSSFConditionalFormattingRule
+import org.openxmlformats.schemas.spreadsheetml.x2006.main.CTCfRule
 
 /**
  * 시트 레이아웃 적용을 담당하는 프로세서.
@@ -30,17 +35,14 @@ internal class SheetLayoutApplier {
         data: Map<String, Any>,
         totalRowOffset: Int
     ) {
-        // 이미 추가된 병합 영역 추적 (겹침 방지)
         val addedRegions = mutableSetOf<String>()
 
         for (region in mergedRegions) {
-            // 반복 영역과 겹치는지 확인
             val overlappingRepeat = repeatRegions.values.find { repeat ->
                 region.firstRow >= repeat.templateRowIndex && region.firstRow <= repeat.repeatEndRowIndex
             }
 
             if (overlappingRepeat != null) {
-                // 반복 영역 내 병합: 각 반복 항목마다 병합 생성
                 val items = data[overlappingRepeat.collectionName] as? List<*> ?: continue
                 val relativeStartRow = region.firstRow - overlappingRepeat.templateRowIndex
                 val rowSpan = region.lastRow - region.firstRow
@@ -51,7 +53,6 @@ internal class SheetLayoutApplier {
                     val key = "$newFirstRow:$newLastRow:${region.firstColumn}:${region.lastColumn}"
 
                     if (key !in addedRegions) {
-                        // 겹치는 영역 무시
                         runCatching {
                             sheet.addMergedRegion(CellRangeAddress(
                                 newFirstRow, newLastRow, region.firstColumn, region.lastColumn
@@ -61,7 +62,6 @@ internal class SheetLayoutApplier {
                     }
                 }
             } else {
-                // 반복 영역 외부 병합
                 val maxRepeatEndRow = repeatRegions.values.maxOfOrNull { it.repeatEndRowIndex } ?: -1
                 val offset = if (region.firstRow > maxRepeatEndRow) totalRowOffset else 0
 
@@ -70,7 +70,6 @@ internal class SheetLayoutApplier {
                 val key = "$newFirstRow:$newLastRow:${region.firstColumn}:${region.lastColumn}"
 
                 if (key !in addedRegions) {
-                    // 겹치는 영역 무시
                     runCatching {
                         sheet.addMergedRegion(CellRangeAddress(
                             newFirstRow, newLastRow, region.firstColumn, region.lastColumn
@@ -147,14 +146,14 @@ internal class SheetLayoutApplier {
             val rules = cfInfo.rules.mapNotNull { ruleInfo ->
                 runCatching {
                     val rule = when (ruleInfo.conditionType) {
-                        org.apache.poi.ss.usermodel.ConditionType.CELL_VALUE_IS -> {
+                        ConditionType.CELL_VALUE_IS -> {
                             scf.createConditionalFormattingRule(
                                 ruleInfo.comparisonOperator,
                                 ruleInfo.formula1 ?: "",
                                 ruleInfo.formula2
                             )
                         }
-                        org.apache.poi.ss.usermodel.ConditionType.FORMULA -> {
+                        ConditionType.FORMULA -> {
                             scf.createConditionalFormattingRule(ruleInfo.formula1 ?: "TRUE")
                         }
                         else -> null
@@ -163,12 +162,12 @@ internal class SheetLayoutApplier {
                     // dxfId 설정 (리플렉션 사용)
                     if (rule != null && ruleInfo.dxfId >= 0) {
                         runCatching {
-                            val xssfRule = rule as? org.apache.poi.xssf.usermodel.XSSFConditionalFormattingRule
+                            val xssfRule = rule as? XSSFConditionalFormattingRule
                             if (xssfRule != null) {
                                 // XSSFConditionalFormattingRule의 _cfRule 필드에 접근
                                 val cfRuleField = xssfRule.javaClass.getDeclaredField("_cfRule")
                                 cfRuleField.isAccessible = true
-                                val ctCfRule = cfRuleField.get(xssfRule) as org.openxmlformats.schemas.spreadsheetml.x2006.main.CTCfRule
+                                val ctCfRule = cfRuleField.get(xssfRule) as CTCfRule
                                 ctCfRule.dxfId = ruleInfo.dxfId.toLong()
                             }
                         } // 리플렉션 실패 시 dxfId 없이 진행
@@ -251,8 +250,8 @@ internal class SheetLayoutApplier {
      * 헤더/푸터 부분 적용 (중복 코드 제거용 헬퍼)
      */
     private fun applyHeaderFooterParts(
-        header: org.apache.poi.ss.usermodel.Header,
-        footer: org.apache.poi.ss.usermodel.Footer,
+        header: Header,
+        footer: Footer,
         data: Map<String, Any>,
         textEvaluator: (String, Map<String, Any>) -> String,
         leftH: String?, centerH: String?, rightH: String?,

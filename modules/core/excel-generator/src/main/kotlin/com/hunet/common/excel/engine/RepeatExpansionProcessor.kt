@@ -44,18 +44,16 @@ internal class RepeatExpansionProcessor {
         itemCount: Int
     ) {
         val templateColCount = repeatRow.repeatEndCol - repeatRow.repeatStartCol + 1
-        val colsToInsert = (itemCount - 1) * templateColCount  // 추가로 삽입할 열 수
+        val colsToInsert = (itemCount - 1) * templateColCount
 
         if (colsToInsert <= 0) return
 
-        // 1. 반복 영역 내 행의 오른쪽 기존 셀들만 오른쪽으로 이동
         val shiftStartCol = repeatRow.repeatEndCol + 1
         shiftColumnsRight(
             sheet, shiftStartCol, colsToInsert,
             repeatRow.templateRowIndex, repeatRow.repeatEndRowIndex
         )
 
-        // 2. 반복 영역의 모든 행에 대해 열 복사
         (repeatRow.templateRowIndex..repeatRow.repeatEndRowIndex)
             .mapNotNull(sheet::getRow)
             .forEach { row ->
@@ -85,7 +83,6 @@ internal class RepeatExpansionProcessor {
         startRow: Int,
         endRow: Int
     ) {
-        // 지정된 행 범위 내에서만 처리
         for (rowIdx in startRow..endRow) {
             val row = sheet.getRow(rowIdx) ?: continue
             // 오른쪽에서 왼쪽으로 처리하여 덮어쓰기 방지
@@ -95,17 +92,13 @@ internal class RepeatExpansionProcessor {
             for (cell in cellsToMove) {
                 val newColIdx = cell.columnIndex + shiftAmount
                 val newCell = row.createCell(newColIdx)
-
-                // 스타일 복사 (같은 워크북 내 스타일이므로 인덱스로 복사)
                 newCell.cellStyle = sheet.workbook.getCellStyleAt(cell.cellStyle.index.toInt())
 
-                // 값 복사
                 when (cell.cellType) {
                     CellType.STRING -> newCell.setCellValue(cell.stringCellValue)
                     CellType.NUMERIC -> newCell.setCellValue(cell.numericCellValue)
                     CellType.BOOLEAN -> newCell.setCellValue(cell.booleanCellValue)
                     CellType.FORMULA -> {
-                        // 수식의 열 참조 조정
                         val adjustedFormula = FormulaAdjuster.adjustForColumnExpansion(
                             cell.cellFormula, startCol, shiftAmount
                         )
@@ -115,7 +108,6 @@ internal class RepeatExpansionProcessor {
                     else -> {}
                 }
 
-                // 원래 셀 비우기
                 row.removeCell(cell)
             }
         }
