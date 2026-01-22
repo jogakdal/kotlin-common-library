@@ -4,6 +4,8 @@ import com.hunet.common.excel.ExcelDataProvider
 import com.hunet.common.excel.StreamingMode
 import com.hunet.common.lib.VariableProcessor
 import java.io.InputStream
+import java.lang.reflect.Field
+import java.lang.reflect.Method
 
 /**
  * 템플릿 렌더링 엔진 - Excel 템플릿 기반 데이터 바인딩
@@ -26,7 +28,7 @@ import java.io.InputStream
  * - [SxssfRenderingStrategy]: 스트리밍 모드
  */
 class TemplateRenderingEngine(
-    private val streamingMode: StreamingMode = StreamingMode.DISABLED
+    streamingMode: StreamingMode = StreamingMode.ENABLED
 ) {
     private val analyzer = TemplateAnalyzer()
     private val variableProcessor = VariableProcessor(emptyList())
@@ -34,8 +36,8 @@ class TemplateRenderingEngine(
     private val repeatExpansionProcessor = RepeatExpansionProcessor()
     private val sheetLayoutApplier = SheetLayoutApplier()
 
-    private val fieldCache = mutableMapOf<Pair<Class<*>, String>, java.lang.reflect.Field?>()
-    private val getterCache = mutableMapOf<Pair<Class<*>, String>, java.lang.reflect.Method?>()
+    private val fieldCache = mutableMapOf<Pair<Class<*>, String>, Field?>()
+    private val getterCache = mutableMapOf<Pair<Class<*>, String>, Method?>()
 
     private val strategy: RenderingStrategy = when (streamingMode) {
         StreamingMode.DISABLED -> XssfRenderingStrategy()
@@ -65,17 +67,34 @@ class TemplateRenderingEngine(
 
     /**
      * 템플릿에 DataProvider 데이터를 바인딩하여 Excel 생성
+     *
+     * @param template 템플릿 입력 스트림
+     * @param dataProvider 데이터 제공자
+     * @param requiredNames 템플릿에서 필요로 하는 데이터 이름 (선택적)
      */
-    fun process(template: InputStream, dataProvider: ExcelDataProvider): ByteArray {
-        val data = buildDataMap(dataProvider)
+    fun process(
+        template: InputStream,
+        dataProvider: ExcelDataProvider,
+        requiredNames: RequiredNames? = null
+    ): ByteArray {
+        val data = buildDataMap(dataProvider, requiredNames)
         return process(template, data)
     }
 
-    private fun buildDataMap(dataProvider: ExcelDataProvider): Map<String, Any> = buildMap {
-        dataProvider.getAvailableNames().forEach { name ->
-            dataProvider.getValue(name)?.let { put(name, it) }
-            dataProvider.getItems(name)?.let { put(name, it.asSequence().toList()) }
-            dataProvider.getImage(name)?.let { put("image.$name", it) }
+    private fun buildDataMap(
+        dataProvider: ExcelDataProvider,
+        requiredNames: RequiredNames?
+    ): Map<String, Any> = buildMap {
+        requiredNames?.let { names ->
+            names.variables.forEach { name ->
+                dataProvider.getValue(name)?.let { put(name, it) }
+            }
+            names.collections.forEach { name ->
+                dataProvider.getItems(name)?.let { put(name, it.asSequence().toList()) }
+            }
+            names.images.forEach { name ->
+                dataProvider.getImage(name)?.let { put("image.$name", it) }
+            }
         }
     }
 

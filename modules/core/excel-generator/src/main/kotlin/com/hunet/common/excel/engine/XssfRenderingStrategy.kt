@@ -1,6 +1,7 @@
 package com.hunet.common.excel.engine
 
 import com.hunet.common.excel.findMergedRegion
+import com.hunet.common.excel.setInitialView
 import com.hunet.common.excel.toByteArray
 import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.CellCopyPolicy
@@ -53,6 +54,9 @@ internal class XssfRenderingStrategy : RenderingStrategy {
 
             // 수식 재계산
             workbook.creationHelper.createFormulaEvaluator().evaluateAll()
+
+            // 파일 열 때 첫 번째 시트 A1 셀에 포커스
+            workbook.setInitialView()
 
             workbook.toByteArray()
         }

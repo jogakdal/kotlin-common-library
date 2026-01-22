@@ -25,21 +25,19 @@ class SimpleDataProvider private constructor(
 
     override fun getImage(name: String): ByteArray? = images[name]
 
-    override fun getAvailableNames(): Set<String> =
-        values.keys + collections.keys + images.keys
-
     override fun getMetadata(): DocumentMetadata? = metadata
 
     companion object {
         /**
          * Map으로부터 SimpleDataProvider를 생성합니다.
          *
-         * Map의 값이 Iterable인 경우 자동으로 컬렉션으로 분류됩니다.
+         * Map의 값이 Iterable인 경우 자동으로 컬렉션으로, ByteArray인 경우 이미지로 분류됩니다.
          *
          * ```kotlin
          * val provider = SimpleDataProvider.of(mapOf(
          *     "title" to "월별 보고서",
-         *     "employees" to listOf(emp1, emp2, emp3)
+         *     "employees" to listOf(emp1, emp2, emp3),
+         *     "logo" to logoBytes  // ByteArray는 이미지로 분류
          * ))
          * ```
          *
@@ -48,22 +46,22 @@ class SimpleDataProvider private constructor(
          */
         @JvmStatic
         fun of(data: Map<String, Any>): SimpleDataProvider {
-            val (iterables, others) = data.entries.partition { (_, v) ->
-                v is Iterable<*> || v is Iterator<*> || v is Sequence<*>
-            }
+            val values = mutableMapOf<String, Any>()
+            val collections = mutableMapOf<String, () -> Iterator<Any>>()
+            val images = mutableMapOf<String, ByteArray>()
 
-            val values = others.associate { it.key to it.value }
-            val collections = iterables.associate { (key, value) ->
+            data.forEach { (key, value) ->
                 @Suppress("UNCHECKED_CAST")
-                key to when (value) {
-                    is Iterable<*> -> { -> (value as Iterable<Any>).iterator() }
-                    is Iterator<*> -> { -> value as Iterator<Any> }
-                    is Sequence<*> -> { -> (value as Sequence<Any>).iterator() }
-                    else -> throw IllegalStateException("Unexpected type: ${value::class}")
+                when (value) {
+                    is ByteArray -> images[key] = value
+                    is Iterable<*> -> collections[key] = { (value as Iterable<Any>).iterator() }
+                    is Iterator<*> -> collections[key] = { value as Iterator<Any> }
+                    is Sequence<*> -> collections[key] = { (value as Sequence<Any>).iterator() }
+                    else -> values[key] = value
                 }
             }
 
-            return SimpleDataProvider(values, collections, emptyMap(), null)
+            return SimpleDataProvider(values, collections, images, null)
         }
 
         /**

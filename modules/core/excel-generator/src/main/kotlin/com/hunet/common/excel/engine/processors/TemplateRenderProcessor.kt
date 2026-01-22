@@ -1,8 +1,15 @@
 package com.hunet.common.excel.engine.processors
 
+import com.hunet.common.excel.MissingDataBehavior
+import com.hunet.common.excel.MissingTemplateDataException
 import com.hunet.common.excel.engine.ExcelProcessor
 import com.hunet.common.excel.engine.ProcessingContext
+import com.hunet.common.excel.engine.RequiredNames
+import com.hunet.common.excel.engine.TemplateAnalyzer
 import com.hunet.common.excel.engine.TemplateRenderingEngine
+import com.hunet.common.excel.engine.extractRequiredNames
+import com.hunet.common.logging.commonLogger
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.ByteArrayInputStream
 
 /**
@@ -18,12 +25,27 @@ import java.io.ByteArrayInputStream
  */
 internal class TemplateRenderProcessor : ExcelProcessor {
 
+    companion object {
+        private val LOG by commonLogger()
+    }
+
     override val name: String = "TemplateRender"
 
     override fun process(context: ProcessingContext): ProcessingContext {
-        // processedRowCount 계산
+        // 템플릿 분석하여 필요한 데이터 이름 추출
+        val analyzer = TemplateAnalyzer()
+        val blueprint = XSSFWorkbook(ByteArrayInputStream(context.resultBytes)).use { workbook ->
+            analyzer.analyzeFromWorkbook(workbook)
+        }
+        val requiredNames = blueprint.extractRequiredNames()
+        context.requiredNames = requiredNames
+
+        // 누락 데이터 검증
+        validateMissingData(context, requiredNames)
+
+        // processedRowCount 계산 (필요한 컬렉션만 조회)
         var totalRows = 0
-        context.dataProvider.getAvailableNames().forEach { name ->
+        requiredNames.collections.forEach { name ->
             context.dataProvider.getItems(name)?.let { iterator ->
                 totalRows += iterator.asSequence().count()
             }
@@ -34,8 +56,51 @@ internal class TemplateRenderProcessor : ExcelProcessor {
         val engine = TemplateRenderingEngine(context.config.streamingMode)
         context.resultBytes = engine.process(
             ByteArrayInputStream(context.resultBytes),
-            context.dataProvider
+            context.dataProvider,
+            requiredNames
         )
         return context
+    }
+
+    /**
+     * 템플릿에 필요한 데이터가 DataProvider에 있는지 검증합니다.
+     */
+    private fun validateMissingData(context: ProcessingContext, requiredNames: RequiredNames) {
+        val behavior = context.config.missingDataBehavior
+        if (behavior == MissingDataBehavior.IGNORE) return
+
+        val dataProvider = context.dataProvider
+
+        // 실제 제공되는 데이터 확인
+        val providedVariables = requiredNames.variables.filter { dataProvider.getValue(it) != null }.toSet()
+        val providedCollections = requiredNames.collections.filter { dataProvider.getItems(it) != null }.toSet()
+        val providedImages = requiredNames.images.filter { dataProvider.getImage(it) != null }.toSet()
+
+        // 누락된 데이터 계산
+        val missingVariables = requiredNames.variables - providedVariables
+        val missingCollections = requiredNames.collections - providedCollections
+        val missingImages = requiredNames.images - providedImages
+
+        if (missingVariables.isEmpty() && missingCollections.isEmpty() && missingImages.isEmpty()) {
+            return
+        }
+
+        when (behavior) {
+            MissingDataBehavior.WARN -> {
+                if (missingVariables.isNotEmpty()) {
+                    LOG.warn("템플릿에 필요한 변수가 누락되었습니다: {}", missingVariables)
+                }
+                if (missingCollections.isNotEmpty()) {
+                    LOG.warn("템플릿에 필요한 컬렉션이 누락되었습니다: {}", missingCollections)
+                }
+                if (missingImages.isNotEmpty()) {
+                    LOG.warn("템플릿에 필요한 이미지가 누락되었습니다: {}", missingImages)
+                }
+            }
+            MissingDataBehavior.THROW -> {
+                throw MissingTemplateDataException(missingVariables, missingCollections, missingImages)
+            }
+            else -> { /* IGNORE는 위에서 처리됨 */ }
+        }
     }
 }

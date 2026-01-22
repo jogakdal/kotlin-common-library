@@ -25,23 +25,28 @@ internal class XmlVariableReplaceProcessor(
     override val name: String = "XmlVariableReplace"
 
     /**
-     * DataProvider에 값이 있을 때만 실행
+     * 치환할 변수가 있을 때만 실행
      */
-    override fun shouldProcess(context: ProcessingContext): Boolean {
-        return context.dataProvider.getAvailableNames().any { name ->
+    override fun shouldProcess(context: ProcessingContext): Boolean =
+        context.requiredNames?.variables?.any { name ->
             context.dataProvider.getValue(name) != null
-        }
-    }
+        } ?: false
 
     override fun process(context: ProcessingContext): ProcessingContext {
+        val variableNames = context.requiredNames?.variables
+
         // XML 변수 치환
         context.resultBytes = xmlVariableProcessor.processVariables(
             context.resultBytes,
-            context.dataProvider
+            context.dataProvider,
+            variableNames
         )
 
         // 차트 복원용 변수 해석기 생성
-        context.variableResolver = xmlVariableProcessor.createVariableResolver(context.dataProvider)
+        context.variableResolver = xmlVariableProcessor.createVariableResolver(
+            context.dataProvider,
+            variableNames
+        )
 
         return context
     }

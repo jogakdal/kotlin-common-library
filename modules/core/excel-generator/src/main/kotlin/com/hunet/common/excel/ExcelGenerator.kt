@@ -63,7 +63,6 @@ class ExcelGenerator @JvmOverloads constructor(
     private val xmlVariableProcessor = XmlVariableProcessor()
     private val chartProcessor = ChartProcessor()
 
-    // 파이프라인 (Pipeline Pattern)
     private val pipeline = ExcelPipeline(
         ChartExtractProcessor(chartProcessor),
         PivotExtractProcessor(pivotTableProcessor),
@@ -383,5 +382,4 @@ class ExcelGenerator @JvmOverloads constructor(
         scope.cancel()
         dispatcher.close()
     }
-
 }

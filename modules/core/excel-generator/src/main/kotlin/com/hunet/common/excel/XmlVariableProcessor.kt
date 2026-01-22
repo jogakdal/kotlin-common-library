@@ -54,11 +54,19 @@ internal class XmlVariableProcessor {
             values.mapValues { (_, v) -> { _: List<Any?> -> v.escapeXml() } }
     }
 
-    fun processVariables(inputBytes: ByteArray, dataProvider: ExcelDataProvider): ByteArray {
-        val variableValues = dataProvider.getAvailableNames()
-            .associateWith { dataProvider.getValue(it)?.toString() }
-            .filterValues { it != null }
-            .mapValues { it.value!! }
+    /**
+     * Excel 패키지 내 XML의 변수를 치환합니다.
+     *
+     * @param inputBytes Excel 파일 바이트 배열
+     * @param dataProvider 데이터 제공자
+     * @param variableNames 치환할 변수 이름 목록 (null이면 DataProvider의 getAvailableNames() 사용)
+     */
+    fun processVariables(
+        inputBytes: ByteArray,
+        dataProvider: ExcelDataProvider,
+        variableNames: Set<String>? = null
+    ): ByteArray {
+        val variableValues = buildVariableValues(dataProvider, variableNames)
             .takeIf { it.isNotEmpty() }
             ?: return inputBytes
 
@@ -90,17 +98,29 @@ internal class XmlVariableProcessor {
 
     /**
      * 변수 치환 함수 생성
-     * 차트 XML 등 개별 문자열에 대한 변수 치환에 사용
+     *
+     * @param dataProvider 데이터 제공자
+     * @param variableNames 치환할 변수 이름 목록 (null이면 DataProvider의 getAvailableNames() 사용)
      */
-    fun createVariableResolver(dataProvider: ExcelDataProvider): ((String) -> String)? {
-        val variableValues = dataProvider.getAvailableNames()
-            .associateWith { dataProvider.getValue(it)?.toString() }
-            .filterValues { it != null }
-            .mapValues { it.value!! }
+    fun createVariableResolver(
+        dataProvider: ExcelDataProvider,
+        variableNames: Set<String>? = null
+    ): ((String) -> String)? {
+        val variableValues = buildVariableValues(dataProvider, variableNames)
             .takeIf { it.isNotEmpty() }
             ?: return null
 
         val processor = VariableProcessor(listOf(XmlValueRegistry(variableValues)))
         return { content: String -> processor.process(content, OPTIONS) }
     }
+
+    private fun buildVariableValues(
+        dataProvider: ExcelDataProvider,
+        variableNames: Set<String>?
+    ): Map<String, String> =
+        variableNames
+            ?.associateWith { dataProvider.getValue(it)?.toString() }
+            ?.filterValues { it != null }
+            ?.mapValues { it.value!! }
+            ?: emptyMap()
 }

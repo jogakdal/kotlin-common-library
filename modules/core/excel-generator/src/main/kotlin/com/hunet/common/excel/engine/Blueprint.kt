@@ -205,3 +205,47 @@ data class ConditionalFormattingRuleInfo(
     val priority: Int,
     val stopIfTrue: Boolean
 )
+
+/**
+ * 템플릿에서 필요로 하는 데이터 이름 목록.
+ *
+ * 템플릿 분석 결과에서 추출되며, DataProvider에게 필요한 데이터만 요청할 때 사용됩니다.
+ */
+data class RequiredNames(
+    val variables: Set<String>,
+    val collections: Set<String>,
+    val images: Set<String>
+) {
+    val isEmpty: Boolean get() = variables.isEmpty() && collections.isEmpty() && images.isEmpty()
+}
+
+/**
+ * WorkbookBlueprint에서 필요한 데이터 이름을 추출합니다.
+ */
+fun WorkbookBlueprint.extractRequiredNames(): RequiredNames {
+    val variables = mutableSetOf<String>()
+    val collections = mutableSetOf<String>()
+    val images = mutableSetOf<String>()
+
+    sheets.asSequence()
+        .flatMap { it.rows.asSequence() }
+        .flatMap { it.cells.asSequence() }
+        .map { it.content }
+        .forEach { content ->
+            when (content) {
+                is CellContent.Variable -> variables += content.variableName
+                is CellContent.RepeatMarker -> collections += content.collection
+                is CellContent.ImageMarker -> images += content.imageName
+                is CellContent.FormulaWithVariables -> variables += content.variableNames
+                else -> {}
+            }
+        }
+
+    // RepeatRow의 collectionName도 추가
+    sheets.asSequence()
+        .flatMap { it.rows.asSequence() }
+        .filterIsInstance<RowBlueprint.RepeatRow>()
+        .forEach { collections += it.collectionName }
+
+    return RequiredNames(variables, collections, images)
+}

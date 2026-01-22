@@ -57,4 +57,11 @@ internal class ProcessingContext(
      */
     var processedRowCount: Int = 0
         internal set
+
+    /**
+     * 템플릿에서 필요로 하는 데이터 이름 목록.
+     * TemplateRenderProcessor가 템플릿 분석 후 설정합니다.
+     */
+    var requiredNames: RequiredNames? = null
+        internal set
 }

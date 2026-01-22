@@ -1,7 +1,7 @@
 package com.hunet.common.excel.engine
 
 import com.hunet.common.excel.FormulaExpansionException
-import com.hunet.common.excel.toByteArray
+import com.hunet.common.excel.setInitialView
 import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.CellStyle
 import org.apache.poi.ss.util.CellRangeAddress
@@ -61,6 +61,9 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
                 for (i in 0 until workbook.numberOfSheets) {
                     workbook.getSheetAt(i).forceFormulaRecalculation = true
                 }
+
+                // 파일 열 때 첫 번째 시트 A1 셀에 포커스
+                workbook.setInitialView()
 
                 ByteArrayOutputStream().also { out ->
                     workbook.write(out)

@@ -130,7 +130,7 @@ class ExcelGeneratorTest {
 
     @Test
     fun `generateAsync should work with coroutines`() = runBlocking {
-        // 실제 JXLS 템플릿이 없으므로 예외가 발생할 것임
+        // 실제 템플릿이 없으므로 예외가 발생할 것임
         // 이 테스트는 코루틴 통합이 올바르게 되었는지 확인
         val provider = SimpleDataProvider.of(mapOf("test" to "value"))
 
@@ -639,5 +639,128 @@ class ExcelGeneratorTest {
             assertTrue(Files.exists(firstPath))
             assertTrue(Files.exists(secondPath))
         }
+    }
+
+    // ==================== MissingDataBehavior 테스트 ====================
+
+    @Test
+    fun `MissingDataBehavior IGNORE should not throw exception when data is missing`() {
+        val config = ExcelGeneratorConfig(missingDataBehavior = MissingDataBehavior.IGNORE)
+        ExcelGenerator(config).use { gen ->
+            val template = loadTemplate()
+            // employees 컬렉션이 누락된 데이터
+            val incompleteData = mapOf(
+                "title" to "제목만 있는 데이터"
+                // date, employees, logo 등 누락
+            )
+
+            // 예외 없이 실행되어야 함
+            val bytes = gen.generate(template, SimpleDataProvider.of(incompleteData))
+            assertTrue(bytes.isNotEmpty())
+        }
+    }
+
+    @Test
+    fun `MissingDataBehavior WARN should not throw exception when data is missing`() {
+        val config = ExcelGeneratorConfig(missingDataBehavior = MissingDataBehavior.WARN)
+        ExcelGenerator(config).use { gen ->
+            val template = loadTemplate()
+            // 일부 데이터만 제공
+            val incompleteData = mapOf(
+                "title" to "제목",
+                "date" to "2026-01-22"
+                // employees 컬렉션 누락
+            )
+
+            // 예외 없이 실행되어야 함 (WARNING 로그만 출력)
+            val bytes = gen.generate(template, SimpleDataProvider.of(incompleteData))
+            assertTrue(bytes.isNotEmpty())
+        }
+    }
+
+    @Test
+    fun `MissingDataBehavior THROW should throw MissingTemplateDataException when data is missing`() {
+        val config = ExcelGeneratorConfig(missingDataBehavior = MissingDataBehavior.THROW)
+        ExcelGenerator(config).use { gen ->
+            val template = loadTemplate()
+            // 일부 데이터만 제공
+            val incompleteData = mapOf(
+                "title" to "제목"
+                // date, employees 누락
+            )
+
+            val exception = assertThrows(MissingTemplateDataException::class.java) {
+                gen.generate(template, SimpleDataProvider.of(incompleteData))
+            }
+
+            // 누락된 데이터 확인
+            assertTrue(exception.missingVariables.isNotEmpty() || exception.missingCollections.isNotEmpty())
+            assertTrue(exception.message!!.contains("누락"))
+        }
+    }
+
+    @Test
+    fun `MissingTemplateDataException should contain correct missing data info`() {
+        val config = ExcelGeneratorConfig(missingDataBehavior = MissingDataBehavior.THROW)
+        ExcelGenerator(config).use { gen ->
+            val template = loadTemplate()
+            // employees만 제공 (title, date 누락)
+            val incompleteData = mapOf(
+                "employees" to listOf(Employee("홍길동", "부장", 8000))
+            )
+
+            val exception = assertThrows(MissingTemplateDataException::class.java) {
+                gen.generate(template, SimpleDataProvider.of(incompleteData))
+            }
+
+            // title, date가 누락된 변수에 포함되어야 함
+            assertTrue(exception.missingVariables.contains("title") || exception.missingVariables.contains("date"))
+        }
+    }
+
+    @Test
+    fun `MissingDataBehavior THROW should not throw when all required data is provided`() {
+        val config = ExcelGeneratorConfig(missingDataBehavior = MissingDataBehavior.THROW)
+        ExcelGenerator(config).use { gen ->
+            val template = loadTemplate()
+
+            // 템플릿에 필요한 모든 데이터 제공 (리소스 파일 활용)
+            val provider = simpleDataProvider {
+                value("title", "테스트 보고서")
+                value("date", "2024-01-07")
+                value("linkText", "테스트 링크")
+                value("url", "https://example.com")
+                items("employees", listOf(Employee("홍길동", "부장", 8000)))
+                loadImage("hunet_logo.png")?.let { image("logo", it) }
+                loadImage("hunet_ci.png")?.let { image("ci", it) }
+            }
+
+            // 모든 데이터가 제공되면 예외 없이 실행되어야 함
+            val bytes = gen.generate(template, provider)
+            assertTrue(bytes.isNotEmpty())
+        }
+    }
+
+    @Test
+    fun `ExcelGeneratorConfig should have WARN as default missingDataBehavior`() {
+        val config = ExcelGeneratorConfig.default()
+        assertEquals(MissingDataBehavior.WARN, config.missingDataBehavior)
+    }
+
+    @Test
+    fun `ExcelGeneratorConfig Builder should support missingDataBehavior`() {
+        val config = ExcelGeneratorConfig.builder()
+            .missingDataBehavior(MissingDataBehavior.THROW)
+            .build()
+        assertEquals(MissingDataBehavior.THROW, config.missingDataBehavior)
+    }
+
+    @Test
+    fun `ExcelGeneratorConfig withMissingDataBehavior should return new instance`() {
+        val original = ExcelGeneratorConfig.default()
+        val modified = original.withMissingDataBehavior(MissingDataBehavior.IGNORE)
+
+        assertEquals(MissingDataBehavior.WARN, original.missingDataBehavior)
+        assertEquals(MissingDataBehavior.IGNORE, modified.missingDataBehavior)
     }
 }

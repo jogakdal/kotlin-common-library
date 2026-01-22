@@ -3,6 +3,7 @@ package com.hunet.common.excel.spring
 import com.hunet.common.excel.ExcelGeneratorConfig
 import com.hunet.common.excel.FileConflictPolicy
 import com.hunet.common.excel.FileNamingMode
+import com.hunet.common.excel.MissingDataBehavior
 import com.hunet.common.excel.StreamingMode
 import org.springframework.boot.context.properties.ConfigurationProperties
 
@@ -21,6 +22,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *     preserve-template-layout: true  # 템플릿 레이아웃 보존
  *     pivot-integer-format-index: 37  # 피벗 테이블 정수 필드 포맷 인덱스
  *     pivot-decimal-format-index: 39  # 피벗 테이블 소수점 필드 포맷 인덱스
+ *     missing-data-behavior: warn     # ignore, warn, throw
  * ```
  */
 @ConfigurationProperties(prefix = "hunet.excel")
@@ -57,7 +59,7 @@ data class ExcelGeneratorProperties(
     var progressReportInterval: Int = 100,
 
     /**
-     * jx:each 확장 시 원본 템플릿의 열 폭과 행 높이를 보존할지 여부.
+     * 반복 영역 확장 시 원본 템플릿의 열 폭과 행 높이를 보존할지 여부.
      */
     var preserveTemplateLayout: Boolean = true,
 
@@ -69,7 +71,15 @@ data class ExcelGeneratorProperties(
     /**
      * 피벗 테이블 소수점 필드에 적용할 Excel 내장 포맷 인덱스.
      */
-    var pivotDecimalFormatIndex: Short = 39
+    var pivotDecimalFormatIndex: Short = 39,
+
+    /**
+     * 템플릿에 정의된 데이터가 없을 때의 동작.
+     * - ignore: 무시하고 마커 그대로 유지
+     * - warn: 경고 로그 출력 후 마커 그대로 유지 (기본값)
+     * - throw: MissingTemplateDataException 발생
+     */
+    var missingDataBehavior: MissingDataBehaviorProperty = MissingDataBehaviorProperty.WARN
 ) {
     /**
      * ExcelGeneratorConfig로 변환합니다.
@@ -82,7 +92,8 @@ data class ExcelGeneratorProperties(
         progressReportInterval = progressReportInterval,
         preserveTemplateLayout = preserveTemplateLayout,
         pivotIntegerFormatIndex = pivotIntegerFormatIndex,
-        pivotDecimalFormatIndex = pivotDecimalFormatIndex
+        pivotDecimalFormatIndex = pivotDecimalFormatIndex,
+        missingDataBehavior = missingDataBehavior.toMissingDataBehavior()
     )
 }
 
@@ -119,5 +130,18 @@ enum class FileConflictPolicyProperty {
     fun toFileConflictPolicy(): FileConflictPolicy = when (this) {
         ERROR -> FileConflictPolicy.ERROR
         SEQUENCE -> FileConflictPolicy.SEQUENCE
+    }
+}
+
+/**
+ * 누락 데이터 동작 프로퍼티 (application.yml 바인딩용).
+ */
+enum class MissingDataBehaviorProperty {
+    IGNORE, WARN, THROW;
+
+    fun toMissingDataBehavior(): MissingDataBehavior = when (this) {
+        IGNORE -> MissingDataBehavior.IGNORE
+        WARN -> MissingDataBehavior.WARN
+        THROW -> MissingDataBehavior.THROW
     }
 }

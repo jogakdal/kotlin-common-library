@@ -11,6 +11,7 @@ package com.hunet.common.excel
  * @property preserveTemplateLayout 반복 영역 확장 시 원본 템플릿의 열 폭과 행 높이를 보존할지 여부 (기본: true)
  * @property pivotIntegerFormatIndex 피벗 테이블 정수 필드에 적용할 Excel 내장 포맷 인덱스 (기본: 37)
  * @property pivotDecimalFormatIndex 피벗 테이블 소수점 필드에 적용할 Excel 내장 포맷 인덱스 (기본: 39)
+ * @property missingDataBehavior 템플릿에 정의된 데이터가 없을 때의 동작 (기본: WARN)
  */
 data class ExcelGeneratorConfig(
     val streamingMode: StreamingMode = StreamingMode.ENABLED,
@@ -20,7 +21,8 @@ data class ExcelGeneratorConfig(
     val progressReportInterval: Int = 100,
     val preserveTemplateLayout: Boolean = true,
     val pivotIntegerFormatIndex: Short = 37,
-    val pivotDecimalFormatIndex: Short = 39
+    val pivotDecimalFormatIndex: Short = 39,
+    val missingDataBehavior: MissingDataBehavior = MissingDataBehavior.WARN
 ) {
     companion object {
         /**
@@ -65,6 +67,7 @@ data class ExcelGeneratorConfig(
         private var preserveTemplateLayout: Boolean = true
         private var pivotIntegerFormatIndex: Short = 37
         private var pivotDecimalFormatIndex: Short = 39
+        private var missingDataBehavior: MissingDataBehavior = MissingDataBehavior.WARN
 
         fun streamingMode(mode: StreamingMode) = apply { this.streamingMode = mode }
         fun fileNamingMode(mode: FileNamingMode) = apply { this.fileNamingMode = mode }
@@ -74,6 +77,7 @@ data class ExcelGeneratorConfig(
         fun preserveTemplateLayout(preserve: Boolean) = apply { this.preserveTemplateLayout = preserve }
         fun pivotIntegerFormatIndex(index: Short) = apply { this.pivotIntegerFormatIndex = index }
         fun pivotDecimalFormatIndex(index: Short) = apply { this.pivotDecimalFormatIndex = index }
+        fun missingDataBehavior(behavior: MissingDataBehavior) = apply { this.missingDataBehavior = behavior }
 
         fun build() = ExcelGeneratorConfig(
             streamingMode = streamingMode,
@@ -83,7 +87,8 @@ data class ExcelGeneratorConfig(
             progressReportInterval = progressReportInterval,
             preserveTemplateLayout = preserveTemplateLayout,
             pivotIntegerFormatIndex = pivotIntegerFormatIndex,
-            pivotDecimalFormatIndex = pivotDecimalFormatIndex
+            pivotDecimalFormatIndex = pivotDecimalFormatIndex,
+            missingDataBehavior = missingDataBehavior
         )
     }
 
@@ -113,4 +118,7 @@ data class ExcelGeneratorConfig(
 
     fun withPivotDecimalFormatIndex(index: Short): ExcelGeneratorConfig =
         copy(pivotDecimalFormatIndex = index)
+
+    fun withMissingDataBehavior(behavior: MissingDataBehavior): ExcelGeneratorConfig =
+        copy(missingDataBehavior = behavior)
 }

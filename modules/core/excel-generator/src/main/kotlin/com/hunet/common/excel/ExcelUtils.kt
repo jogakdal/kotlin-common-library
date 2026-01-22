@@ -7,9 +7,10 @@ import org.apache.poi.poifs.filesystem.POIFSFileSystem
 import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.CellType
 import org.apache.poi.ss.usermodel.Sheet
+import org.apache.poi.ss.usermodel.Workbook
+import org.apache.poi.ss.util.CellAddress
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
-import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.OutputStream
 
@@ -156,5 +157,30 @@ internal fun ByteArray.encryptExcelTo(password: String, output: OutputStream) {
             }
         }
         fs.writeFilesystem(output)
+    }
+}
+
+// ========== 워크북 초기 뷰 설정 ==========
+
+/**
+ * 워크북이 열릴 때 지정된 시트의 지정된 셀에 포커스가 있도록 설정합니다.
+ *
+ * Excel 파일이 처음 열릴 때:
+ * - sheetIndex 시트가 활성화됩니다
+ * - cellAddress 셀이 선택됩니다
+ * - 스크롤 위치가 cellAddress로 설정됩니다
+ */
+internal fun Workbook.setInitialView(sheetIndex: Int = 0, cellAddress: String = "A1") {
+    if (numberOfSheets == 0) return
+
+    setActiveSheet(sheetIndex)
+
+    for (i in 0 until numberOfSheets) {
+        getSheetAt(i).isSelected = (i == sheetIndex)
+    }
+
+    getSheetAt(sheetIndex).apply {
+        activeCell = CellAddress(cellAddress)
+        showInPane(activeCell.row, activeCell.column)
     }
 }
