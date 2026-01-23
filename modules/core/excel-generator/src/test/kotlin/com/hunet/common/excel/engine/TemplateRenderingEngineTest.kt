@@ -142,7 +142,7 @@ class TemplateRenderingEngineTest {
         assertTrue(blueprint.sheets.isNotEmpty())
 
         val firstSheet = blueprint.sheets[0]
-        val repeatRows = firstSheet.rows.filterIsInstance<RowBlueprint.RepeatRow>()
+        val repeatRows = firstSheet.rows.filterIsInstance<RowSpec.RepeatRow>()
         assertTrue(repeatRows.isNotEmpty(), "반복 영역이 있어야 함")
     }
 
@@ -235,7 +235,7 @@ class TemplateRenderingEngineTest {
         val thirdSheet = blueprint.sheets[2]
         assertTrue(thirdSheet.rows.isNotEmpty(), "행이 있어야 함")
 
-        val repeatRows = thirdSheet.rows.filterIsInstance<RowBlueprint.RepeatRow>()
+        val repeatRows = thirdSheet.rows.filterIsInstance<RowSpec.RepeatRow>()
         assertTrue(repeatRows.isNotEmpty(), "반복 영역이 있어야 함")
     }
 

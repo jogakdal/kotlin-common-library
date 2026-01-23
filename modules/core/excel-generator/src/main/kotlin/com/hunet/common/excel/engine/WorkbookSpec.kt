@@ -4,31 +4,63 @@ import org.apache.poi.ss.usermodel.ConditionType
 import org.apache.poi.ss.util.CellRangeAddress
 
 /**
- * 워크북 청사진 - 템플릿 분석 결과
+ * 워크북 명세 - 템플릿 분석 결과
  */
-data class WorkbookBlueprint(
-    val sheets: List<SheetBlueprint>
-)
+data class WorkbookSpec(
+    val sheets: List<SheetSpec>
+) {
+    /**
+     * 템플릿에서 필요로 하는 데이터 이름을 추출합니다.
+     */
+    fun extractRequiredNames(): RequiredNames {
+        val variables = mutableSetOf<String>()
+        val collections = mutableSetOf<String>()
+        val images = mutableSetOf<String>()
+
+        sheets.asSequence()
+            .flatMap { it.rows.asSequence() }
+            .flatMap { it.cells.asSequence() }
+            .map { it.content }
+            .forEach { content ->
+                when (content) {
+                    is CellContent.Variable -> variables += content.variableName
+                    is CellContent.RepeatMarker -> collections += content.collection
+                    is CellContent.ImageMarker -> images += content.imageName
+                    is CellContent.FloatingImageMarker -> images += content.imageName
+                    is CellContent.FormulaWithVariables -> variables += content.variableNames
+                    else -> {}
+                }
+            }
+
+        // RepeatRow의 collectionName도 추가
+        sheets.asSequence()
+            .flatMap { it.rows.asSequence() }
+            .filterIsInstance<RowSpec.RepeatRow>()
+            .forEach { collections += it.collectionName }
+
+        return RequiredNames(variables, collections, images)
+    }
+}
 
 /**
- * 시트 청사진
+ * 시트 명세
  */
-data class SheetBlueprint(
+data class SheetSpec(
     val sheetName: String,
     val sheetIndex: Int,
-    val rows: List<RowBlueprint>,
+    val rows: List<RowSpec>,
     val mergedRegions: List<CellRangeAddress>,
     val columnWidths: Map<Int, Int>,
     val defaultRowHeight: Short,
-    val headerFooter: HeaderFooterInfo? = null,
-    val printSetup: PrintSetupInfo? = null,
-    val conditionalFormattings: List<ConditionalFormattingInfo> = emptyList()
+    val headerFooter: HeaderFooterSpec? = null,
+    val printSetup: PrintSetupSpec? = null,
+    val conditionalFormattings: List<ConditionalFormattingSpec> = emptyList()
 )
 
 /**
  * 헤더/푸터 정보
  */
-data class HeaderFooterInfo(
+data class HeaderFooterSpec(
     val leftHeader: String?,
     val centerHeader: String?,
     val rightHeader: String?,
@@ -58,7 +90,7 @@ data class HeaderFooterInfo(
 /**
  * 인쇄 설정 정보
  */
-data class PrintSetupInfo(
+data class PrintSetupSpec(
     val paperSize: Short,
     val landscape: Boolean,
     val fitWidth: Short,
@@ -69,46 +101,46 @@ data class PrintSetupInfo(
 )
 
 /**
- * 행 청사진
+ * 행 명세
  */
-sealed class RowBlueprint {
+sealed class RowSpec {
     abstract val templateRowIndex: Int
     abstract val height: Short?
-    abstract val cells: List<CellBlueprint>
+    abstract val cells: List<CellSpec>
 
     /** 일반 행 - 그대로 출력 */
     data class StaticRow(
         override val templateRowIndex: Int,
         override val height: Short?,
-        override val cells: List<CellBlueprint>
-    ) : RowBlueprint()
+        override val cells: List<CellSpec>
+    ) : RowSpec()
 
     /** 반복 영역 시작 - 데이터 개수만큼 확장 */
     data class RepeatRow(
         override val templateRowIndex: Int,
         override val height: Short?,
-        override val cells: List<CellBlueprint>,
+        override val cells: List<CellSpec>,
         val collectionName: String,
         val itemVariable: String,
         val repeatEndRowIndex: Int,
         val repeatStartCol: Int = 0,
         val repeatEndCol: Int = Int.MAX_VALUE,
         val direction: RepeatDirection = RepeatDirection.DOWN
-    ) : RowBlueprint()
+    ) : RowSpec()
 
     /** 반복 영역 내부 행 (첫 행 제외) - RepeatRow에 포함되어 처리됨 */
     data class RepeatContinuation(
         override val templateRowIndex: Int,
         override val height: Short?,
-        override val cells: List<CellBlueprint>,
+        override val cells: List<CellSpec>,
         val parentRepeatRowIndex: Int
-    ) : RowBlueprint()
+    ) : RowSpec()
 }
 
 /**
- * 셀 청사진
+ * 셀 명세
  */
-data class CellBlueprint(
+data class CellSpec(
     val columnIndex: Int,
     val styleIndex: Short,
     val content: CellContent,
@@ -153,6 +185,13 @@ sealed class CellContent {
     /** 이미지 마커 - ${image.logo} */
     data class ImageMarker(val imageName: String) : CellContent()
 
+    /** 플로팅 이미지 마커 - ${floatimage(name, position, size)} */
+    data class FloatingImageMarker(
+        val imageName: String,
+        val position: String?,      // null이면 마커 셀 위치 사용
+        val sizeSpec: ImageSizeSpec
+    ) : CellContent()
+
     /** 반복 마커 - ${repeat(...)} - 분석 후 제거됨 */
     data class RepeatMarker(
         val collection: String,
@@ -173,7 +212,7 @@ enum class RepeatDirection {
 /**
  * 반복 영역 정보
  */
-data class RepeatRegionInfo(
+data class RepeatRegionSpec(
     val collection: String,
     val variable: String,
     val startRow: Int,
@@ -188,15 +227,15 @@ data class RepeatRegionInfo(
  *
  * 템플릿의 조건부 서식을 저장하고, 반복 영역 확장 시 복제에 사용됩니다.
  */
-data class ConditionalFormattingInfo(
+data class ConditionalFormattingSpec(
     val ranges: List<CellRangeAddress>,
-    val rules: List<ConditionalFormattingRuleInfo>
+    val rules: List<ConditionalFormattingRuleSpec>
 )
 
 /**
  * 조건부 서식 규칙 정보
  */
-data class ConditionalFormattingRuleInfo(
+data class ConditionalFormattingRuleSpec(
     val conditionType: ConditionType,
     val comparisonOperator: Byte,  // POI API는 Byte 사용
     val formula1: String?,
@@ -220,32 +259,20 @@ data class RequiredNames(
 }
 
 /**
- * WorkbookBlueprint에서 필요한 데이터 이름을 추출합니다.
+ * 이미지 크기 명세
+ *
+ * @property width 너비 (0=셀크기, -1=원본/비율유지, 양수=픽셀)
+ * @property height 높이 (0=셀크기, -1=원본/비율유지, 양수=픽셀)
  */
-fun WorkbookBlueprint.extractRequiredNames(): RequiredNames {
-    val variables = mutableSetOf<String>()
-    val collections = mutableSetOf<String>()
-    val images = mutableSetOf<String>()
-
-    sheets.asSequence()
-        .flatMap { it.rows.asSequence() }
-        .flatMap { it.cells.asSequence() }
-        .map { it.content }
-        .forEach { content ->
-            when (content) {
-                is CellContent.Variable -> variables += content.variableName
-                is CellContent.RepeatMarker -> collections += content.collection
-                is CellContent.ImageMarker -> images += content.imageName
-                is CellContent.FormulaWithVariables -> variables += content.variableNames
-                else -> {}
-            }
-        }
-
-    // RepeatRow의 collectionName도 추가
-    sheets.asSequence()
-        .flatMap { it.rows.asSequence() }
-        .filterIsInstance<RowBlueprint.RepeatRow>()
-        .forEach { collections += it.collectionName }
-
-    return RequiredNames(variables, collections, images)
+data class ImageSizeSpec(
+    val width: Int,
+    val height: Int
+) {
+    companion object {
+        /** 셀 크기에 맞춤 */
+        val FIT_TO_CELL = ImageSizeSpec(0, 0)
+        /** 원본 크기 */
+        val ORIGINAL = ImageSizeSpec(-1, -1)
+    }
 }
+

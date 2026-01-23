@@ -192,23 +192,20 @@ internal class PivotTableProcessor(
     private fun clearPivotTableCells(
         inputBytes: ByteArray,
         locations: List<Pair<String, CellRangeAddress>>
-    ): ByteArray {
-        return inputBytes.useWorkbook { workbook ->
-            locations.forEach { (sheetName, range) ->
-                val sheet = workbook.getSheet(sheetName) ?: return@forEach
-                for (rowNum in range.firstRow..range.lastRow) {
-                    val row = sheet.getRow(rowNum) ?: continue
-                    for (colNum in range.firstColumn..range.lastColumn) {
-                        // 셀 자체를 제거하여 값과 스타일 모두 삭제
-                        // (데이터 확장 시 스타일이 밀려가지 않도록)
-                        row.getCell(colNum)?.let { cell ->
-                            row.removeCell(cell)
-                        }
+    ): ByteArray = inputBytes.useWorkbook { workbook ->
+        locations.forEach { (sheetName, range) ->
+            workbook.getSheet(sheetName)?.let { sheet ->
+                // 셀 자체를 제거하여 값과 스타일 모두 삭제 (데이터 확장 시 스타일이 밀려가지 않도록)
+                (range.firstRow..range.lastRow)
+                    .mapNotNull(sheet::getRow)
+                    .forEach { row ->
+                        (range.firstColumn..range.lastColumn)
+                            .mapNotNull(row::getCell)
+                            .forEach(row::removeCell)
                     }
-                }
             }
-            workbook.toByteArray()
         }
+        workbook.toByteArray()
     }
 
     fun recreate(inputBytes: ByteArray, pivotTableInfos: List<PivotTableInfo>) =
@@ -229,11 +226,11 @@ internal class PivotTableProcessor(
             // isSet 메서드로 명시적으로 설정되었는지 확인하고, 아니면 기본값 사용
             PivotTableStyleInfo(
                 styleName = styleInfo.name,
-                showRowHeaders = if (styleInfo.isSetShowRowHeaders()) styleInfo.showRowHeaders else true,
-                showColHeaders = if (styleInfo.isSetShowColHeaders()) styleInfo.showColHeaders else true,
-                showRowStripes = if (styleInfo.isSetShowRowStripes()) styleInfo.showRowStripes else false,
-                showColStripes = if (styleInfo.isSetShowColStripes()) styleInfo.showColStripes else false,
-                showLastColumn = if (styleInfo.isSetShowLastColumn()) styleInfo.showLastColumn else false
+                showRowHeaders = if (styleInfo.isSetShowRowHeaders) styleInfo.showRowHeaders else true,
+                showColHeaders = if (styleInfo.isSetShowColHeaders) styleInfo.showColHeaders else true,
+                showRowStripes = if (styleInfo.isSetShowRowStripes) styleInfo.showRowStripes else false,
+                showColStripes = if (styleInfo.isSetShowColStripes) styleInfo.showColStripes else false,
+                showLastColumn = if (styleInfo.isSetShowLastColumn) styleInfo.showLastColumn else false
             )
         }
     }.getOrNull()
@@ -336,8 +333,9 @@ internal class PivotTableProcessor(
             pkg.parts.find { it.partName.name == path }?.readText()
         } ?: ""
         val pivotCacheRecordsXml = cacheDefPath?.let { defPath ->
-            val recordsPath = defPath.replace("pivotCacheDefinition", "pivotCacheRecords")
-            pkg.parts.find { it.partName.name == recordsPath }?.readText()
+            pkg.parts.find {
+                it.partName.name == defPath.replace("pivotCacheDefinition", "pivotCacheRecords")
+            }?.readText()
         }
 
         val pivotTableSheetName = findPivotTableSheetName(pkg, part.partName.name) ?: sourceSheet
@@ -366,35 +364,22 @@ internal class PivotTableProcessor(
      * 피벗 테이블과 연결된 캐시 정의 파일 경로를 찾습니다.
      */
     private fun findLinkedCacheDefinitionPath(pkg: OPCPackage, pivotTablePartName: String): String? {
-        // 피벗 테이블의 _rels 파일에서 캐시 참조 찾기
         val relsPath = pivotTablePartName.replace("/pivotTables/", "/pivotTables/_rels/") + ".rels"
-        val relsPart = pkg.parts.find { it.partName.name == relsPath }
-
-        return relsPart?.readText()?.let { relsXml ->
-            PIVOT_CACHE_DEF_TARGET_REGEX.find(relsXml)?.groupValues?.get(1)?.let { target ->
+        return pkg.parts
+            .find { it.partName.name == relsPath }
+            ?.readText()
+            ?.let { PIVOT_CACHE_DEF_TARGET_REGEX.find(it)?.groupValues?.get(1) }
+            ?.let { target ->
                 // 상대 경로를 절대 경로로 변환
-                if (target.startsWith("..")) {
-                    "/xl" + target.removePrefix("..")
-                } else {
-                    target
-                }
+                if (target.startsWith("..")) "/xl" + target.removePrefix("..") else target
             }
-        }
     }
 
     private fun parseDataField(xml: String): DataFieldInfo? {
         val fld = FLD_ATTR_REGEX.find(xml)?.groupValues?.get(1)?.toIntOrNull() ?: return null
         val subtotal = SUBTOTAL_ATTR_REGEX.find(xml)?.groupValues?.get(1) ?: "sum"
         val name = NAME_ATTR_REGEX.find(xml)?.groupValues?.get(1)
-
-        val function = when (subtotal) {
-            "count" -> DataConsolidateFunction.COUNT
-            "average" -> DataConsolidateFunction.AVERAGE
-            "max" -> DataConsolidateFunction.MAX
-            "min" -> DataConsolidateFunction.MIN
-            else -> DataConsolidateFunction.SUM
-        }
-
+        val function = SUBTOTAL_FUNCTION_MAP[subtotal] ?: DataConsolidateFunction.SUM
         return DataFieldInfo(fld, function, name)
     }
 
@@ -461,23 +446,13 @@ internal class PivotTableProcessor(
             info.pivotTableStyleInfo?.let { styleInfo ->
                 val pivotDef = pivotTable.ctPivotTableDefinition
                 // 기존 스타일 정보가 있으면 수정, 없으면 생성
-                val existingStyleInfo = pivotDef.pivotTableStyleInfo
-                if (existingStyleInfo != null) {
-                    existingStyleInfo.name = styleInfo.styleName
-                    existingStyleInfo.showRowHeaders = styleInfo.showRowHeaders
-                    existingStyleInfo.showColHeaders = styleInfo.showColHeaders
-                    existingStyleInfo.showRowStripes = styleInfo.showRowStripes
-                    existingStyleInfo.showColStripes = styleInfo.showColStripes
-                    existingStyleInfo.showLastColumn = styleInfo.showLastColumn
-                } else {
-                    pivotDef.addNewPivotTableStyleInfo().apply {
-                        name = styleInfo.styleName
-                        showRowHeaders = styleInfo.showRowHeaders
-                        showColHeaders = styleInfo.showColHeaders
-                        showRowStripes = styleInfo.showRowStripes
-                        showColStripes = styleInfo.showColStripes
-                        showLastColumn = styleInfo.showLastColumn
-                    }
+                (pivotDef.pivotTableStyleInfo ?: pivotDef.addNewPivotTableStyleInfo()).apply {
+                    name = styleInfo.styleName
+                    showRowHeaders = styleInfo.showRowHeaders
+                    showColHeaders = styleInfo.showColHeaders
+                    showRowStripes = styleInfo.showRowStripes
+                    showColStripes = styleInfo.showColStripes
+                    showLastColumn = styleInfo.showLastColumn
                 }
             }
 
@@ -506,37 +481,36 @@ internal class PivotTableProcessor(
     private fun XSSFSheet.uniqueValuesFromSourceData(
         range: CellRangeAddress,
         rowLabelFields: List<Int>
-    ) = rowLabelFields.firstOrNull()?.let { axisFieldIdx ->
+    ): List<String> = rowLabelFields.firstOrNull()?.let { axisFieldIdx ->
+        val colIdx = range.firstColumn + axisFieldIdx
         ((range.firstRow + 1)..range.lastRow)
-            .mapNotNull { rowNum ->
-                getRow(rowNum)?.getCell(range.firstColumn + axisFieldIdx)?.cellValue?.toString()
-            }
+            .asSequence()
+            .mapNotNull { getRow(it)?.getCell(colIdx)?.cellValue?.toString() }
             .distinct()
-    } ?: emptyList()
+            .toList()
+    }.orEmpty()
 
-    private fun XSSFSheet.findLastRowWithData(range: CellRangeAddress) =
-        ((range.firstRow + 1)..lastRowNum)
-            .takeWhile { rowNum ->
-                getRow(rowNum)?.let { row ->
-                    (range.firstColumn..range.lastColumn).any { colIdx ->
-                        row.getCell(colIdx)?.hasData == true
-                    }
-                } ?: false
-            }
+    private fun XSSFSheet.findLastRowWithData(range: CellRangeAddress): Int {
+        val colRange = range.firstColumn..range.lastColumn
+        return ((range.firstRow + 1)..lastRowNum)
+            .takeWhile { rowNum -> getRow(rowNum)?.hasDataInColumns(colRange) == true }
             .lastOrNull() ?: range.firstRow
+    }
+
+    private fun Row.hasDataInColumns(colRange: IntRange): Boolean =
+        colRange.any { getCell(it)?.hasData == true }
 
     private fun XSSFSheet.clearArea(startRow: Int, startCol: Int, rows: Int, cols: Int) {
         val defaultStyle = workbook.getCellStyleAt(0)
-        (startRow until startRow + rows).forEach { rowIdx ->
-            getRow(rowIdx)?.let { row ->
-                (startCol until startCol + cols).forEach { colIdx ->
-                    row.getCell(colIdx)?.apply {
-                        setBlank()
-                        cellStyle = defaultStyle
-                    }
+        val colRange = startCol until startCol + cols
+        (startRow until startRow + rows)
+            .mapNotNull(::getRow)
+            .forEach { row ->
+                colRange.mapNotNull(row::getCell).forEach { cell ->
+                    cell.setBlank()
+                    cell.cellStyle = defaultStyle
                 }
             }
-        }
     }
 
     // ========== 셀 채우기 ==========
@@ -589,7 +563,9 @@ internal class PivotTableProcessor(
         ctx.pivotSheet.getOrCreateRow(startRow).apply {
             getOrCreateCell(startCol).apply {
                 setCellValue(ctx.rowHeaderCaption ?: headers.getOrNull(axisFieldIdx) ?: "Row Labels")
-                (headerStyles[0] ?: dataRowStyles[0])?.let { cellStyle = ctx.workbook.getOrCreateAlignmentOnlyStyle(it) }
+                (headerStyles[0] ?: dataRowStyles[0])?.let {
+                    cellStyle = ctx.workbook.getOrCreateAlignmentOnlyStyle(it)
+                }
             }
 
             ctx.dataFields.forEachIndexed { idx, dataField ->
@@ -715,15 +691,18 @@ internal class PivotTableProcessor(
 
     // ========== 집계 ==========
 
-    private fun List<DataRow>.aggregateForField(dataField: DataFieldInfo): Double = when (dataField.function) {
-        DataConsolidateFunction.COUNT -> count { it.values[dataField.fieldIndex] != null }.toDouble()
-        DataConsolidateFunction.COUNT_NUMS -> count { it.values[dataField.fieldIndex] is Number }.toDouble()
-        else -> mapNotNull { (it.values[dataField.fieldIndex] as? Number)?.toDouble() }.aggregate(dataField.function)
+    private fun List<DataRow>.aggregateForField(dataField: DataFieldInfo): Double {
+        val values = map { it.values[dataField.fieldIndex] }
+        return when (dataField.function) {
+            DataConsolidateFunction.COUNT -> values.count { it != null }.toDouble()
+            DataConsolidateFunction.COUNT_NUMS -> values.count { it is Number }.toDouble()
+            else -> values.filterIsInstance<Number>().map { it.toDouble() }.aggregate(dataField.function)
+        }
     }
 
     private fun List<Double>.aggregate(function: DataConsolidateFunction): Double = when (function) {
         DataConsolidateFunction.SUM -> sum()
-        DataConsolidateFunction.AVERAGE -> takeIf { it.isNotEmpty() }?.average() ?: 0.0
+        DataConsolidateFunction.AVERAGE -> if (isNotEmpty()) average() else 0.0
         DataConsolidateFunction.COUNT, DataConsolidateFunction.COUNT_NUMS -> size.toDouble()
         DataConsolidateFunction.MAX -> maxOrNull() ?: 0.0
         DataConsolidateFunction.MIN -> minOrNull() ?: 0.0
@@ -756,11 +735,9 @@ internal class PivotTableProcessor(
 
                 // colItems count 조정
                 COL_ITEMS_COUNT_REGEX.find(xml)?.let { colItemsMatch ->
-                    val currentCount = colItemsMatch.groupValues[1].toInt()
-                    if (currentCount > expectedColCount) {
+                    if (colItemsMatch.groupValues[1].toInt() > expectedColCount) {
                         xml = COL_ITEMS_FULL_REGEX.replace(xml) { match ->
-                            val content = match.groupValues[1]
-                            val iElements = I_ELEMENT_REGEX.findAll(content)
+                            val iElements = I_ELEMENT_REGEX.findAll(match.groupValues[1])
                                 .take(expectedColCount)
                                 .joinToString("") { it.value }
                             """<colItems count="$expectedColCount">$iElements</colItems>"""
@@ -773,8 +750,8 @@ internal class PivotTableProcessor(
                 LOCATION_WITH_REF_REGEX.find(xml)?.let { locationMatch ->
                     val currentRef = locationMatch.groupValues[2]
                     val currentRange = CellRangeAddress.valueOf(currentRef)
-                    val newLastCol = currentRange.firstColumn + expectedCols - 1
-                    val newRef = currentRange.copy(lastColumn = newLastCol).formatAsString()
+                    val newRef = currentRange.copy(lastColumn = currentRange.firstColumn + expectedCols - 1)
+                        .formatAsString()
                     if (currentRef != newRef) {
                         xml = xml.replace("""ref="$currentRef"""", """ref="$newRef"""")
                         modified = true
@@ -797,17 +774,13 @@ internal class PivotTableProcessor(
                     }
                 }
 
-                // 원본 formats 복원 (있었다면 + dxf 스타일이 있을 때만)
-                // SXSSF 모드에서는 dxf 스타일이 누락될 수 있으므로 확인 필요
-                if (info.originalFormatsXml != null) {
-                    val currentFormats = FORMATS_REGEX.find(xml)?.value
-                    if (currentFormats == null && hasDxfStyles) {
-                        // formats가 없고 dxf 스타일이 있으면 pivotTableStyleInfo 앞에 추가
-                        val insertPoint = PIVOT_TABLE_STYLE_INFO_REGEX.find(xml)?.range?.first
-                        if (insertPoint != null) {
-                            xml = xml.substring(0, insertPoint) + info.originalFormatsXml + xml.substring(insertPoint)
-                            modified = true
-                        }
+                // 원본 formats 복원 (dxf 스타일이 있을 때만)
+                // SXSSF 모드에서는 dxf 스타일이 누락될 수 있으므로 hasDxfStyles로 확인 후 처리
+                if (info.originalFormatsXml != null && FORMATS_REGEX.find(xml) == null && hasDxfStyles) {
+                    // formats가 없고 dxf 스타일이 있으면 pivotTableStyleInfo 앞에 추가
+                    PIVOT_TABLE_STYLE_INFO_REGEX.find(xml)?.range?.first?.let { insertPoint ->
+                        xml = xml.take(insertPoint) + info.originalFormatsXml + xml.substring(insertPoint)
+                        modified = true
                     }
                 }
 
@@ -824,10 +797,10 @@ internal class PivotTableProcessor(
      * styles.xml에 dxf(differential formatting) 스타일이 있는지 확인합니다.
      * SXSSF 모드에서는 dxf 스타일이 누락될 수 있습니다.
      */
-    private fun hasDxfStyles(pkg: OPCPackage): Boolean {
-        val stylesPart = pkg.parts.find { it.partName.name == "/xl/styles.xml" }
-        return stylesPart?.readText()?.contains("<dxf") == true
-    }
+    private fun hasDxfStyles(pkg: OPCPackage): Boolean =
+        pkg.parts.find { it.partName.name == "/xl/styles.xml" }
+            ?.readText()
+            ?.contains("<dxf") == true
 
     // ========== ZIP 처리 ==========
 
@@ -986,41 +959,35 @@ internal class PivotTableProcessor(
     }
 
     private fun buildPivotCacheDefinition(originalXml: String, recordCount: Int, fields: List<FieldMeta>): String {
-        var xml = originalXml
+        val baseXml = originalXml
             .replace(REFRESH_ON_LOAD_REGEX, """refreshOnLoad="0"""")
             .replace(REFRESHED_VERSION_REGEX, """refreshedVersion="8"""")
-
-        xml = if ("recordCount=" in xml) {
-            xml.replace(RECORD_COUNT_REGEX, """recordCount="$recordCount"""")
-        } else {
-            xml.replace("<pivotCacheDefinition ", """<pivotCacheDefinition recordCount="$recordCount" """)
-        }
-
-        fields.forEach { field ->
-            val sharedItemsXml = when {
-                field.isAxisField && field.sharedItems.isNotEmpty() -> {
-                    val items = field.sharedItems.joinToString("") { """<s v="${it.escapeXml()}"/>""" }
-                    """<sharedItems count="${field.sharedItems.size}">$items</sharedItems>"""
-                }
-                field.isNumeric -> {
-                    val containsInteger = if (field.isInteger) """containsInteger="1" """ else ""
-                    "<sharedItems containsSemiMixedTypes=\"0\" containsString=\"0\" " +
-                        "containsNumber=\"1\" $containsInteger" +
-                        "minValue=\"${field.minValue}\" maxValue=\"${field.maxValue}\"/>"
-                }
-                else -> "<sharedItems/>"
+            .let { xml ->
+                if ("recordCount=" in xml) xml.replace(RECORD_COUNT_REGEX, """recordCount="$recordCount"""")
+                else xml.replace("<pivotCacheDefinition ", """<pivotCacheDefinition recordCount="$recordCount" """)
             }
 
+        return fields.fold(baseXml) { xml, field ->
+            val sharedItemsXml = field.buildSharedItemsXml()
             val pattern = Regex(
                 """<cacheField[^>]*name="${field.name}"[^>]*>.*?</cacheField>""",
                 RegexOption.DOT_MATCHES_ALL
             )
-            xml = pattern.replace(xml) { match ->
-                match.value.replace(SHARED_ITEMS_REGEX, sharedItemsXml)
-            }
+            pattern.replace(xml) { it.value.replace(SHARED_ITEMS_REGEX, sharedItemsXml) }
         }
+    }
 
-        return xml
+    private fun FieldMeta.buildSharedItemsXml(): String = when {
+        isAxisField && sharedItems.isNotEmpty() -> {
+            val items = sharedItems.joinToString("") { """<s v="${it.escapeXml()}"/>""" }
+            """<sharedItems count="${sharedItems.size}">$items</sharedItems>"""
+        }
+        isNumeric -> buildString {
+            append("""<sharedItems containsSemiMixedTypes="0" containsString="0" containsNumber="1" """)
+            if (isInteger) append("""containsInteger="1" """)
+            append("""minValue="$minValue" maxValue="$maxValue"/>""")
+        }
+        else -> "<sharedItems/>"
     }
 
     private fun buildPivotCacheRecords(
@@ -1238,6 +1205,14 @@ internal class PivotTableProcessor(
         private const val PIVOT_TABLE_CONTENT_TYPE =
             "application/vnd.openxmlformats-officedocument.spreadsheetml.pivotTable+xml"
 
+        private val SUBTOTAL_FUNCTION_MAP = mapOf(
+            "count" to DataConsolidateFunction.COUNT,
+            "average" to DataConsolidateFunction.AVERAGE,
+            "max" to DataConsolidateFunction.MAX,
+            "min" to DataConsolidateFunction.MIN,
+            "sum" to DataConsolidateFunction.SUM
+        )
+
         private const val EMPTY_RELATIONSHIPS_XML =
             """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>"""
@@ -1255,7 +1230,9 @@ internal class PivotTableProcessor(
         private val DATA_FIELD_REGEX by lazy { Regex("""<dataField[^>]+>""") }
         private val ROW_HEADER_CAPTION_REGEX by lazy { Regex("""rowHeaderCaption="([^"]+)"""") }
         private val GRAND_TOTAL_CAPTION_REGEX by lazy { Regex("""grandTotalCaption="([^"]+)"""") }
-        private val FORMATS_REGEX by lazy { Regex("""<formats\s+count="\d+">(.*?)</formats>""", RegexOption.DOT_MATCHES_ALL) }
+        private val FORMATS_REGEX by lazy {
+            Regex("""<formats\s+count="\d+">(.*?)</formats>""", RegexOption.DOT_MATCHES_ALL)
+        }
         private val FLD_ATTR_REGEX by lazy { Regex("""fld="(\d+)"""") }
         private val SUBTOTAL_ATTR_REGEX by lazy { Regex("""subtotal="([^"]*)"""") }
         private val SHEET_NAME_REGEX by lazy { Regex("""<sheet[^>]*name="([^"]+)"[^>]*r:id="rId\d+"""") }
@@ -1268,7 +1245,9 @@ internal class PivotTableProcessor(
         private val PIVOT_CACHE_OVERRIDE_REGEX by lazy { Regex("""<Override[^>]*pivotCache[^>]*/>\s*""") }
         private val PIVOT_TABLE_OVERRIDE_REGEX by lazy { Regex("""<Override[^>]*pivotTable[^>]*/>\s*""") }
         private val PIVOT_TABLE_REL_REGEX by lazy { Regex("""<Relationship[^>]*pivotTable[^>]*/>\s*""") }
-        private val PIVOT_CACHES_REGEX by lazy { Regex("""<pivotCaches>.*?</pivotCaches>""", RegexOption.DOT_MATCHES_ALL) }
+        private val PIVOT_CACHES_REGEX by lazy {
+            Regex("""<pivotCaches>.*?</pivotCaches>""", RegexOption.DOT_MATCHES_ALL)
+        }
         private val PIVOT_CACHES_EMPTY_REGEX by lazy { Regex("""<pivotCaches/>""") }
         private val PIVOT_CACHE_REL_REGEX by lazy { Regex("""<Relationship[^>]*pivotCache[^>]*/>\s*""") }
         private val REFRESH_ON_LOAD_REGEX by lazy { Regex("""refreshOnLoad="(true|1)"""") }
@@ -1280,7 +1259,9 @@ internal class PivotTableProcessor(
         private val TRUE_FALSE_ATTR_REGEX by lazy { Regex(""""(true|false)"""") }
         private val UPDATED_VERSION_REGEX by lazy { Regex("""updatedVersion="\d+"""") }
         private val LOCATION_REF_FULL_REGEX by lazy { Regex("""<location[^>]*ref="([^"]+)"[^>]*/?>""") }
-        private val PIVOT_FIELD_REGEX by lazy { Regex("""<pivotField[^>]*>(.*?)</pivotField>""", RegexOption.DOT_MATCHES_ALL) }
+        private val PIVOT_FIELD_REGEX by lazy {
+            Regex("""<pivotField[^>]*>(.*?)</pivotField>""", RegexOption.DOT_MATCHES_ALL)
+        }
         private val AXIS_ATTR_REGEX by lazy { Regex("""axis="([^"]+)"""") }
         private val ITEMS_REGEX by lazy { Regex("""<items[^>]*>.*?</items>""", RegexOption.DOT_MATCHES_ALL) }
         private val DATA_FIELD_SELF_CLOSING_REGEX by lazy { Regex("""<dataField([^>]*)/>""") }

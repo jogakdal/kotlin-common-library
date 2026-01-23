@@ -2,6 +2,7 @@ package com.hunet.common.excel
 
 import com.hunet.common.excel.async.ExcelGenerationListener
 import com.hunet.common.excel.async.GenerationResult
+import com.hunet.common.excel.exception.FormulaExpansionException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
@@ -73,24 +74,47 @@ object ExcelGeneratorSample {
 
         // Spring Boot 환경에서는 ExcelGenerator가 Bean으로 자동 주입됩니다.
         // 이 샘플은 테스트 목적으로 직접 인스턴스를 생성합니다.
+
+        // ========== SXSSF (스트리밍) 모드 ==========
+        println("\n" + "=" .repeat(60))
+        println("SXSSF (스트리밍) 모드")
+        println("=" .repeat(60))
+
         ExcelGenerator().use { generator ->
             // 1. 기본 사용 (Map 기반)
-            runBasicExample(generator, outputDir)
+            runBasicExample(generator, outputDir, "basic_example_sxssf")
 
             // 2. 지연 로딩 (DataProvider)
-            runLazyLoadingExample(generator, outputDir)
+            runLazyLoadingExample(generator, outputDir, "lazy_loading_example_sxssf")
 
             // 3. 비동기 실행 (Listener)
-            runAsyncExample(generator, outputDir)
+            runAsyncExample(generator, outputDir, "async_example_sxssf")
 
             // 4. 대용량 비동기 (DataProvider + Listener)
-            runLargeAsyncExample(generator, outputDir)
+            runLargeAsyncExample(generator, outputDir, "large_async_example_sxssf")
 
             // 5. 암호화된 대용량 비동기 (암호: 1234)
             runEncryptedLargeAsyncExample(generator, outputDir)
 
             // 6. 문서 메타데이터 설정
             runMetadataExample(generator, outputDir)
+        }
+
+        // ========== XSSF (비스트리밍) 모드 ==========
+        println("\n" + "=" .repeat(60))
+        println("XSSF (비스트리밍) 모드")
+        println("=" .repeat(60))
+
+        val xssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.DISABLED)
+        ExcelGenerator(xssfConfig).use { generator ->
+            // 1. 기본 사용 (Map 기반) - XSSF
+            runBasicExample(generator, outputDir, "basic_example_xssf")
+
+            // 2. 지연 로딩 (DataProvider) - XSSF
+            runLazyLoadingExample(generator, outputDir, "lazy_loading_example_xssf")
+
+            // 3. 대용량 비동기 (DataProvider + Listener) - XSSF
+            runLargeAsyncExample(generator, outputDir, "large_async_example_xssf")
         }
 
         println("\n" + "=" .repeat(60))
@@ -128,7 +152,11 @@ object ExcelGeneratorSample {
      * }
      * ```
      */
-    private fun runBasicExample(generator: ExcelGenerator, outputDir: Path) {
+    private fun runBasicExample(
+        generator: ExcelGenerator,
+        outputDir: Path,
+        baseFileName: String = "basic_example"
+    ) {
         println("\n[1] 기본 사용 (Map 기반)")
         println("-" .repeat(40))
 
@@ -153,7 +181,7 @@ object ExcelGeneratorSample {
             template = template,
             dataProvider = SimpleDataProvider.of(data),
             outputDir = outputDir,
-            baseFileName = "basic_example"
+            baseFileName = baseFileName
         )
 
         println("\t결과: $resultPath")
@@ -199,7 +227,11 @@ object ExcelGeneratorSample {
      * }
      * ```
      */
-    private fun runLazyLoadingExample(generator: ExcelGenerator, outputDir: Path) {
+    private fun runLazyLoadingExample(
+        generator: ExcelGenerator,
+        outputDir: Path,
+        baseFileName: String = "lazy_loading_example"
+    ) {
         println("\n[2] 지연 로딩 (DataProvider)")
         println("-" .repeat(40))
 
@@ -230,7 +262,7 @@ object ExcelGeneratorSample {
             template = template,
             dataProvider = dataProvider,
             outputDir = outputDir,
-            baseFileName = "lazy_loading_example"
+            baseFileName = baseFileName
         )
 
         println("\t결과: $resultPath")
@@ -298,7 +330,11 @@ object ExcelGeneratorSample {
      * }
      * ```
      */
-    private fun runAsyncExample(generator: ExcelGenerator, outputDir: Path) {
+    private fun runAsyncExample(
+        generator: ExcelGenerator,
+        outputDir: Path,
+        baseFileName: String = "async_example"
+    ) {
         println("\n[3] 비동기 실행 (Listener)")
         println("-".repeat(40))
 
@@ -325,7 +361,7 @@ object ExcelGeneratorSample {
             template = template,
             dataProvider = SimpleDataProvider.of(data),
             outputDir = outputDir,
-            baseFileName = "async_example",
+            baseFileName = baseFileName,
             listener = object : ExcelGenerationListener {
                 override fun onStarted(jobId: String) {
                     println("\t[시작] jobId: $jobId")
@@ -423,7 +459,11 @@ object ExcelGeneratorSample {
      * }
      * ```
      */
-    private fun runLargeAsyncExample(generator: ExcelGenerator, outputDir: Path) {
+    private fun runLargeAsyncExample(
+        generator: ExcelGenerator,
+        outputDir: Path,
+        baseFileName: String = "large_async_example"
+    ) {
         println("\n[4] 대용량 비동기 (DataProvider + Listener)")
         println("-" .repeat(40))
 
@@ -434,6 +474,7 @@ object ExcelGeneratorSample {
         val result = runLargeAsyncWithRetry(
             generator = generator,
             outputDir = outputDir,
+            baseFileName = baseFileName,
             dataCount = initialCount,
             retryDataCount = retryCount
         )
@@ -449,6 +490,7 @@ object ExcelGeneratorSample {
     private fun runLargeAsyncWithRetry(
         generator: ExcelGenerator,
         outputDir: Path,
+        baseFileName: String,
         dataCount: Int,
         retryDataCount: Int
     ): Pair<Path, Int>? {
@@ -481,7 +523,7 @@ object ExcelGeneratorSample {
             template = template,
             dataProvider = dataProvider,
             outputDir = outputDir,
-            baseFileName = "large_async_example",
+            baseFileName = baseFileName,
             listener = object : ExcelGenerationListener {
                 override fun onStarted(jobId: String) {
                     println("\t[시작] jobId: $jobId")
@@ -523,6 +565,7 @@ object ExcelGeneratorSample {
             return runLargeAsyncWithRetry(
                 generator = generator,
                 outputDir = outputDir,
+                baseFileName = baseFileName,
                 dataCount = retryDataCount,
                 retryDataCount = retryDataCount  // 더 이상 재시도하지 않음
             )

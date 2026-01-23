@@ -2,6 +2,7 @@ package com.hunet.common.excel
 
 import com.hunet.common.excel.async.ExcelGenerationListener
 import com.hunet.common.excel.async.GenerationResult
+import com.hunet.common.excel.exception.MissingTemplateDataException
 import kotlinx.coroutines.runBlocking
 import org.apache.poi.openxml4j.opc.OPCPackage
 import org.junit.jupiter.api.AfterEach
@@ -644,23 +645,6 @@ class ExcelGeneratorTest {
     // ==================== MissingDataBehavior 테스트 ====================
 
     @Test
-    fun `MissingDataBehavior IGNORE should not throw exception when data is missing`() {
-        val config = ExcelGeneratorConfig(missingDataBehavior = MissingDataBehavior.IGNORE)
-        ExcelGenerator(config).use { gen ->
-            val template = loadTemplate()
-            // employees 컬렉션이 누락된 데이터
-            val incompleteData = mapOf(
-                "title" to "제목만 있는 데이터"
-                // date, employees, logo 등 누락
-            )
-
-            // 예외 없이 실행되어야 함
-            val bytes = gen.generate(template, SimpleDataProvider.of(incompleteData))
-            assertTrue(bytes.isNotEmpty())
-        }
-    }
-
-    @Test
     fun `MissingDataBehavior WARN should not throw exception when data is missing`() {
         val config = ExcelGeneratorConfig(missingDataBehavior = MissingDataBehavior.WARN)
         ExcelGenerator(config).use { gen ->
@@ -758,9 +742,9 @@ class ExcelGeneratorTest {
     @Test
     fun `ExcelGeneratorConfig withMissingDataBehavior should return new instance`() {
         val original = ExcelGeneratorConfig.default()
-        val modified = original.withMissingDataBehavior(MissingDataBehavior.IGNORE)
+        val modified = original.withMissingDataBehavior(MissingDataBehavior.THROW)
 
         assertEquals(MissingDataBehavior.WARN, original.missingDataBehavior)
-        assertEquals(MissingDataBehavior.IGNORE, modified.missingDataBehavior)
+        assertEquals(MissingDataBehavior.THROW, modified.missingDataBehavior)
     }
 }

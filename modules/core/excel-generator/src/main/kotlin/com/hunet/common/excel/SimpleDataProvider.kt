@@ -18,13 +18,9 @@ class SimpleDataProvider private constructor(
     private val images: Map<String, ByteArray>,
     private val metadata: DocumentMetadata?
 ) : ExcelDataProvider {
-
     override fun getValue(name: String): Any? = values[name]
-
     override fun getItems(name: String): Iterator<Any>? = collections[name]?.invoke()
-
     override fun getImage(name: String): ByteArray? = images[name]
-
     override fun getMetadata(): DocumentMetadata? = metadata
 
     companion object {

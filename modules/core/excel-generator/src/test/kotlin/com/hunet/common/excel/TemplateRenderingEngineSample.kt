@@ -19,7 +19,7 @@ import java.time.LocalDate
  *
  * ## 처리 방식
  * - **비스트리밍 모드(XSSF)**: 템플릿 변환 방식 (shiftRows + copyRowFrom)
- * - **스트리밍 모드(SXSSF)**: 청사진 기반 순차 생성 (메모리 효율적)
+ * - **스트리밍 모드(SXSSF)**: 명세 기반 순차 생성 (메모리 효율적)
  *
  * ## Spring Boot 설정 예시
  * ```kotlin
@@ -115,8 +115,8 @@ object TemplateRenderingEngineSample {
      * 스트리밍 모드 (SXSSF)
      *
      * 청사진 기반 순차 생성 방식으로 처리합니다.
-     * - 템플릿을 분석하여 청사진(Blueprint) 생성
-     * - 청사진에 따라 순차적으로 행 출력
+     * - 템플릿을 분석하여 명세(WorkbookSpec) 생성
+     * - 명세에 따라 순차적으로 행 출력
      * - 메모리 효율적 (대용량 데이터에 적합)
      */
     private fun runSxssfExample(outputDir: Path) {

@@ -2,12 +2,15 @@ package com.hunet.common.excel.engine
 
 import com.hunet.common.excel.detectImageTypeForPoi
 import org.apache.poi.ss.usermodel.ClientAnchor
+import org.apache.poi.ss.usermodel.Picture
 import org.apache.poi.ss.usermodel.Sheet
 import org.apache.poi.ss.usermodel.Workbook
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.XSSFClientAnchor
 import org.apache.poi.xssf.usermodel.XSSFDrawing
 import org.apache.poi.xssf.usermodel.XSSFSheet
+import java.io.ByteArrayInputStream
+import javax.imageio.ImageIO
 
 /**
  * 이미지 삽입기 - 셀 위치에 이미지 삽입
@@ -15,7 +18,6 @@ import org.apache.poi.xssf.usermodel.XSSFSheet
 class ImageInserter {
 
     companion object {
-        // POI 이미지 타입 상수
         private val IMAGE_TYPE_MAP = mapOf(
             "PNG" to Workbook.PICTURE_TYPE_PNG,
             "JPEG" to Workbook.PICTURE_TYPE_JPEG,
@@ -24,20 +26,17 @@ class ImageInserter {
             "EMF" to Workbook.PICTURE_TYPE_EMF,
             "WMF" to Workbook.PICTURE_TYPE_WMF
         )
+
+        /** 1 픽셀 = 9525 EMU (96 DPI 기준) */
+        private const val EMU_PER_PIXEL = 9525
+
+        /** 셀 테두리가 보이도록 적용하는 기본 마진 */
+        private const val FLOATING_IMAGE_MARGIN_PX = 1
+        private const val FLOATING_IMAGE_MARGIN_EMU = FLOATING_IMAGE_MARGIN_PX * EMU_PER_PIXEL
     }
 
     /**
-     * 셀 위치에 이미지 삽입
-     *
-     * 이미지는 항상 지정된 영역(셀 또는 병합 영역)에 맞춰 크기가 조정됩니다.
-     * 원본 크기로 삽입하려면 insertImageWithOriginalSize()를 사용하세요.
-     *
-     * @param workbook 워크북
-     * @param sheet 시트
-     * @param imageBytes 이미지 바이트 배열
-     * @param rowIndex 시작 행 (0-based)
-     * @param colIndex 시작 열 (0-based)
-     * @param mergedRegion 병합 영역 (있으면 병합 영역에 맞춤, 없으면 단일 셀에 맞춤)
+     * 셀 위치에 이미지 삽입 (지정 영역에 맞춰 크기 조정)
      */
     fun insertImage(
         workbook: Workbook,
@@ -47,51 +46,15 @@ class ImageInserter {
         colIndex: Int,
         mergedRegion: CellRangeAddress? = null
     ) {
-        // 이미지 타입 감지
         val imageTypeStr = imageBytes.detectImageTypeForPoi()
         val pictureType = IMAGE_TYPE_MAP[imageTypeStr]
             ?: throw IllegalArgumentException("지원하지 않는 이미지 형식: $imageTypeStr")
 
-        // 워크북에 이미지 추가
         val pictureIdx = workbook.addPicture(imageBytes, pictureType)
-
-        // 그리기 도형 생성
         val drawing = sheet.createDrawingPatriarch()
-
-        // 앵커 설정 (이미지 위치) - 이미지가 지정 영역에 맞춰짐
         val anchor = createAnchor(workbook, rowIndex, colIndex, mergedRegion)
 
-        // 이미지 삽입 (resize() 호출 안 함 - 앵커 영역에 맞춰짐)
         drawing.createPicture(anchor, pictureIdx)
-    }
-
-    /**
-     * 셀 위치에 이미지를 원본 크기로 삽입
-     *
-     * @param workbook 워크북
-     * @param sheet 시트
-     * @param imageBytes 이미지 바이트 배열
-     * @param rowIndex 시작 행 (0-based)
-     * @param colIndex 시작 열 (0-based)
-     */
-    fun insertImageWithOriginalSize(
-        workbook: Workbook,
-        sheet: Sheet,
-        imageBytes: ByteArray,
-        rowIndex: Int,
-        colIndex: Int
-    ) {
-        val imageTypeStr = imageBytes.detectImageTypeForPoi()
-        val pictureType = IMAGE_TYPE_MAP[imageTypeStr]
-            ?: throw IllegalArgumentException("지원하지 않는 이미지 형식: $imageTypeStr")
-
-        val pictureIdx = workbook.addPicture(imageBytes, pictureType)
-        val drawing = sheet.createDrawingPatriarch()
-        val anchor = createAnchor(workbook, rowIndex, colIndex, null)
-        val picture = drawing.createPicture(anchor, pictureIdx)
-
-        // 원본 크기로 리사이즈
-        picture.resize()
     }
 
     /**
@@ -112,18 +75,147 @@ class ImageInserter {
 
         val pictureIdx = workbook.addPicture(imageBytes, pictureType)
         val drawing = sheet.createDrawingPatriarch() as XSSFDrawing
-
-        // 앵커 생성 (마진 포함)
-        val anchor = createXssfAnchor(
-            rowIndex, colIndex, mergedRegion, marginPx
-        )
-
+        val anchor = createXssfAnchor(rowIndex, colIndex, mergedRegion, marginPx)
         drawing.createPicture(anchor, pictureIdx)
     }
 
     /**
-     * 이미지 앵커 생성
+     * 플로팅 이미지 삽입 (유연한 크기 지정)
+     *
+     * @param workbook 워크북
+     * @param sheet 시트
+     * @param imageBytes 이미지 바이트 배열
+     * @param rowIndex 시작 행 (0-based)
+     * @param colIndex 시작 열 (0-based)
+     * @param sizeSpec 크기 명세
+     * @param mergedRegion 병합 영역 (크기 계산에 사용)
      */
+    fun insertFloatingImage(
+        workbook: Workbook,
+        sheet: Sheet,
+        imageBytes: ByteArray,
+        rowIndex: Int,
+        colIndex: Int,
+        sizeSpec: ImageSizeSpec,
+        mergedRegion: CellRangeAddress? = null
+    ) {
+        val imageTypeStr = imageBytes.detectImageTypeForPoi()
+        val pictureType = IMAGE_TYPE_MAP[imageTypeStr]
+            ?: throw IllegalArgumentException("지원하지 않는 이미지 형식: $imageTypeStr")
+
+        val pictureIdx = workbook.addPicture(imageBytes, pictureType)
+        val drawing = sheet.createDrawingPatriarch()
+
+        when {
+            sizeSpec == ImageSizeSpec.FIT_TO_CELL -> {
+                val anchor = createAnchorWithMargin(rowIndex, colIndex, mergedRegion)
+                drawing.createPicture(anchor, pictureIdx)
+            }
+            sizeSpec == ImageSizeSpec.ORIGINAL -> {
+                val anchor = createAnchorForOriginalSize(sheet, imageBytes, rowIndex, colIndex)
+                drawing.createPicture(anchor, pictureIdx)
+            }
+            sizeSpec.width == 0 && sizeSpec.height < 0 -> {  // 0:-1
+                val anchor = createAnchorWithAspectRatio(
+                    sheet, imageBytes, rowIndex, colIndex, mergedRegion, fitToWidth = true
+                )
+                drawing.createPicture(anchor, pictureIdx)
+            }
+            sizeSpec.width < 0 && sizeSpec.height == 0 -> {  // -1:0
+                val anchor = createAnchorWithAspectRatio(
+                    sheet, imageBytes, rowIndex, colIndex, mergedRegion, fitToWidth = false
+                )
+                drawing.createPicture(anchor, pictureIdx)
+            }
+            else -> {
+                val anchor = createAnchor(workbook, rowIndex, colIndex, null)
+                val picture = drawing.createPicture(anchor, pictureIdx)
+                picture.resize()
+                val scale = calculateScale(picture, sheet, rowIndex, colIndex, sizeSpec, mergedRegion)
+                picture.resize(scale.first, scale.second)
+            }
+        }
+    }
+
+    private fun calculateScale(
+        picture: Picture,
+        sheet: Sheet,
+        rowIndex: Int,
+        colIndex: Int,
+        sizeSpec: ImageSizeSpec,
+        mergedRegion: CellRangeAddress?
+    ): Pair<Double, Double> {
+        val imageDim = picture.imageDimension
+        val originalWidth = imageDim.width.toDouble()
+        val originalHeight = imageDim.height.toDouble()
+
+        val cellWidthPx = getCellWidthInPixels(sheet, colIndex, mergedRegion)
+        val cellHeightPx = getCellHeightInPixels(sheet, rowIndex, mergedRegion)
+
+        val targetWidth = when {
+            sizeSpec.width > 0 -> sizeSpec.width.toDouble()
+            sizeSpec.width == 0 -> cellWidthPx
+            else -> -1.0
+        }
+
+        val targetHeight = when {
+            sizeSpec.height > 0 -> sizeSpec.height.toDouble()
+            sizeSpec.height == 0 -> cellHeightPx
+            else -> -1.0
+        }
+
+        val (finalWidth, finalHeight) = when {
+            targetWidth < 0 && targetHeight < 0 -> originalWidth to originalHeight
+            targetWidth < 0 -> {
+                val ratio = targetHeight / originalHeight
+                (originalWidth * ratio) to targetHeight
+            }
+            targetHeight < 0 -> {
+                val ratio = targetWidth / originalWidth
+                targetWidth to (originalHeight * ratio)
+            }
+            else -> targetWidth to targetHeight
+        }
+
+        return (finalWidth / originalWidth) to (finalHeight / originalHeight)
+    }
+
+    private fun getCellWidthInPixels(
+        sheet: Sheet,
+        colIndex: Int,
+        mergedRegion: CellRangeAddress?
+    ): Double {
+        val startCol = mergedRegion?.firstColumn ?: colIndex
+        val endCol = mergedRegion?.lastColumn ?: colIndex
+
+        var totalWidth = 0.0
+        for (col in startCol..endCol) {
+            totalWidth += sheet.getColumnWidthInPixels(col).toDouble()
+        }
+        return totalWidth
+    }
+
+    private fun getCellHeightInPixels(
+        sheet: Sheet,
+        rowIndex: Int,
+        mergedRegion: CellRangeAddress?
+    ): Double {
+        val startRow = mergedRegion?.firstRow ?: rowIndex
+        val endRow = mergedRegion?.lastRow ?: rowIndex
+
+        var totalHeight = 0.0
+        for (row in startRow..endRow) {
+            val rowObj = sheet.getRow(row)
+            val heightPt = if (rowObj?.height?.toInt() == -1 || rowObj == null) {
+                sheet.defaultRowHeightInPoints.toDouble()
+            } else {
+                rowObj.heightInPoints.toDouble()
+            }
+            totalHeight += heightPt * 96 / 72
+        }
+        return totalHeight
+    }
+
     private fun createAnchor(
         workbook: Workbook,
         rowIndex: Int,
@@ -133,35 +225,200 @@ class ImageInserter {
         val helper = workbook.creationHelper
 
         return if (mergedRegion != null) {
-            helper.createClientAnchor().also { anchor ->
-                anchor.setCol1(mergedRegion.firstColumn)
-                anchor.setRow1(mergedRegion.firstRow)
-                anchor.setCol2(mergedRegion.lastColumn + 1)
-                anchor.setRow2(mergedRegion.lastRow + 1)
-                anchor.anchorType = ClientAnchor.AnchorType.MOVE_AND_RESIZE
+            helper.createClientAnchor().apply {
+                // POI 버그: col1/col2 getter(short)/setter(int) 타입 불일치
+                // 제보함: https://bz.apache.org/bugzilla/show_bug.cgi?id=69935
+                setCol1(mergedRegion.firstColumn)
+                row1 = mergedRegion.firstRow
+                setCol2(mergedRegion.lastColumn + 1)
+                row2 = mergedRegion.lastRow + 1
+                anchorType = ClientAnchor.AnchorType.MOVE_AND_RESIZE
             }
         } else {
-            helper.createClientAnchor().also { anchor ->
-                anchor.setCol1(colIndex)
-                anchor.setRow1(rowIndex)
-                anchor.setCol2(colIndex + 1)
-                anchor.setRow2(rowIndex + 1)
-                anchor.anchorType = ClientAnchor.AnchorType.MOVE_AND_RESIZE
+            helper.createClientAnchor().apply {
+                setCol1(colIndex)
+                row1 = rowIndex
+                setCol2(colIndex + 1)
+                row2 = rowIndex + 1
+                anchorType = ClientAnchor.AnchorType.MOVE_AND_RESIZE
+            }
+        }
+    }
+
+    /** 원본 크기 이미지용 앵커 생성 (EMU 단위 정밀 계산) */
+    private fun createAnchorForOriginalSize(
+        sheet: Sheet,
+        imageBytes: ByteArray,
+        rowIndex: Int,
+        colIndex: Int
+    ): XSSFClientAnchor {
+        val image = ImageIO.read(ByteArrayInputStream(imageBytes))
+            ?: throw IllegalArgumentException("이미지를 읽을 수 없습니다.")
+        val imageWidthPx = image.width.toDouble()
+        val imageHeightPx = image.height.toDouble()
+
+        val (endCol, dx2) = calculateEndColWithEmu(
+            sheet, colIndex, imageWidthPx + FLOATING_IMAGE_MARGIN_PX
+        )
+        val (endRow, dy2) = calculateEndRowWithEmu(
+            sheet, rowIndex, imageHeightPx + FLOATING_IMAGE_MARGIN_PX
+        )
+
+        return XSSFClientAnchor(
+            FLOATING_IMAGE_MARGIN_EMU, FLOATING_IMAGE_MARGIN_EMU,  // dx1, dy1 (시작 마진)
+            dx2, dy2,  // dx2, dy2 (끝점)
+            colIndex, rowIndex,
+            endCol, endRow
+        ).apply {
+            anchorType = ClientAnchor.AnchorType.MOVE_AND_RESIZE
+        }
+    }
+
+    /** 마진이 적용된 앵커 생성 (dx2/dy2 음수 = 끝점에서 안쪽으로) */
+    private fun createAnchorWithMargin(
+        rowIndex: Int,
+        colIndex: Int,
+        mergedRegion: CellRangeAddress?
+    ): XSSFClientAnchor {
+        return if (mergedRegion != null) {
+            XSSFClientAnchor(
+                FLOATING_IMAGE_MARGIN_EMU, FLOATING_IMAGE_MARGIN_EMU,
+                -FLOATING_IMAGE_MARGIN_EMU, -FLOATING_IMAGE_MARGIN_EMU,
+                mergedRegion.firstColumn, mergedRegion.firstRow,
+                mergedRegion.lastColumn + 1, mergedRegion.lastRow + 1
+            ).apply {
+                anchorType = ClientAnchor.AnchorType.MOVE_AND_RESIZE
+            }
+        } else {
+            XSSFClientAnchor(
+                FLOATING_IMAGE_MARGIN_EMU, FLOATING_IMAGE_MARGIN_EMU,
+                -FLOATING_IMAGE_MARGIN_EMU, -FLOATING_IMAGE_MARGIN_EMU,
+                colIndex, rowIndex,
+                colIndex + 1, rowIndex + 1
+            ).apply {
+                anchorType = ClientAnchor.AnchorType.MOVE_AND_RESIZE
             }
         }
     }
 
     /**
-     * XSSF 전용 앵커 생성 (EMU 단위 오프셋 지원)
+     * 비율 유지 앵커 생성 (EMU 단위 정밀 계산)
+     * @param fitToWidth true면 셀 너비 기준, false면 셀 높이 기준
      */
+    private fun createAnchorWithAspectRatio(
+        sheet: Sheet,
+        imageBytes: ByteArray,
+        rowIndex: Int,
+        colIndex: Int,
+        mergedRegion: CellRangeAddress?,
+        fitToWidth: Boolean
+    ): ClientAnchor {
+        val image = ImageIO.read(ByteArrayInputStream(imageBytes))
+            ?: throw IllegalArgumentException("이미지를 읽을 수 없습니다.")
+        val imageWidth = image.width.toDouble()
+        val imageHeight = image.height.toDouble()
+        val aspectRatio = imageHeight / imageWidth
+
+        val startCol = mergedRegion?.firstColumn ?: colIndex
+        val endCol = mergedRegion?.lastColumn ?: colIndex
+        val startRow = mergedRegion?.firstRow ?: rowIndex
+        val endRow = mergedRegion?.lastRow ?: rowIndex
+        val marginPx = FLOATING_IMAGE_MARGIN_PX * 2
+
+        return if (fitToWidth) {
+            val cellWidthPx = getCellWidthInPixels(sheet, colIndex, mergedRegion) - marginPx
+            val targetHeightPx = cellWidthPx * aspectRatio
+            val (targetEndRow, remainingHeightEmu) = calculateEndRowWithEmu(
+                sheet, startRow, targetHeightPx + FLOATING_IMAGE_MARGIN_PX
+            )
+
+            XSSFClientAnchor(
+                FLOATING_IMAGE_MARGIN_EMU, FLOATING_IMAGE_MARGIN_EMU,
+                -FLOATING_IMAGE_MARGIN_EMU, remainingHeightEmu,
+                startCol, startRow,
+                endCol + 1, targetEndRow
+            ).apply {
+                anchorType = ClientAnchor.AnchorType.MOVE_AND_RESIZE
+            }
+        } else {
+            val cellHeightPx = getCellHeightInPixels(sheet, rowIndex, mergedRegion) - marginPx
+            val targetWidthPx = cellHeightPx / aspectRatio
+            val (targetEndCol, remainingWidthEmu) = calculateEndColWithEmu(
+                sheet, startCol, targetWidthPx + FLOATING_IMAGE_MARGIN_PX
+            )
+
+            XSSFClientAnchor(
+                FLOATING_IMAGE_MARGIN_EMU, FLOATING_IMAGE_MARGIN_EMU,
+                remainingWidthEmu, -FLOATING_IMAGE_MARGIN_EMU,
+                startCol, startRow,
+                targetEndCol, endRow + 1
+            ).apply {
+                anchorType = ClientAnchor.AnchorType.MOVE_AND_RESIZE
+            }
+        }
+    }
+
+    /** @return Pair(끝 행 인덱스, 끝 행 내 EMU 오프셋) */
+    private fun calculateEndRowWithEmu(
+        sheet: Sheet,
+        startRow: Int,
+        targetHeightPx: Double
+    ): Pair<Int, Int> {
+        var accumulatedHeight = -FLOATING_IMAGE_MARGIN_PX.toDouble()
+        var currentRow = startRow
+
+        while (accumulatedHeight < targetHeightPx && currentRow - startRow < 100) {
+            val rowHeightPx = getRowHeightInPixels(sheet, currentRow)
+            if (accumulatedHeight + rowHeightPx > targetHeightPx) {
+                val remainingPx = targetHeightPx - accumulatedHeight
+                return currentRow to (remainingPx * EMU_PER_PIXEL).toInt()
+            }
+            accumulatedHeight += rowHeightPx
+            currentRow++
+        }
+
+        return currentRow to 0
+    }
+
+    /** @return Pair(끝 열 인덱스, 끝 열 내 EMU 오프셋) */
+    private fun calculateEndColWithEmu(
+        sheet: Sheet,
+        startCol: Int,
+        targetWidthPx: Double
+    ): Pair<Int, Int> {
+        var accumulatedWidth = -FLOATING_IMAGE_MARGIN_PX.toDouble()
+        var currentCol = startCol
+
+        while (accumulatedWidth < targetWidthPx && currentCol - startCol < 100) {
+            val colWidthPx = sheet.getColumnWidthInPixels(currentCol).toDouble()
+            if (accumulatedWidth + colWidthPx > targetWidthPx) {
+                val remainingPx = targetWidthPx - accumulatedWidth
+                return currentCol to (remainingPx * EMU_PER_PIXEL).toInt()
+            }
+            accumulatedWidth += colWidthPx
+            currentCol++
+        }
+
+        return currentCol to 0
+    }
+
+    private fun getRowHeightInPixels(sheet: Sheet, rowIndex: Int): Double {
+        val rowObj = sheet.getRow(rowIndex)
+        val heightPt = if (rowObj?.height?.toInt() == -1 || rowObj == null) {
+            sheet.defaultRowHeightInPoints.toDouble()
+        } else {
+            rowObj.heightInPoints.toDouble()
+        }
+        return heightPt * 96 / 72
+    }
+
     private fun createXssfAnchor(
         rowIndex: Int,
         colIndex: Int,
         mergedRegion: CellRangeAddress?,
         marginPx: Int
     ): XSSFClientAnchor {
-        // EMU (English Metric Units) 변환: 1 pixel ≈ 9525 EMUs
-        val marginEmu = marginPx * 9525
+        val marginEmu = marginPx * EMU_PER_PIXEL
 
         return if (mergedRegion != null) {
             XSSFClientAnchor(

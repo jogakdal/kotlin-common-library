@@ -1,11 +1,11 @@
-package com.hunet.common.excel
+package com.hunet.common.excel.exception
 
 import com.hunet.common.excel.engine.RequiredNames
 
 /**
  * 템플릿에 정의된 데이터가 DataProvider에 없을 때 발생하는 예외.
  *
- * [MissingDataBehavior.THROW] 설정 시 발생합니다.
+ * [com.hunet.common.excel.MissingDataBehavior.THROW] 설정 시 발생합니다.
  *
  * @property missingVariables 누락된 변수 이름 목록
  * @property missingCollections 누락된 컬렉션 이름 목록

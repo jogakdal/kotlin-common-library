@@ -4,6 +4,7 @@ import com.hunet.common.excel.async.ExcelGenerationListener;
 import com.hunet.common.excel.async.GenerationJob;
 import com.hunet.common.excel.async.GenerationResult;
 import com.hunet.common.excel.async.ProgressInfo;
+import com.hunet.common.excel.exception.FormulaExpansionException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 

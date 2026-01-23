@@ -1,4 +1,4 @@
-package com.hunet.common.excel
+package com.hunet.common.excel.exception
 
 /**
  * 수식 확장 실패 시 발생하는 예외.

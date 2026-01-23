@@ -1,4 +1,4 @@
-package com.hunet.common.excel
+package com.hunet.common.excel.exception
 
 /**
  * 템플릿 처리 중 발생하는 예외.

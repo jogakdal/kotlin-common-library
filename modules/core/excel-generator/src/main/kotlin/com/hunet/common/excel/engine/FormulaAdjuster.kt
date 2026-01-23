@@ -1,5 +1,8 @@
 package com.hunet.common.excel.engine
 
+import com.hunet.common.excel.toColumnIndex
+import com.hunet.common.excel.toColumnLetter
+
 /**
  * 셀 참조 정보를 담는 데이터 클래스
  */
@@ -246,10 +249,10 @@ object FormulaAdjuster {
             if (colAbs == "$") {
                 match.value
             } else {
-                val colIndex = columnNameToIndex(col)
+                val colIndex = toColumnIndex(col)
                 if (colIndex >= startCol) {
                     val newColIndex = colIndex + shiftAmount
-                    val newColName = indexToColumnName(newColIndex)
+                    val newColName = toColumnLetter(newColIndex)
                     "$colAbs$newColName$rowAbs$row"
                 } else {
                     match.value
@@ -309,7 +312,7 @@ object FormulaAdjuster {
                 val rowIndex = row - 1  // 0-based
 
                 // 반복 영역 내의 셀인지 확인
-                if (rowIndex >= repeatStartRow && rowIndex <= repeatEndRow) {
+                if (rowIndex in repeatStartRow..repeatEndRow) {
                     // 절대 참조는 확장하지 않음
                     if (rowAbs == "$") {
                         match.value
@@ -404,11 +407,10 @@ object FormulaAdjuster {
                 val rowAbs = match.groupValues[3]
                 val row = match.groupValues[4].toInt()
                 val rowIndex = row - 1  // 0-based
-                val colIndex = columnNameToIndex(col)
+                val colIndex = toColumnIndex(col)
 
                 // 반복 영역 내의 셀인지 확인 (열과 행 모두 반복 영역 내에 있어야 함)
-                if (colIndex >= repeatStartCol && colIndex <= repeatEndCol &&
-                    rowIndex >= repeatStartRow && rowIndex <= repeatEndRow) {
+                if (colIndex in repeatStartCol..repeatEndCol && rowIndex in repeatStartRow..repeatEndRow) {
                     // 절대 열 참조는 확장하지 않음
                     if (colAbs == "$") {
                         match.value
@@ -449,7 +451,7 @@ object FormulaAdjuster {
                         if (endColIndex <= colIndex) {
                             match.value
                         } else {
-                            val endColName = indexToColumnName(endColIndex)
+                            val endColName = toColumnLetter(endColIndex)
                             "$colAbs$col$rowAbs$row:$colAbs$endColName$rowAbs$row"
                         }
                     } else {
@@ -472,7 +474,7 @@ object FormulaAdjuster {
                                 finalColIndex == formulaCellCol && rowIndex == formulaCellRow) {
                                 null
                             } else {
-                                val newColName = indexToColumnName(newColIndex)
+                                val newColName = toColumnLetter(newColIndex)
                                 "$colAbs$newColName$rowAbs$row"
                             }
                         }
@@ -490,18 +492,4 @@ object FormulaAdjuster {
 
         return result to hasDiscontinuous
     }
-
-    /**
-     * 열 이름을 인덱스로 변환 (A=0, B=1, ..., Z=25, AA=26, ...)
-     * ExcelUtils.toColumnIndex() 위임
-     */
-    private fun columnNameToIndex(colName: String): Int =
-        com.hunet.common.excel.toColumnIndex(colName)
-
-    /**
-     * 인덱스를 열 이름으로 변환 (0=A, 1=B, ..., 25=Z, 26=AA, ...)
-     * ExcelUtils.toColumnLetter() 위임
-     */
-    fun indexToColumnName(index: Int): String =
-        com.hunet.common.excel.toColumnLetter(index)
 }

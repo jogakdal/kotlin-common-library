@@ -12,10 +12,7 @@ import java.util.zip.ZipOutputStream
  *
  * SXSSF로 새 워크북을 생성하면 원본 템플릿의 차트가 손실됩니다.
  * 이 프로세서는 차트와 관련 드로잉을 추출하고 처리 후 복원합니다.
- *
- * Phase 3: 드로잉 파일 병합 지원
- * - 기존 드로잉(이미지 등)에 차트 앵커를 병합
- * - 드로잉 관계 파일도 병합하여 차트 참조 추가
+ * 기존 드로잉(이미지 등)에 차트 앵커를 병합하고 드로잉 관계 파일도 병합합니다.
  */
 internal class ChartProcessor {
 
@@ -25,15 +22,13 @@ internal class ChartProcessor {
         private const val CHART_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
         private const val CHART_STYLE_CONTENT_TYPE = "application/vnd.ms-office.chartstyle+xml"
         private const val CHART_COLORS_CONTENT_TYPE = "application/vnd.ms-office.chartcolorstyle+xml"
-        private const val DRAWING_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.drawing+xml"
 
-        // 지연 초기화: 차트가 없는 템플릿에서는 Regex 컴파일 비용 절약
+        // 차트가 없는 템플릿에서는 Regex 컴파일 비용 절약
         private val CHART_PATH_PATTERN by lazy { Regex("/xl/charts/[^/]+\\.(xml|rels)") }
         private val CHART_RELS_PATH_PATTERN by lazy { Regex("/xl/charts/_rels/.*") }
         private val DRAWING_PATH_PATTERN by lazy { Regex("/xl/drawings/[^/]+\\.xml") }
         private val DRAWING_RELS_PATH_PATTERN by lazy { Regex("/xl/drawings/_rels/.*") }
 
-        // 차트 앵커 패턴 (graphicFrame)
         private val GRAPHIC_FRAME_PATTERN by lazy {
             Regex(
                 "<xdr:twoCellAnchor[^>]*>.*?<xdr:graphicFrame.*?</xdr:graphicFrame>.*?</xdr:twoCellAnchor>",
@@ -41,7 +36,6 @@ internal class ChartProcessor {
             )
         }
 
-        // twoCellAnchor 전체 패턴 (개별 앵커 단위로 추출)
         private val TWO_CELL_ANCHOR_PATTERN by lazy {
             Regex(
                 "<xdr:twoCellAnchor[^>]*>(?:(?!</xdr:twoCellAnchor>).)*</xdr:twoCellAnchor>",
@@ -49,7 +43,6 @@ internal class ChartProcessor {
             )
         }
 
-        // oneCellAnchor 패턴 (절대 위치 도형 등)
         private val ONE_CELL_ANCHOR_PATTERN by lazy {
             Regex(
                 "<xdr:oneCellAnchor[^>]*>(?:(?!</xdr:oneCellAnchor>).)*</xdr:oneCellAnchor>",
@@ -57,15 +50,18 @@ internal class ChartProcessor {
             )
         }
 
-        // rId 패턴
-        private val RID_PATTERN by lazy { Regex("r:id=\"(rId\\d+)\"") }
         private val RELS_RID_PATTERN by lazy { Regex("Id=\"(rId\\d+)\"") }
 
-        // 차트 관계 및 콘텐츠 타입 패턴
-        private val CHART_REL_ID_TARGET_PATTERN by lazy { Regex("<Relationship[^>]*Id=\"(rId\\d+)\"[^>]*Target=\"([^\"]*)\"[^>]*/?>") }
-        private val CHART_REL_TARGET_PATTERN by lazy { Regex("<Relationship[^>]*Target=\"[^\"]*charts/[^\"]*\"[^>]*/?>") }
+        private val CHART_REL_ID_TARGET_PATTERN by lazy {
+            Regex("<Relationship[^>]*Id=\"(rId\\d+)\"[^>]*Target=\"([^\"]*)\"[^>]*/?>")
+        }
+        private val CHART_REL_TARGET_PATTERN by lazy {
+            Regex("<Relationship[^>]*Target=\"[^\"]*charts/[^\"]*\"[^>]*/?>")
+        }
         private val CHART_TARGET_ATTR_PATTERN by lazy { Regex("Target=\"[^\"]*charts/[^\"]*\"") }
-        private val OVERRIDE_PATTERN by lazy { Regex("<Override[^>]*PartName=\"([^\"]*)\"[^>]*ContentType=\"([^\"]*)\"[^>]*>") }
+        private val OVERRIDE_PATTERN by lazy {
+            Regex("<Override[^>]*PartName=\"([^\"]*)\"[^>]*ContentType=\"([^\"]*)\"[^>]*>")
+        }
         private val CHART_OVERRIDE_PATTERN by lazy { Regex("<Override[^>]*PartName=\"[^\"]*/charts/[^\"]*\"[^>]*>") }
         private val MULTIPLE_NEWLINES_PATTERN by lazy { Regex("\n\\s*\n") }
         private val PART_NAME_ATTR_PATTERN by lazy { Regex("PartName=\"([^\"]*)\"") }
@@ -92,7 +88,6 @@ internal class ChartProcessor {
 
         var hasChart = false
 
-        // 단일 ZIP 순회로 모든 필요한 데이터 수집
         ZipInputStream(ByteArrayInputStream(inputBytes)).use { zis ->
             var entry = zis.nextEntry
             while (entry != null) {
@@ -121,18 +116,12 @@ internal class ChartProcessor {
         }
 
         if (!hasChart) {
-            LOG.debug("차트가 없는 템플릿입니다.")
             return null to inputBytes
         }
 
-        // 차트 관련 드로잉 + 모든 드로잉 (도형 보존용)
         val chartRelatedDrawings = filterChartRelatedDrawings(drawingFiles, drawingRelsFiles)
-        // 도형을 포함한 모든 드로잉 파일을 저장 (차트가 없어도 도형이 있을 수 있음)
         val allDrawingsForShapes = AllDrawings(drawingFiles, drawingRelsFiles)
 
-        LOG.debug("차트 추출: charts=${chartFiles.keys}, drawings=${chartRelatedDrawings.drawingFiles.keys}")
-
-        // 저장된 [Content_Types].xml에서 차트/드로잉 콘텐츠 타입 추출
         contentTypesXml?.let { xml ->
             contentTypeEntries.addAll(extractChartAndDrawingContentTypes(xml, chartRelatedDrawings))
         }
@@ -147,7 +136,6 @@ internal class ChartProcessor {
             allDrawingRelsFiles = allDrawingsForShapes.drawingRelsFiles
         )
 
-        // Phase 3: 차트 파일만 제거, 드로잉은 유지 (나중에 병합)
         val cleanedBytes = removeChartFilesOnly(inputBytes)
 
         return chartInfo to cleanedBytes
@@ -164,150 +152,180 @@ internal class ChartProcessor {
     ): ByteArray {
         if (chartInfo == null) return inputBytes
 
-        LOG.debug("차트 복원 시작: charts=${chartInfo.chartFiles.keys}, drawings=${chartInfo.drawingFiles.keys}")
-
         val output = ByteArrayOutputStream()
 
-        // 단일 ZIP 순회로 드로잉 관계 파일 수집과 복원 작업 통합
         ZipOutputStream(output).use { zos ->
-            val writtenEntries = mutableSetOf<String>()
-            val currentDrawingRels = mutableMapOf<String, String>()
-            val pendingDrawingFiles = mutableListOf<Triple<String, String, ByteArray>>() // path, entryName, content
-            val pendingDrawingRelsFiles = mutableListOf<Triple<String, String, ByteArray>>()
+            val ctx = RestoreContext(zos, chartInfo, variableResolver)
 
-            ZipInputStream(ByteArrayInputStream(inputBytes)).use { zis ->
-                var entry = zis.nextEntry
-                while (entry != null) {
-                    val path = "/" + entry.name
-                    val entryName = entry.name
+            val (currentDrawingRels, pendingDrawingFiles, pendingDrawingRelsFiles) =
+                collectAndCopyEntries(inputBytes, ctx)
 
-                    when {
-                        entryName == "[Content_Types].xml" -> {
-                            val content = String(zis.readBytes(), Charsets.UTF_8)
-                            val updatedContent = addChartAndDrawingContentTypes(content, chartInfo)
-                            zos.putNextEntry(ZipEntry(entryName))
-                            zos.write(updatedContent.toByteArray(Charsets.UTF_8))
-                            zos.closeEntry()
-                            writtenEntries.add(entryName)
-                        }
-                        // 드로잉 파일 - 나중에 처리하기 위해 보관
-                        DRAWING_PATH_PATTERN.matches(path) && !path.contains("/_rels/") -> {
-                            pendingDrawingFiles.add(Triple(path, entryName, zis.readBytes()))
-                        }
-                        // 드로잉 관계 파일 - rId 매핑 계산용으로 보관
-                        DRAWING_RELS_PATH_PATTERN.matches(path) -> {
-                            val content = zis.readBytes()
-                            currentDrawingRels[path] = String(content, Charsets.UTF_8)
-                            pendingDrawingRelsFiles.add(Triple(path, entryName, content))
-                        }
-                        else -> {
-                            zos.putNextEntry(ZipEntry(entryName))
-                            zos.write(zis.readBytes())
-                            zos.closeEntry()
-                            writtenEntries.add(entryName)
-                        }
+            val ridMappings = calculateAllRidMappings(chartInfo, currentDrawingRels)
+
+            writePendingDrawingFiles(ctx, pendingDrawingFiles, ridMappings)
+            writePendingDrawingRelsFiles(ctx, pendingDrawingRelsFiles, ridMappings)
+            writeChartFiles(ctx)
+        }
+
+        return output.toByteArray()
+    }
+
+    private data class RestoreContext(
+        val zos: ZipOutputStream,
+        val chartInfo: ChartInfo,
+        val variableResolver: ((String) -> String)?,
+        val writtenEntries: MutableSet<String> = mutableSetOf()
+    )
+
+    private class PendingFile(val path: String, val entryName: String, val content: ByteArray) {
+        operator fun component1() = path
+        operator fun component2() = entryName
+        operator fun component3() = content
+    }
+
+    private data class CollectedData(
+        val currentDrawingRels: Map<String, String>,
+        val pendingDrawingFiles: List<PendingFile>,
+        val pendingDrawingRelsFiles: List<PendingFile>
+    )
+
+    private fun collectAndCopyEntries(inputBytes: ByteArray, ctx: RestoreContext): CollectedData {
+        val currentDrawingRels = mutableMapOf<String, String>()
+        val pendingDrawingFiles = mutableListOf<PendingFile>()
+        val pendingDrawingRelsFiles = mutableListOf<PendingFile>()
+
+        ZipInputStream(ByteArrayInputStream(inputBytes)).use { zis ->
+            var entry = zis.nextEntry
+            while (entry != null) {
+                val path = "/" + entry.name
+                val entryName = entry.name
+
+                when {
+                    entryName == "[Content_Types].xml" -> {
+                        val updatedContent = addChartAndDrawingContentTypes(
+                            String(zis.readBytes(), Charsets.UTF_8), ctx.chartInfo
+                        )
+                        ctx.zos.putNextEntry(ZipEntry(entryName))
+                        ctx.zos.write(updatedContent.toByteArray(Charsets.UTF_8))
+                        ctx.zos.closeEntry()
+                        ctx.writtenEntries.add(entryName)
                     }
-                    entry = zis.nextEntry
+                    DRAWING_PATH_PATTERN.matches(path) && !path.contains("/_rels/") -> {
+                        pendingDrawingFiles.add(PendingFile(path, entryName, zis.readBytes()))
+                    }
+                    DRAWING_RELS_PATH_PATTERN.matches(path) -> {
+                        val content = zis.readBytes()
+                        currentDrawingRels[path] = String(content, Charsets.UTF_8)
+                        pendingDrawingRelsFiles.add(PendingFile(path, entryName, content))
+                    }
+                    else -> {
+                        ctx.zos.putNextEntry(ZipEntry(entryName))
+                        ctx.zos.write(zis.readBytes())
+                        ctx.zos.closeEntry()
+                        ctx.writtenEntries.add(entryName)
+                    }
                 }
-            }
-
-            // rId 매핑 계산 (드로잉 관계 파일 수집 후)
-            val ridMappings = mutableMapOf<String, Map<String, String>>()
-            chartInfo.drawingRelsFiles.forEach { (relsPath, originalRelsBytes) ->
-                val currentRelsXml = currentDrawingRels[relsPath]
-                if (currentRelsXml != null) {
-                    val originalRelsXml = String(originalRelsBytes, Charsets.UTF_8)
-                    ridMappings[relsPath] = calculateRidMapping(currentRelsXml, originalRelsXml)
-                }
-            }
-
-            // 보관된 드로잉 파일 처리
-            pendingDrawingFiles.forEach { (path, entryName, currentContent) ->
-                val originalDrawing = chartInfo.drawingFiles[path]
-                    ?: chartInfo.allDrawingFiles[path]
-
-                val drawingName = path.substringAfterLast("/")
-                val relsPath = "/xl/drawings/_rels/$drawingName.rels"
-                val ridMapping = ridMappings[relsPath] ?: emptyMap()
-
-                var mergedContent = if (originalDrawing != null) {
-                    mergeDrawingXml(
-                        String(currentContent, Charsets.UTF_8),
-                        String(originalDrawing, Charsets.UTF_8),
-                        ridMapping
-                    )
-                } else {
-                    String(currentContent, Charsets.UTF_8)
-                }
-
-                if (variableResolver != null) {
-                    mergedContent = variableResolver(mergedContent)
-                }
-
-                zos.putNextEntry(ZipEntry(entryName))
-                zos.write(mergedContent.toByteArray(Charsets.UTF_8))
-                zos.closeEntry()
-                writtenEntries.add(entryName)
-            }
-
-            // 보관된 드로잉 관계 파일 처리
-            pendingDrawingRelsFiles.forEach { (path, entryName, currentContent) ->
-                val originalRels = chartInfo.drawingRelsFiles[path]
-                val ridMapping = ridMappings[path] ?: emptyMap()
-
-                val mergedContent = if (originalRels != null) {
-                    mergeDrawingRelsXml(
-                        String(currentContent, Charsets.UTF_8),
-                        String(originalRels, Charsets.UTF_8),
-                        ridMapping
-                    )
-                } else {
-                    String(currentContent, Charsets.UTF_8)
-                }
-
-                zos.putNextEntry(ZipEntry(entryName))
-                zos.write(mergedContent.toByteArray(Charsets.UTF_8))
-                zos.closeEntry()
-                writtenEntries.add(entryName)
-            }
-
-            // 차트 파일 추가 (변수 치환 적용)
-            chartInfo.chartFiles.forEach { (path, bytes) ->
-                val processedBytes = if (variableResolver != null && path.endsWith(".xml")) {
-                    val content = String(bytes, Charsets.UTF_8)
-                    val processed = variableResolver(content)
-                    processed.toByteArray(Charsets.UTF_8)
-                } else {
-                    bytes
-                }
-                addZipEntry(zos, path, processedBytes, writtenEntries)
-            }
-
-            // 차트 관계 파일 추가
-            chartInfo.chartRelsFiles.forEach { (path, bytes) ->
-                addZipEntry(zos, path, bytes, writtenEntries)
-            }
-
-            // 현재 파일에 없는 드로잉 파일 추가
-            chartInfo.drawingFiles.forEach { (path, bytes) ->
-                addZipEntry(zos, path, bytes, writtenEntries)
-            }
-
-            // 현재 파일에 없는 드로잉 관계 파일 추가
-            chartInfo.drawingRelsFiles.forEach { (path, bytes) ->
-                addZipEntry(zos, path, bytes, writtenEntries)
+                entry = zis.nextEntry
             }
         }
 
-        LOG.debug("차트 복원 완료")
-        return output.toByteArray()
+        return CollectedData(currentDrawingRels, pendingDrawingFiles, pendingDrawingRelsFiles)
+    }
+
+    private fun calculateAllRidMappings(
+        chartInfo: ChartInfo,
+        currentDrawingRels: Map<String, String>
+    ): Map<String, Map<String, String>> = buildMap {
+        chartInfo.drawingRelsFiles.forEach { (relsPath, originalRelsBytes) ->
+            currentDrawingRels[relsPath]?.let { currentRelsXml ->
+                put(relsPath, calculateRidMapping(currentRelsXml, String(originalRelsBytes, Charsets.UTF_8)))
+            }
+        }
+    }
+
+    private fun writePendingDrawingFiles(
+        ctx: RestoreContext,
+        pendingFiles: List<PendingFile>,
+        ridMappings: Map<String, Map<String, String>>
+    ) {
+        pendingFiles.forEach { (path, entryName, currentContent) ->
+            val originalDrawing = ctx.chartInfo.drawingFiles[path]
+                ?: ctx.chartInfo.allDrawingFiles[path]
+
+            val ridMapping = ridMappings["/xl/drawings/_rels/${path.substringAfterLast("/")}.rels"]
+                ?: emptyMap()
+
+            var mergedContent = if (originalDrawing != null) {
+                mergeDrawingXml(
+                    String(currentContent, Charsets.UTF_8),
+                    String(originalDrawing, Charsets.UTF_8),
+                    ridMapping
+                )
+            } else {
+                String(currentContent, Charsets.UTF_8)
+            }
+
+            ctx.variableResolver?.let { mergedContent = it(mergedContent) }
+
+            ctx.zos.putNextEntry(ZipEntry(entryName))
+            ctx.zos.write(mergedContent.toByteArray(Charsets.UTF_8))
+            ctx.zos.closeEntry()
+            ctx.writtenEntries.add(entryName)
+        }
+    }
+
+    private fun writePendingDrawingRelsFiles(
+        ctx: RestoreContext,
+        pendingFiles: List<PendingFile>,
+        ridMappings: Map<String, Map<String, String>>
+    ) {
+        pendingFiles.forEach { (path, entryName, currentContent) ->
+            val originalRels = ctx.chartInfo.drawingRelsFiles[path]
+            val ridMapping = ridMappings[path] ?: emptyMap()
+
+            val mergedContent = if (originalRels != null) {
+                mergeDrawingRelsXml(
+                    String(currentContent, Charsets.UTF_8),
+                    String(originalRels, Charsets.UTF_8),
+                    ridMapping
+                )
+            } else {
+                String(currentContent, Charsets.UTF_8)
+            }
+
+            ctx.zos.putNextEntry(ZipEntry(entryName))
+            ctx.zos.write(mergedContent.toByteArray(Charsets.UTF_8))
+            ctx.zos.closeEntry()
+            ctx.writtenEntries.add(entryName)
+        }
+    }
+
+    private fun writeChartFiles(ctx: RestoreContext) {
+        ctx.chartInfo.chartFiles.forEach { (path, bytes) ->
+            val processedBytes = if (ctx.variableResolver != null && path.endsWith(".xml")) {
+                ctx.variableResolver(String(bytes, Charsets.UTF_8)).toByteArray(Charsets.UTF_8)
+            } else {
+                bytes
+            }
+            addZipEntry(ctx.zos, path, processedBytes, ctx.writtenEntries)
+        }
+
+        ctx.chartInfo.chartRelsFiles.forEach { (path, bytes) ->
+            addZipEntry(ctx.zos, path, bytes, ctx.writtenEntries)
+        }
+
+        ctx.chartInfo.drawingFiles.forEach { (path, bytes) ->
+            addZipEntry(ctx.zos, path, bytes, ctx.writtenEntries)
+        }
+        ctx.chartInfo.drawingRelsFiles.forEach { (path, bytes) ->
+            addZipEntry(ctx.zos, path, bytes, ctx.writtenEntries)
+        }
     }
 
     /**
      * 원본 드로잉 rels의 차트 관계 rId를 새 rId로 매핑 계산
      */
     private fun calculateRidMapping(currentRelsXml: String, originalRelsXml: String): Map<String, String> {
-        // 현재 rels의 최대 rId
         val currentMaxRid = RELS_RID_PATTERN.findAll(currentRelsXml)
             .mapNotNull { match ->
                 val ridValue = match.groupValues[1]
@@ -319,7 +337,6 @@ internal class ChartProcessor {
             }
             .maxOrNull() ?: 0
 
-        // 원본에서 차트 관계 추출
         val chartRels = CHART_REL_ID_TARGET_PATTERN.findAll(originalRelsXml)
             .filter { it.groupValues[2].contains("charts/") }
             .toList()
@@ -343,34 +360,27 @@ internal class ChartProcessor {
      * @param ridMapping 원본 rId -> 새 rId 매핑
      */
     private fun mergeDrawingXml(currentXml: String, originalXml: String, ridMapping: Map<String, String>): String {
-        // 원본에서 차트 앵커(graphicFrame) 추출
         val chartAnchors = GRAPHIC_FRAME_PATTERN.findAll(originalXml).map { it.value }.toList()
 
-        // 현재 드로잉에서 SXSSF가 생성한 차트 앵커 제거 (원본 차트 앵커로 대체하기 위해)
-        // SXSSF는 차트 앵커를 자체적으로 생성하지만, 우리는 원본 템플릿의 차트 앵커를 사용
+        // SXSSF가 생성한 차트 앵커를 원본 템플릿의 차트 앵커로 대체
         var workingXml = currentXml
         if (chartAnchors.isNotEmpty()) {
             workingXml = GRAPHIC_FRAME_PATTERN.replace(workingXml, "")
         }
 
-        // 현재(작업 중인) 드로잉의 twoCellAnchor 추출
         val currentTwoCellAnchors = TWO_CELL_ANCHOR_PATTERN.findAll(workingXml).map { it.value }.toSet()
         val currentOneCellAnchors = ONE_CELL_ANCHOR_PATTERN.findAll(workingXml).map { it.value }.toSet()
 
-        // 원본에서 twoCellAnchor 추출하고 타입별로 분류
         val originalTwoCellAnchors = TWO_CELL_ANCHOR_PATTERN.findAll(originalXml).map { it.value }.toList()
 
-        // 도형 앵커 (sp 포함, graphicFrame 미포함)
         val shapeAnchors = originalTwoCellAnchors
             .filter { it.contains("<xdr:sp") && !it.contains("<xdr:graphicFrame") }
             .filter { it !in currentTwoCellAnchors }
 
-        // 연결선 앵커 (cxnSp 포함, graphicFrame 미포함)
         val connectorAnchors = originalTwoCellAnchors
             .filter { it.contains("<xdr:cxnSp") && !it.contains("<xdr:graphicFrame") }
             .filter { it !in currentTwoCellAnchors }
 
-        // 원본에서 oneCellAnchor 추출 - 현재 드로잉에 없는 것만
         val oneCellAnchors = ONE_CELL_ANCHOR_PATTERN.findAll(originalXml)
             .map { it.value }
             .filter { it !in currentOneCellAnchors }
@@ -381,7 +391,6 @@ internal class ChartProcessor {
             return workingXml
         }
 
-        // 차트 앵커의 rId를 매핑된 새 값으로 변경
         val updatedChartAnchors = chartAnchors.map { anchor ->
             var updated = anchor
             ridMapping.forEach { (oldRid, newRid) ->
@@ -390,16 +399,13 @@ internal class ChartProcessor {
             updated
         }
 
-        // </xdr:wsDr> 앞에 앵커들 삽입
         val insertPosition = workingXml.lastIndexOf("</xdr:wsDr>")
         if (insertPosition == -1) {
             return workingXml
         }
 
-        val allAnchors = (shapeAnchors + connectorAnchors + oneCellAnchors + updatedChartAnchors).joinToString("")
-
-        return workingXml.substring(0, insertPosition) +
-            allAnchors +
+        return workingXml.take(insertPosition) +
+            (shapeAnchors + connectorAnchors + oneCellAnchors + updatedChartAnchors).joinToString("") +
             workingXml.substring(insertPosition)
     }
 
@@ -408,14 +414,12 @@ internal class ChartProcessor {
      * @param ridMapping 원본 rId -> 새 rId 매핑
      */
     private fun mergeDrawingRelsXml(currentXml: String, originalXml: String, ridMapping: Map<String, String>): String {
-        // 원본에서 차트 참조 추출
         val chartRels = CHART_REL_TARGET_PATTERN.findAll(originalXml).map { it.value }.toList()
 
         if (chartRels.isEmpty()) {
             return currentXml
         }
 
-        // 차트 관계의 rId를 매핑된 새 값으로 변경
         val updatedRels = chartRels.map { rel ->
             var updated = rel
             ridMapping.forEach { (oldRid, newRid) ->
@@ -424,13 +428,12 @@ internal class ChartProcessor {
             updated
         }
 
-        // </Relationships> 앞에 차트 관계 삽입
         val insertPosition = currentXml.lastIndexOf("</Relationships>")
         if (insertPosition == -1) {
             return currentXml
         }
 
-        return currentXml.substring(0, insertPosition) +
+        return currentXml.take(insertPosition) +
             updatedRels.joinToString("") +
             currentXml.substring(insertPosition)
     }
@@ -466,32 +469,25 @@ internal class ChartProcessor {
 
     private fun extractChartAndDrawingContentTypes(
         contentTypesXml: String,
-        chartRelatedDrawings: ChartRelatedDrawings
-    ): List<String> {
-        val entries = mutableListOf<String>()
-
-        val drawingPaths = chartRelatedDrawings.drawingFiles.keys.map { it.removePrefix("/") }
-
+        @Suppress("UNUSED_PARAMETER") chartRelatedDrawings: ChartRelatedDrawings
+    ): List<String> = buildList {
         OVERRIDE_PATTERN.findAll(contentTypesXml).forEach { match ->
-            val partName = match.groupValues[1]
             val contentType = match.groupValues[2]
-
-            if (partName.contains("/charts/") ||
+            if (match.groupValues[1].contains("/charts/") ||
                 contentType == CHART_CONTENT_TYPE ||
                 contentType == CHART_STYLE_CONTENT_TYPE ||
                 contentType == CHART_COLORS_CONTENT_TYPE
             ) {
-                entries.add(match.value)
+                add(match.value)
             }
-
-            // 드로잉 콘텐츠 타입은 더 이상 추출하지 않음 (기존 것 유지)
         }
-
-        return entries
     }
 
     /**
      * 차트 파일만 제거 (드로잉은 유지)
+     *
+     * 차트 파일과 함께 drawing rels의 차트 참조도 제거하여
+     * POI가 워크북을 열 때 "Skipped invalid entry" 경고가 발생하지 않도록 합니다.
      */
     private fun removeChartFilesOnly(inputBytes: ByteArray): ByteArray {
         val output = ByteArrayOutputStream()
@@ -506,10 +502,17 @@ internal class ChartProcessor {
                         CHART_RELS_PATH_PATTERN.matches(path)
 
                     if (!shouldSkip) {
-                        when (entry.name) {
-                            "[Content_Types].xml" -> {
+                        when {
+                            entry.name == "[Content_Types].xml" -> {
                                 val content = String(zis.readBytes(), Charsets.UTF_8)
                                 val cleaned = removeChartContentTypes(content)
+                                zos.putNextEntry(ZipEntry(entry.name))
+                                zos.write(cleaned.toByteArray(Charsets.UTF_8))
+                                zos.closeEntry()
+                            }
+                            DRAWING_RELS_PATH_PATTERN.matches(path) -> {
+                                val content = String(zis.readBytes(), Charsets.UTF_8)
+                                val cleaned = removeChartReferencesFromDrawingRels(content)
                                 zos.putNextEntry(ZipEntry(entry.name))
                                 zos.write(cleaned.toByteArray(Charsets.UTF_8))
                                 zos.closeEntry()
@@ -528,6 +531,11 @@ internal class ChartProcessor {
 
         return output.toByteArray()
     }
+
+    private fun removeChartReferencesFromDrawingRels(relsXml: String): String =
+        relsXml
+            .replace(CHART_REL_TARGET_PATTERN, "")
+            .replace(MULTIPLE_NEWLINES_PATTERN, "\n")
 
     private fun removeChartContentTypes(contentTypesXml: String): String =
         contentTypesXml
@@ -550,7 +558,7 @@ internal class ChartProcessor {
 
         if (entriesToAdd.isEmpty()) return contentTypesXml
 
-        return contentTypesXml.substring(0, insertPosition) +
+        return contentTypesXml.take(insertPosition) +
             entriesToAdd + "\n" +
             contentTypesXml.substring(insertPosition)
     }

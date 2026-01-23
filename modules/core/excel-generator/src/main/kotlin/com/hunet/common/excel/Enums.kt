@@ -64,14 +64,6 @@ enum class FileConflictPolicy {
  */
 enum class MissingDataBehavior {
     /**
-     * 무시하고 마커를 그대로 유지.
-     *
-     * 템플릿의 `${variableName}`, `${repeat(...)}`, `${image.name}` 등의
-     * 마커가 치환되지 않고 원본 그대로 출력됩니다.
-     */
-    IGNORE,
-
-    /**
      * 경고 로그를 출력하고 마커를 그대로 유지 (기본값).
      *
      * 누락된 데이터에 대해 WARNING 레벨 로그를 출력합니다.
@@ -83,7 +75,7 @@ enum class MissingDataBehavior {
      * 예외를 발생시킴.
      *
      * 데이터 무결성이 중요한 경우 사용합니다.
-     * [MissingTemplateDataException]이 발생합니다.
+     * [com.hunet.common.excel.exception.MissingTemplateDataException]이 발생합니다.
      */
     THROW
 }

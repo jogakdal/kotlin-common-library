@@ -31,7 +31,7 @@ internal class SheetLayoutApplier {
     fun applyMergedRegions(
         sheet: SXSSFSheet,
         mergedRegions: List<CellRangeAddress>,
-        repeatRegions: Map<Int, RowBlueprint.RepeatRow>,
+        repeatRegions: Map<Int, RowSpec.RepeatRow>,
         data: Map<String, Any>,
         totalRowOffset: Int
     ) {
@@ -89,8 +89,8 @@ internal class SheetLayoutApplier {
      */
     fun applyConditionalFormattings(
         sheet: SXSSFSheet,
-        conditionalFormattings: List<ConditionalFormattingInfo>,
-        repeatRegions: Map<Int, RowBlueprint.RepeatRow>,
+        conditionalFormattings: List<ConditionalFormattingSpec>,
+        repeatRegions: Map<Int, RowSpec.RepeatRow>,
         data: Map<String, Any>,
         totalRowOffset: Int
     ) {
@@ -197,7 +197,7 @@ internal class SheetLayoutApplier {
     fun applyHeaderFooter(
         workbook: SXSSFWorkbook,
         sheetIndex: Int,
-        headerFooter: HeaderFooterInfo?,
+        headerFooter: HeaderFooterSpec?,
         data: Map<String, Any>,
         textEvaluator: (String, Map<String, Any>) -> String
     ) {
@@ -280,7 +280,7 @@ internal class SheetLayoutApplier {
     /**
      * 인쇄 설정 적용 (SXSSF 모드용)
      */
-    fun applyPrintSetup(sheet: SXSSFSheet, printSetup: PrintSetupInfo?) {
+    fun applyPrintSetup(sheet: SXSSFSheet, printSetup: PrintSetupSpec?) {
         if (printSetup == null) return
 
         val ps = sheet.printSetup

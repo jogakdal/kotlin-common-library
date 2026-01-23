@@ -1,13 +1,12 @@
 package com.hunet.common.excel.engine.processors
 
 import com.hunet.common.excel.MissingDataBehavior
-import com.hunet.common.excel.MissingTemplateDataException
+import com.hunet.common.excel.exception.MissingTemplateDataException
 import com.hunet.common.excel.engine.ExcelProcessor
 import com.hunet.common.excel.engine.ProcessingContext
 import com.hunet.common.excel.engine.RequiredNames
 import com.hunet.common.excel.engine.TemplateAnalyzer
 import com.hunet.common.excel.engine.TemplateRenderingEngine
-import com.hunet.common.excel.engine.extractRequiredNames
 import com.hunet.common.logging.commonLogger
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.ByteArrayInputStream
@@ -29,7 +28,7 @@ internal class TemplateRenderProcessor : ExcelProcessor {
         private val LOG by commonLogger()
     }
 
-    override val name: String = "TemplateRender"
+    override val name = "TemplateRender"
 
     override fun process(context: ProcessingContext): ProcessingContext {
         // 템플릿 분석하여 필요한 데이터 이름 추출
@@ -66,9 +65,6 @@ internal class TemplateRenderProcessor : ExcelProcessor {
      * 템플릿에 필요한 데이터가 DataProvider에 있는지 검증합니다.
      */
     private fun validateMissingData(context: ProcessingContext, requiredNames: RequiredNames) {
-        val behavior = context.config.missingDataBehavior
-        if (behavior == MissingDataBehavior.IGNORE) return
-
         val dataProvider = context.dataProvider
 
         // 실제 제공되는 데이터 확인
@@ -85,7 +81,7 @@ internal class TemplateRenderProcessor : ExcelProcessor {
             return
         }
 
-        when (behavior) {
+        when (context.config.missingDataBehavior) {
             MissingDataBehavior.WARN -> {
                 if (missingVariables.isNotEmpty()) {
                     LOG.warn("템플릿에 필요한 변수가 누락되었습니다: {}", missingVariables)
@@ -100,7 +96,6 @@ internal class TemplateRenderProcessor : ExcelProcessor {
             MissingDataBehavior.THROW -> {
                 throw MissingTemplateDataException(missingVariables, missingCollections, missingImages)
             }
-            else -> { /* IGNORE는 위에서 처리됨 */ }
         }
     }
 }

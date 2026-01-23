@@ -47,6 +47,21 @@ internal fun Int.toColumnLetter(): String = buildString {
 @JvmName("indexToColumnName")
 internal fun toColumnLetter(index: Int) = index.toColumnLetter()
 
+/**
+ * 셀 참조 문자열을 파싱합니다.
+ * 예: "B5" → (row=4, col=1)
+ *
+ * @param ref 셀 참조 문자열 (예: "A1", "B5", "AA100")
+ * @return Pair(행 인덱스, 열 인덱스) - 0-based
+ */
+internal fun parseCellRef(ref: String): Pair<Int, Int> {
+    val colPart = ref.takeWhile(Char::isLetter).uppercase()
+    val rowPart = ref.dropWhile(Char::isLetter)
+    val col = colPart.toColumnIndex()
+    val row = rowPart.toInt() - 1
+    return row to col
+}
+
 // ========== XML 유틸리티 ==========
 
 /**
@@ -167,7 +182,7 @@ internal fun ByteArray.encryptExcelTo(password: String, output: OutputStream) {
  *
  * Excel 파일이 처음 열릴 때:
  * - sheetIndex 시트가 활성화됩니다
- * - cellAddress 셀이 선택됩니다
+ * - 모든 시트에서 cellAddress 셀이 선택됩니다
  * - 스크롤 위치가 cellAddress로 설정됩니다
  */
 internal fun Workbook.setInitialView(sheetIndex: Int = 0, cellAddress: String = "A1") {
@@ -175,12 +190,13 @@ internal fun Workbook.setInitialView(sheetIndex: Int = 0, cellAddress: String = 
 
     setActiveSheet(sheetIndex)
 
-    for (i in 0 until numberOfSheets) {
-        getSheetAt(i).isSelected = (i == sheetIndex)
-    }
+    val cellAddr = CellAddress(cellAddress)
 
-    getSheetAt(sheetIndex).apply {
-        activeCell = CellAddress(cellAddress)
-        showInPane(activeCell.row, activeCell.column)
+    for (i in 0 until numberOfSheets) {
+        getSheetAt(i).apply {
+            isSelected = (i == sheetIndex)
+            activeCell = cellAddr
+            showInPane(cellAddr.row, cellAddr.column)
+        }
     }
 }

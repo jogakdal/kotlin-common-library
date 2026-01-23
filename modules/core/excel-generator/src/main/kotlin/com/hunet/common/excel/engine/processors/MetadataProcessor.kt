@@ -15,7 +15,6 @@ import java.util.*
  * Excel에서 "파일 > 정보 > 속성"에서 확인할 수 있습니다.
  */
 internal class MetadataProcessor : ExcelProcessor {
-
     override val name: String = "Metadata"
 
     /**
@@ -37,12 +36,12 @@ internal class MetadataProcessor : ExcelProcessor {
             val coreProps = props.coreProperties
             val extProps = props.extendedProperties.underlyingProperties
 
-            metadata.title?.let { coreProps.setTitle(it) }
-            metadata.author?.let { coreProps.setCreator(it) }
+            metadata.title?.let { coreProps.title = it }
+            metadata.author?.let { coreProps.creator = it }
             metadata.subject?.let { coreProps.setSubjectProperty(it) }
-            metadata.keywords?.let { coreProps.setKeywords(it.joinToString(", ")) }
-            metadata.description?.let { coreProps.setDescription(it) }
-            metadata.category?.let { coreProps.setCategory(it) }
+            metadata.keywords?.let { coreProps.keywords = it.joinToString(", ") }
+            metadata.description?.let { coreProps.description = it }
+            metadata.category?.let { coreProps.category = it }
             metadata.company?.let { extProps.company = it }
             metadata.manager?.let { extProps.manager = it }
             metadata.created?.let {

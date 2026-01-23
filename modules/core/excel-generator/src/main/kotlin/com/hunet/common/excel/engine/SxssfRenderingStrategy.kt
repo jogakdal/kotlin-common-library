@@ -1,7 +1,10 @@
 package com.hunet.common.excel.engine
 
-import com.hunet.common.excel.FormulaExpansionException
+import com.hunet.common.excel.exception.FormulaExpansionException
+import com.hunet.common.excel.findMergedRegion
+import com.hunet.common.excel.parseCellRef
 import com.hunet.common.excel.setInitialView
+import com.hunet.common.excel.toColumnLetter
 import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.CellStyle
 import org.apache.poi.ss.util.CellRangeAddress
@@ -16,7 +19,7 @@ import java.io.ByteArrayOutputStream
  * SXSSF 기반 스트리밍 렌더링 전략.
  *
  * 특징:
- * - 청사진 기반 순차 생성
+ * - 명세 기반 순차 생성
  * - 100행 버퍼로 메모리 효율적
  * - 수식 재계산은 Excel이 파일 열 때 수행
  *
@@ -50,13 +53,15 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
                     workbook.xssfWorkbook.getCellStyleAt(style.index.toInt())
                 }
                 val imageLocations = mutableListOf<ImageLocation>()
+                val floatingImageLocations = mutableListOf<FloatingImageLocation>()
 
-                blueprint.sheets.forEachIndexed { index, sheetBlueprint ->
+                blueprint.sheets.forEachIndexed { index, sheetSpec ->
                     val sheet = workbook.getSheetAt(index) as SXSSFSheet
-                    processSheetSxssf(sheet, sheetBlueprint, data, styleMap, imageLocations, index, context)
+                    processSheetSxssf(sheet, sheetSpec, data, styleMap, imageLocations, floatingImageLocations, index, context)
                 }
 
                 insertImagesSxssf(workbook, imageLocations, data, context)
+                insertFloatingImagesSxssf(workbook, floatingImageLocations, data, context)
 
                 for (i in 0 until workbook.numberOfSheets) {
                     workbook.getSheetAt(i).forceFormulaRecalculation = true
@@ -90,21 +95,18 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
         }
     }
 
-    private fun extractStyles(workbook: XSSFWorkbook): Map<Short, XSSFCellStyle> {
-        val styles = mutableMapOf<Short, XSSFCellStyle>()
-        for (i in 0 until workbook.numCellStyles) {
-            val style = workbook.getCellStyleAt(i) as XSSFCellStyle
-            styles[i.toShort()] = style
+    private fun extractStyles(workbook: XSSFWorkbook): Map<Short, XSSFCellStyle> =
+        (0 until workbook.numCellStyles).associate { i ->
+            i.toShort() to workbook.getCellStyleAt(i) as XSSFCellStyle
         }
-        return styles
-    }
 
     private fun processSheetSxssf(
         sheet: SXSSFSheet,
-        blueprint: SheetBlueprint,
+        blueprint: SheetSpec,
         data: Map<String, Any>,
         styleMap: Map<Short, CellStyle>,
         imageLocations: MutableList<ImageLocation>,
+        floatingImageLocations: MutableList<FloatingImageLocation>,
         sheetIndex: Int,
         context: RenderingContext
     ) {
@@ -117,7 +119,7 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
         var currentRowIndex = 0
         var rowOffset = 0
 
-        val repeatRegions = blueprint.rows.filterIsInstance<RowBlueprint.RepeatRow>()
+        val repeatRegions = blueprint.rows.filterIsInstance<RowSpec.RepeatRow>()
             .associateBy { it.templateRowIndex }
 
         val ctx = RowWriteContext(
@@ -128,35 +130,39 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
             templateMergedRegions = blueprint.mergedRegions,
             repeatRegions = repeatRegions,
             imageLocations = imageLocations,
+            floatingImageLocations = floatingImageLocations,
             context = context
         )
 
         val processedRepeatRows = mutableSetOf<Int>()
 
-        for (rowBlueprint in blueprint.rows) {
-            when (rowBlueprint) {
-                is RowBlueprint.StaticRow -> {
-                    writeRowSxssf(ctx, currentRowIndex, rowBlueprint, null, 0, rowOffset)
+        for (rowSpec in blueprint.rows) {
+            when (rowSpec) {
+                is RowSpec.StaticRow -> {
+                    writeRowSxssf(ctx, currentRowIndex, rowSpec, null, 0, rowOffset, totalRowOffset = rowOffset)
                     currentRowIndex++
                 }
 
-                is RowBlueprint.RepeatRow -> {
-                    if (rowBlueprint.templateRowIndex in processedRepeatRows) continue
+                is RowSpec.RepeatRow -> {
+                    if (rowSpec.templateRowIndex in processedRepeatRows) continue
 
-                    val items = data[rowBlueprint.collectionName] as? List<*> ?: emptyList<Any>()
-                    val templateRowCount = rowBlueprint.repeatEndRowIndex - rowBlueprint.templateRowIndex + 1
+                    val items = data[rowSpec.collectionName] as? List<*> ?: emptyList<Any>()
+                    val templateRowCount = rowSpec.repeatEndRowIndex - rowSpec.templateRowIndex + 1
 
-                    when (rowBlueprint.direction) {
+                    when (rowSpec.direction) {
                         RepeatDirection.DOWN -> {
+                            // 전체 반복 오프셋 (반복 완료 후의 총 오프셋)
+                            val totalRepeatOffset = (items.size * templateRowCount) - templateRowCount
+
                             items.forEachIndexed { itemIdx, item ->
                                 val itemData = if (item != null) {
-                                    data + (rowBlueprint.itemVariable to item)
+                                    data + (rowSpec.itemVariable to item)
                                 } else data
 
                                 val itemCtx = ctx.copy(data = itemData)
 
                                 for (templateOffset in 0 until templateRowCount) {
-                                    val templateRowIdx = rowBlueprint.templateRowIndex + templateOffset
+                                    val templateRowIdx = rowSpec.templateRowIndex + templateOffset
                                     val currentRowBp = blueprint.rows.find { it.templateRowIndex == templateRowIdx }
                                         ?: continue
 
@@ -164,30 +170,32 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
 
                                     writeRowSxssf(
                                         itemCtx, currentRowIndex, currentRowBp,
-                                        rowBlueprint.itemVariable, formulaRepeatIndex, rowOffset,
-                                        repeatRow = rowBlueprint
+                                        rowSpec.itemVariable, formulaRepeatIndex, rowOffset,
+                                        repeatRow = rowSpec,
+                                        repeatItemIndex = itemIdx,
+                                        totalRowOffset = rowOffset + totalRepeatOffset
                                     )
                                     currentRowIndex++
                                 }
                             }
-                            rowOffset += (items.size * templateRowCount) - templateRowCount
+                            rowOffset += totalRepeatOffset
                         }
 
                         RepeatDirection.RIGHT -> {
                             writeRowSxssfWithRightExpansion(
-                                sheet, currentRowIndex, rowBlueprint, blueprint, data, items, styleMap,
-                                blueprint.mergedRegions, imageLocations, sheetIndex, context
+                                sheet, currentRowIndex, rowSpec, blueprint, data, items, styleMap,
+                                blueprint.mergedRegions, imageLocations, floatingImageLocations, sheetIndex, context
                             )
                             currentRowIndex += templateRowCount
                         }
                     }
 
-                    for (r in rowBlueprint.templateRowIndex..rowBlueprint.repeatEndRowIndex) {
+                    for (r in rowSpec.templateRowIndex..rowSpec.repeatEndRowIndex) {
                         processedRepeatRows.add(r)
                     }
                 }
 
-                is RowBlueprint.RepeatContinuation -> {
+                is RowSpec.RepeatContinuation -> {
                     // RepeatRow에서 이미 처리됨
                 }
             }
@@ -210,43 +218,46 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
         val data: Map<String, Any>,
         val styleMap: Map<Short, CellStyle>,
         val templateMergedRegions: List<CellRangeAddress>,
-        val repeatRegions: Map<Int, RowBlueprint.RepeatRow>,
+        val repeatRegions: Map<Int, RowSpec.RepeatRow>,
         val imageLocations: MutableList<ImageLocation>,
+        val floatingImageLocations: MutableList<FloatingImageLocation>,
         val context: RenderingContext
     ) {
         fun copy(data: Map<String, Any>): RowWriteContext =
-            RowWriteContext(sheet, sheetIndex, data, styleMap, templateMergedRegions, repeatRegions, imageLocations, context)
+            RowWriteContext(sheet, sheetIndex, data, styleMap, templateMergedRegions, repeatRegions, imageLocations, floatingImageLocations, context)
     }
 
     private fun writeRowSxssf(
         ctx: RowWriteContext,
         rowIndex: Int,
-        blueprint: RowBlueprint,
+        blueprint: RowSpec,
         itemVariable: String?,
         repeatIndex: Int,
         rowOffset: Int,
-        repeatRow: RowBlueprint.RepeatRow? = null
+        repeatRow: RowSpec.RepeatRow? = null,
+        repeatItemIndex: Int = 0,
+        totalRowOffset: Int = 0
     ) {
         val row = ctx.sheet.createRow(rowIndex)
         blueprint.height?.let { row.height = it }
 
-        val repeatColRange = (blueprint as? RowBlueprint.RepeatRow)?.let {
+        val repeatColRange = (blueprint as? RowSpec.RepeatRow)?.let {
             it.repeatStartCol..it.repeatEndCol
         } ?: repeatRow?.let {
             it.repeatStartCol..it.repeatEndCol
         }
 
-        for (cellBlueprint in blueprint.cells) {
+        cellLoop@ for (cellSpec in blueprint.cells) {
             if (repeatColRange != null && repeatIndex > 0) {
-                if (cellBlueprint.columnIndex !in repeatColRange) {
+                if (cellSpec.columnIndex !in repeatColRange) {
                     continue
                 }
             }
 
-            val cell = row.createCell(cellBlueprint.columnIndex)
-            ctx.styleMap[cellBlueprint.styleIndex]?.let { cell.cellStyle = it }
+            val cell = row.createCell(cellSpec.columnIndex)
+            ctx.styleMap[cellSpec.styleIndex]?.let { cell.cellStyle = it }
 
-            when (val content = cellBlueprint.content) {
+            when (val content = cellSpec.content) {
                 is CellContent.Empty -> {}
 
                 is CellContent.StaticString -> {
@@ -277,7 +288,7 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
                         adjustedFormula = FormulaAdjuster.adjustForRepeatIndex(adjustedFormula, repeatIndex)
                     }
 
-                    if (rowOffset > 0 && blueprint is RowBlueprint.StaticRow) {
+                    if (rowOffset > 0 && blueprint is RowSpec.StaticRow) {
                         val repeatEndRow = ctx.repeatRegions.values.maxOfOrNull { it.repeatEndRowIndex } ?: -1
                         if (repeatEndRow >= 0 && blueprint.templateRowIndex > repeatEndRow) {
                             for (repeatRegion in ctx.repeatRegions.values) {
@@ -294,7 +305,7 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
                                     if (hasDiscontinuous && items.size > 255) {
                                         throw FormulaExpansionException(
                                             sheetName = ctx.sheet.sheetName,
-                                            cellRef = "${FormulaAdjuster.indexToColumnName(cellBlueprint.columnIndex)}${rowIndex + 1}",
+                                            cellRef = "${toColumnLetter(cellSpec.columnIndex)}${rowIndex + 1}",
                                             formula = content.formula
                                         )
                                     }
@@ -328,7 +339,7 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
                     val templateRow = blueprint.templateRowIndex
                     val mergedRegion = ctx.templateMergedRegions.find { region ->
                         templateRow >= region.firstRow && templateRow <= region.lastRow &&
-                            cellBlueprint.columnIndex >= region.firstColumn && cellBlueprint.columnIndex <= region.lastColumn
+                            cellSpec.columnIndex >= region.firstColumn && cellSpec.columnIndex <= region.lastColumn
                     }?.let { templateRegion ->
                         val rowDiff = rowIndex - templateRow
                         CellRangeAddress(
@@ -344,8 +355,35 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
                             sheetIndex = ctx.sheetIndex,
                             imageName = content.imageName,
                             rowIndex = rowIndex,
-                            colIndex = cellBlueprint.columnIndex,
+                            colIndex = cellSpec.columnIndex,
                             mergedRegion = mergedRegion
+                        )
+                    )
+                    cell.setBlank()
+                }
+
+                is CellContent.FloatingImageMarker -> {
+                    // position이 지정된 floatimage는 첫 번째 반복에서만 처리 (중복 방지)
+                    if (content.position != null && repeatItemIndex > 0) {
+                        cell.setBlank()
+                        continue@cellLoop
+                    }
+
+                    val (targetRow, targetCol) = if (content.position != null) {
+                        val (baseRow, baseCol) = parseCellRef(content.position)
+                        // position으로 지정된 셀에 전체 반복 오프셋 적용
+                        (baseRow + totalRowOffset) to baseCol
+                    } else {
+                        rowIndex to cellSpec.columnIndex
+                    }
+
+                    ctx.floatingImageLocations.add(
+                        FloatingImageLocation(
+                            sheetIndex = ctx.sheetIndex,
+                            imageName = content.imageName,
+                            rowIndex = targetRow,
+                            colIndex = targetCol,
+                            sizeSpec = content.sizeSpec
                         )
                     )
                     cell.setBlank()
@@ -361,13 +399,14 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
     private fun writeRowSxssfWithRightExpansion(
         sheet: SXSSFSheet,
         startRowIndex: Int,
-        repeatRow: RowBlueprint.RepeatRow,
-        blueprint: SheetBlueprint,
+        repeatRow: RowSpec.RepeatRow,
+        blueprint: SheetSpec,
         data: Map<String, Any>,
         items: List<*>,
         styleMap: Map<Short, CellStyle>,
         templateMergedRegions: List<CellRangeAddress>,
         imageLocations: MutableList<ImageLocation>,
+        floatingImageLocations: MutableList<FloatingImageLocation>,
         sheetIndex: Int,
         context: RenderingContext
     ) {
@@ -379,25 +418,25 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
             val templateRowIdx = repeatRow.templateRowIndex + rowOffset
             val currentRowIndex = startRowIndex + rowOffset
 
-            val rowBlueprint = blueprint.rows.find { it.templateRowIndex == templateRowIdx }
-            val cellBlueprints = rowBlueprint?.cells ?: continue
+            val rowSpec = blueprint.rows.find { it.templateRowIndex == templateRowIdx }
+            val cellSpecs = rowSpec?.cells ?: continue
 
             val row = sheet.createRow(currentRowIndex)
-            rowBlueprint.height?.let { row.height = it }
+            rowSpec.height?.let { row.height = it }
 
             // 반복 영역 밖의 셀들
-            for (cellBlueprint in cellBlueprints) {
-                if (cellBlueprint.columnIndex !in repeatRow.repeatStartCol..repeatRow.repeatEndCol) {
-                    val actualColIndex = if (cellBlueprint.columnIndex > repeatRow.repeatEndCol) {
-                        cellBlueprint.columnIndex + colShiftAmount
+            for (cellSpec in cellSpecs) {
+                if (cellSpec.columnIndex !in repeatRow.repeatStartCol..repeatRow.repeatEndCol) {
+                    val actualColIndex = if (cellSpec.columnIndex > repeatRow.repeatEndCol) {
+                        cellSpec.columnIndex + colShiftAmount
                     } else {
-                        cellBlueprint.columnIndex
+                        cellSpec.columnIndex
                     }
                     val cell = row.createCell(actualColIndex)
-                    styleMap[cellBlueprint.styleIndex]?.let { cell.cellStyle = it }
+                    styleMap[cellSpec.styleIndex]?.let { cell.cellStyle = it }
 
-                    val adjustedContent = if (cellBlueprint.content is CellContent.Formula) {
-                        var formula = (cellBlueprint.content as CellContent.Formula).formula
+                    val adjustedContent = if (cellSpec.content is CellContent.Formula) {
+                        var formula = (cellSpec.content as CellContent.Formula).formula
 
                         if (colShiftAmount > 0) {
                             formula = FormulaAdjuster.adjustForColumnExpansion(
@@ -407,7 +446,7 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
                             )
                         }
 
-                        if (cellBlueprint.columnIndex > repeatRow.repeatEndCol && items.size > 1) {
+                        if (cellSpec.columnIndex > repeatRow.repeatEndCol && items.size > 1) {
                             val (expandedFormula, hasDiscontinuous) = FormulaAdjuster.expandSingleRefToColumnRange(
                                 formula,
                                 repeatRow.repeatStartCol,
@@ -421,7 +460,7 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
                                 if (hasDiscontinuous && items.size > 255) {
                                     throw FormulaExpansionException(
                                         sheetName = sheet.sheetName,
-                                        cellRef = "${FormulaAdjuster.indexToColumnName(actualColIndex)}${currentRowIndex + 1}",
+                                        cellRef = "${toColumnLetter(actualColIndex)}${currentRowIndex + 1}",
                                         formula = formula
                                     )
                                 }
@@ -431,12 +470,13 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
 
                         CellContent.Formula(formula)
                     } else {
-                        cellBlueprint.content
+                        cellSpec.content
                     }
 
                     writeCellContentSxssf(
                         cell, adjustedContent, data, null, sheet, templateMergedRegions,
-                        imageLocations, sheetIndex, currentRowIndex, actualColIndex, context
+                        imageLocations, floatingImageLocations, sheetIndex, currentRowIndex, actualColIndex, context,
+                        colOffset = colShiftAmount
                     )
                 }
             }
@@ -449,14 +489,16 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
 
                 val colOffset = itemIdx * templateColCount
 
-                for (cellBlueprint in cellBlueprints) {
-                    if (cellBlueprint.columnIndex in repeatRow.repeatStartCol..repeatRow.repeatEndCol) {
-                        val targetColIdx = repeatRow.repeatStartCol + colOffset + (cellBlueprint.columnIndex - repeatRow.repeatStartCol)
+                for (cellSpec in cellSpecs) {
+                    if (cellSpec.columnIndex in repeatRow.repeatStartCol..repeatRow.repeatEndCol) {
+                        val targetColIdx = repeatRow.repeatStartCol + colOffset + (cellSpec.columnIndex - repeatRow.repeatStartCol)
                         val cell = row.createCell(targetColIdx)
-                        styleMap[cellBlueprint.styleIndex]?.let { cell.cellStyle = it }
+                        styleMap[cellSpec.styleIndex]?.let { cell.cellStyle = it }
                         writeCellContentSxssf(
-                            cell, cellBlueprint.content, itemData, repeatRow.itemVariable,
-                            sheet, templateMergedRegions, imageLocations, sheetIndex, currentRowIndex, targetColIdx, context
+                            cell, cellSpec.content, itemData, repeatRow.itemVariable,
+                            sheet, templateMergedRegions, imageLocations, floatingImageLocations, sheetIndex, currentRowIndex, targetColIdx, context,
+                            colOffset = colShiftAmount,
+                            repeatItemIndex = itemIdx
                         )
                     }
                 }
@@ -472,10 +514,13 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
         sheet: SXSSFSheet,
         templateMergedRegions: List<CellRangeAddress>,
         imageLocations: MutableList<ImageLocation>,
+        floatingImageLocations: MutableList<FloatingImageLocation>,
         sheetIndex: Int,
         rowIndex: Int,
         colIndex: Int,
-        context: RenderingContext
+        context: RenderingContext,
+        colOffset: Int = 0,
+        repeatItemIndex: Int = 0
     ) {
         when (content) {
             is CellContent.Empty -> {}
@@ -522,6 +567,33 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
                 cell.setBlank()
             }
 
+            is CellContent.FloatingImageMarker -> {
+                // position이 지정된 floatimage는 첫 번째 반복에서만 처리 (중복 방지)
+                if (content.position != null && repeatItemIndex > 0) {
+                    cell.setBlank()
+                    return
+                }
+
+                val (targetRow, targetCol) = if (content.position != null) {
+                    val (baseRow, baseCol) = parseCellRef(content.position)
+                    // position으로 지정된 셀에 전체 반복 오프셋 적용
+                    baseRow to (baseCol + colOffset)
+                } else {
+                    rowIndex to colIndex
+                }
+
+                floatingImageLocations.add(
+                    FloatingImageLocation(
+                        sheetIndex = sheetIndex,
+                        imageName = content.imageName,
+                        rowIndex = targetRow,
+                        colIndex = targetCol,
+                        sizeSpec = content.sizeSpec
+                    )
+                )
+                cell.setBlank()
+            }
+
             is CellContent.RepeatMarker -> {
                 cell.setBlank()
             }
@@ -544,6 +616,28 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
             context.imageInserter.insertImage(
                 workbook, sheet, imageBytes,
                 location.rowIndex, location.colIndex, location.mergedRegion
+            )
+        }
+    }
+
+    private fun insertFloatingImagesSxssf(
+        workbook: SXSSFWorkbook,
+        floatingImageLocations: List<FloatingImageLocation>,
+        data: Map<String, Any>,
+        context: RenderingContext
+    ) {
+        for (location in floatingImageLocations) {
+            val imageBytes = data["image.${location.imageName}"] as? ByteArray
+                ?: data[location.imageName] as? ByteArray
+                ?: continue
+
+            val sheet = workbook.getSheetAt(location.sheetIndex)
+
+            context.imageInserter.insertFloatingImage(
+                workbook, sheet, imageBytes,
+                location.rowIndex, location.colIndex,
+                location.sizeSpec,
+                sheet.findMergedRegion(location.rowIndex, location.colIndex)
             )
         }
     }

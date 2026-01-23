@@ -22,7 +22,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *     preserve-template-layout: true  # 템플릿 레이아웃 보존
  *     pivot-integer-format-index: 37  # 피벗 테이블 정수 필드 포맷 인덱스
  *     pivot-decimal-format-index: 39  # 피벗 테이블 소수점 필드 포맷 인덱스
- *     missing-data-behavior: warn     # ignore, warn, throw
+ *     missing-data-behavior: warn     # warn, throw
  * ```
  */
 @ConfigurationProperties(prefix = "hunet.excel")
@@ -75,7 +75,6 @@ data class ExcelGeneratorProperties(
 
     /**
      * 템플릿에 정의된 데이터가 없을 때의 동작.
-     * - ignore: 무시하고 마커 그대로 유지
      * - warn: 경고 로그 출력 후 마커 그대로 유지 (기본값)
      * - throw: MissingTemplateDataException 발생
      */
@@ -137,10 +136,9 @@ enum class FileConflictPolicyProperty {
  * 누락 데이터 동작 프로퍼티 (application.yml 바인딩용).
  */
 enum class MissingDataBehaviorProperty {
-    IGNORE, WARN, THROW;
+    WARN, THROW;
 
     fun toMissingDataBehavior(): MissingDataBehavior = when (this) {
-        IGNORE -> MissingDataBehavior.IGNORE
         WARN -> MissingDataBehavior.WARN
         THROW -> MissingDataBehavior.THROW
     }

@@ -1,5 +1,6 @@
 package com.hunet.common.excel.engine
 
+import com.hunet.common.excel.toColumnIndex
 import org.apache.poi.ss.usermodel.*
 import org.apache.poi.xssf.usermodel.XSSFConditionalFormattingRule
 import org.apache.poi.xssf.usermodel.XSSFSheet
@@ -17,7 +18,7 @@ private data class CellCoord(val row: Int, val col: Int)
 private data class CellRange(val start: CellCoord, val end: CellCoord)
 
 /**
- * 템플릿 분석기 - 템플릿을 분석하여 청사진 생성
+ * 템플릿 분석기 - 템플릿을 분석하여 워크북 명세 생성
  */
 class TemplateAnalyzer {
 
@@ -25,8 +26,9 @@ class TemplateAnalyzer {
         // ${repeat(collection=employees, range=A6:C6, var=emp)}
         // ${repeat(collection=employees, range=B5:B7, var=emp, direction=RIGHT)}
         // ${repeat(employees, A6:C6, emp)}
+        // Arguments can be quoted (", ', `) or unquoted
         private val REPEAT_PATTERN = Regex(
-            """\$\{repeat\s*\(\s*(?:collection\s*=\s*)?(\w+)\s*,\s*(?:range\s*=\s*)?([A-Za-z]+\d+:[A-Za-z]+\d+)\s*(?:,\s*(?:var\s*=\s*)?(\w+))?(?:\s*,\s*(?:direction\s*=\s*)?(DOWN|RIGHT))?\s*\)\}""",
+            """\$\{repeat\s*\(\s*(?:collection\s*=\s*)?["'`]?(\w+)["'`]?\s*,\s*(?:range\s*=\s*)?["'`]?([A-Za-z]+\d+:[A-Za-z]+\d+)["'`]?\s*(?:,\s*(?:var\s*=\s*)?["'`]?(\w+)["'`]?)?(?:\s*,\s*(?:direction\s*=\s*)?["'`]?(DOWN|RIGHT)["'`]?)?\s*\)\}""",
             RegexOption.IGNORE_CASE
         )
 
@@ -38,14 +40,20 @@ class TemplateAnalyzer {
 
         // ${image.name}
         private val IMAGE_PATTERN = Regex("""\$\{image\.(\w+)}""")
+
+        // ${floatimage(name)} or ${floatimage(name, position)} or ${floatimage(name, position, size)}
+        // Arguments can be quoted (", ', `) or unquoted: floatimage(ci, B5, 0:-1) == floatimage(ci, "B5", "0:-1")
+        private val FLOATIMAGE_PATTERN = Regex(
+            """\$\{floatimage\((\w+)(?:\s*,\s*["'`]?([A-Za-z]*\d*)["'`]?)?(?:\s*,\s*["'`]?(-?\d+:-?\d+)["'`]?)?\)}"""
+        )
     }
 
     /**
-     * 템플릿을 분석하여 워크북 청사진 생성
+     * 템플릿을 분석하여 워크북 명세 생성
      */
-    fun analyze(template: InputStream): WorkbookBlueprint {
+    fun analyze(template: InputStream): WorkbookSpec {
         return XSSFWorkbook(template).use { workbook ->
-            WorkbookBlueprint(
+            WorkbookSpec(
                 sheets = (0 until workbook.numberOfSheets).map { index ->
                     analyzeSheet(workbook, workbook.getSheetAt(index), index)
                 }
@@ -56,36 +64,27 @@ class TemplateAnalyzer {
     /**
      * 워크북과 함께 분석 (워크북 재사용 시)
      */
-    fun analyzeFromWorkbook(workbook: XSSFWorkbook): WorkbookBlueprint {
-        return WorkbookBlueprint(
+    fun analyzeFromWorkbook(workbook: XSSFWorkbook): WorkbookSpec {
+        return WorkbookSpec(
             sheets = (0 until workbook.numberOfSheets).map { index ->
                 analyzeSheet(workbook, workbook.getSheetAt(index), index)
             }
         )
     }
 
-    private fun analyzeSheet(workbook: XSSFWorkbook, sheet: Sheet, sheetIndex: Int): SheetBlueprint {
+    private fun analyzeSheet(workbook: XSSFWorkbook, sheet: Sheet, sheetIndex: Int): SheetSpec {
         val repeatRegions = findRepeatRegions(sheet)
-        val rows = buildRowBlueprints(sheet, repeatRegions)
-        val mergedRegions = (0 until sheet.numMergedRegions).map { sheet.getMergedRegion(it) }
 
-        val lastCol = sheet.maxColumnIndex()
-        val columnWidths = (0..lastCol).associateWith { sheet.getColumnWidth(it) }
-
-        val headerFooter = extractHeaderFooter(sheet)
-        val printSetup = extractPrintSetup(sheet)
-        val conditionalFormattings = extractConditionalFormattings(sheet)
-
-        return SheetBlueprint(
+        return SheetSpec(
             sheetName = sheet.sheetName,
             sheetIndex = sheetIndex,
-            rows = rows,
-            mergedRegions = mergedRegions,
-            columnWidths = columnWidths,
+            rows = buildRowSpecs(sheet, repeatRegions),
+            mergedRegions = (0 until sheet.numMergedRegions).map { sheet.getMergedRegion(it) },
+            columnWidths = (0..sheet.maxColumnIndex()).associateWith { sheet.getColumnWidth(it) },
             defaultRowHeight = sheet.defaultRowHeight,
-            headerFooter = headerFooter,
-            printSetup = printSetup,
-            conditionalFormattings = conditionalFormattings
+            headerFooter = extractHeaderFooter(sheet),
+            printSetup = extractPrintSetup(sheet),
+            conditionalFormattings = extractConditionalFormattings(sheet)
         )
     }
 
@@ -96,7 +95,7 @@ class TemplateAnalyzer {
      * 해당 요소가 없을 때 새로 생성하므로, ctWorksheet를 직접 사용하여
      * 부작용 없이 읽기만 수행합니다.
      */
-    private fun extractHeaderFooter(sheet: Sheet): HeaderFooterInfo? {
+    private fun extractHeaderFooter(sheet: Sheet): HeaderFooterSpec? {
         val xssfSheet = sheet as? XSSFSheet ?: return null
         val ctHf = xssfSheet.ctWorksheet?.headerFooter ?: return null
 
@@ -114,7 +113,7 @@ class TemplateAnalyzer {
         if (!hasAnyHeaderFooter) return null
 
         // Excel 헤더/푸터 형식: &L, &C, &R로 좌/중/우 구분 (예: "&L왼쪽&C중앙&R오른쪽")
-        return HeaderFooterInfo(
+        return HeaderFooterSpec(
             leftHeader = parseHeaderFooterSection(oddHeader, 'L'),
             centerHeader = parseHeaderFooterSection(oddHeader, 'C'),
             rightHeader = parseHeaderFooterSection(oddHeader, 'R'),
@@ -162,9 +161,9 @@ class TemplateAnalyzer {
     /**
      * 인쇄 설정 추출
      */
-    private fun extractPrintSetup(sheet: Sheet): PrintSetupInfo? {
+    private fun extractPrintSetup(sheet: Sheet): PrintSetupSpec? {
         val ps = sheet.printSetup ?: return null
-        return PrintSetupInfo(
+        return PrintSetupSpec(
             paperSize = ps.paperSize,
             landscape = ps.landscape,
             fitWidth = ps.fitWidth,
@@ -178,9 +177,9 @@ class TemplateAnalyzer {
     /**
      * 조건부 서식 정보 추출 (SXSSF 모드용)
      *
-     * 템플릿의 조건부 서식을 청사진에 저장하여 SXSSF 모드에서 복원할 수 있도록 합니다.
+     * 템플릿의 조건부 서식을 명세에 저장하여 SXSSF 모드에서 복원할 수 있도록 합니다.
      */
-    private fun extractConditionalFormattings(sheet: Sheet): List<ConditionalFormattingInfo> {
+    private fun extractConditionalFormattings(sheet: Sheet): List<ConditionalFormattingSpec> {
         val xssfSheet = sheet as? XSSFSheet ?: return emptyList()
         val scf = xssfSheet.sheetConditionalFormatting
         val count = scf.numConditionalFormattings
@@ -206,7 +205,7 @@ class TemplateAnalyzer {
                     }.getOrDefault(-1)
                 } ?: -1
 
-                ConditionalFormattingRuleInfo(
+                ConditionalFormattingRuleSpec(
                     conditionType = rule.conditionType ?: ConditionType.CELL_VALUE_IS,
                     comparisonOperator = rule.comparisonOperation ?: ComparisonOperator.NO_COMPARISON,
                     formula1 = rule.formula1,
@@ -219,7 +218,7 @@ class TemplateAnalyzer {
 
             if (rules.isEmpty()) return@mapNotNull null
 
-            ConditionalFormattingInfo(
+            ConditionalFormattingSpec(
                 ranges = ranges,
                 rules = rules
             )
@@ -229,8 +228,8 @@ class TemplateAnalyzer {
     /**
      * ${repeat(...)} 마커를 찾아 반복 영역 정보 추출
      */
-    private fun findRepeatRegions(sheet: Sheet): List<RepeatRegionInfo> {
-        val regions = mutableListOf<RepeatRegionInfo>()
+    private fun findRepeatRegions(sheet: Sheet): List<RepeatRegionSpec> {
+        val regions = mutableListOf<RepeatRegionSpec>()
 
         sheet.forEach { row ->
             row.forEach { cell ->
@@ -244,7 +243,7 @@ class TemplateAnalyzer {
                         val direction = if (directionStr == "RIGHT") RepeatDirection.RIGHT else RepeatDirection.DOWN
 
                         val cellRange = parseRange(range)
-                        regions.add(RepeatRegionInfo(
+                        regions.add(RepeatRegionSpec(
                             collection = collection,
                             variable = variable,
                             startRow = cellRange.start.row,
@@ -273,18 +272,18 @@ class TemplateAnalyzer {
      * 셀 참조 파싱 (예: "A6" -> CellCoord(row=5, col=0))
      */
     private fun parseCellRef(ref: String): CellCoord {
-        val colPart = ref.takeWhile(Char::isLetter).uppercase()
+        val colPart = ref.takeWhile(Char::isLetter)
         val rowPart = ref.dropWhile(Char::isLetter)
         return CellCoord(
             row = rowPart.toInt() - 1,
-            col = colPart.fold(0) { acc, c -> acc * 26 + (c - 'A' + 1) } - 1
+            col = toColumnIndex(colPart)
         )
     }
 
     /**
-     * 행별 청사진 생성
+     * 행별 명세 생성
      */
-    private fun buildRowBlueprints(sheet: Sheet, repeatRegions: List<RepeatRegionInfo>): List<RowBlueprint> {
+    private fun buildRowSpecs(sheet: Sheet, repeatRegions: List<RepeatRegionSpec>): List<RowSpec> {
         val repeatByStartRow = repeatRegions.associateBy { it.startRow }
 
         return buildList {
@@ -303,25 +302,25 @@ class TemplateAnalyzer {
         }
     }
 
-    private fun buildStaticRow(sheet: Sheet, rowIndex: Int): RowBlueprint.StaticRow {
+    private fun buildStaticRow(sheet: Sheet, rowIndex: Int): RowSpec.StaticRow {
         val row = sheet.getRow(rowIndex)
-        return RowBlueprint.StaticRow(
+        return RowSpec.StaticRow(
             templateRowIndex = rowIndex,
             height = row?.height,
-            cells = buildCellBlueprints(row, null)
+            cells = buildCellSpecs(row, null)
         )
     }
 
     private fun buildRepeatRow(
         sheet: Sheet,
         rowIndex: Int,
-        region: RepeatRegionInfo
-    ): RowBlueprint.RepeatRow {
+        region: RepeatRegionSpec
+    ): RowSpec.RepeatRow {
         val row = sheet.getRow(rowIndex)
-        return RowBlueprint.RepeatRow(
+        return RowSpec.RepeatRow(
             templateRowIndex = rowIndex,
             height = row?.height,
-            cells = buildCellBlueprints(row, region.variable),
+            cells = buildCellSpecs(row, region.variable),
             collectionName = region.collection,
             itemVariable = region.variable,
             repeatEndRowIndex = region.endRow,
@@ -336,17 +335,17 @@ class TemplateAnalyzer {
         rowIndex: Int,
         parentRowIndex: Int,
         repeatItemVariable: String
-    ): RowBlueprint.RepeatContinuation {
+    ): RowSpec.RepeatContinuation {
         val row = sheet.getRow(rowIndex)
-        return RowBlueprint.RepeatContinuation(
+        return RowSpec.RepeatContinuation(
             templateRowIndex = rowIndex,
             height = row?.height,
-            cells = buildCellBlueprints(row, repeatItemVariable),
+            cells = buildCellSpecs(row, repeatItemVariable),
             parentRepeatRowIndex = parentRowIndex
         )
     }
 
-    private fun findRepeatRegionInRow(row: Row): RepeatRegionInfo? {
+    private fun findRepeatRegionInRow(row: Row): RepeatRegionSpec? {
         row.forEach { cell ->
             if (cell.cellType == CellType.STRING) {
                 REPEAT_PATTERN.find(cell.stringCellValue ?: "")?.let { match ->
@@ -356,7 +355,7 @@ class TemplateAnalyzer {
                     val directionStr = match.groupValues[4].uppercase()
                     val direction = if (directionStr == "RIGHT") RepeatDirection.RIGHT else RepeatDirection.DOWN
                     val cellRange = parseRange(range)
-                    return RepeatRegionInfo(
+                    return RepeatRegionSpec(
                         collection, variable,
                         cellRange.start.row, cellRange.end.row,
                         cellRange.start.col, cellRange.end.col,
@@ -368,14 +367,14 @@ class TemplateAnalyzer {
         return null
     }
 
-    private fun buildCellBlueprints(
+    private fun buildCellSpecs(
         row: Row?,
         repeatItemVariable: String?
-    ): List<CellBlueprint> {
+    ): List<CellSpec> {
         if (row == null) return emptyList()
 
         return row.mapNotNull { cell ->
-            CellBlueprint(
+            CellSpec(
                 columnIndex = cell.columnIndex,
                 styleIndex = cell.cellStyle?.index ?: 0,
                 content = analyzeCellContent(cell, repeatItemVariable)
@@ -397,28 +396,34 @@ class TemplateAnalyzer {
     /**
      * 수식 내용 분석 - 변수 포함 여부 확인
      */
-    private fun analyzeFormulaContent(formula: String): CellContent {
-        val variables = VARIABLE_PATTERN.findAll(formula).map { it.groupValues[1] }.toList()
-        return if (variables.isNotEmpty()) {
-            CellContent.FormulaWithVariables(formula, variables)
-        } else {
-            CellContent.Formula(formula)
+    private fun analyzeFormulaContent(formula: String): CellContent =
+        VARIABLE_PATTERN.findAll(formula).map { it.groupValues[1] }.toList().let { variables ->
+            if (variables.isNotEmpty()) CellContent.FormulaWithVariables(formula, variables)
+            else CellContent.Formula(formula)
         }
-    }
 
     private fun analyzeStringContent(text: String?, repeatItemVariable: String?): CellContent {
         if (text.isNullOrEmpty()) return CellContent.Empty
 
         // 반복 마커
         REPEAT_PATTERN.find(text)?.let { match ->
-            val directionStr = match.groupValues[4].uppercase()
-            val direction = if (directionStr == "RIGHT") RepeatDirection.RIGHT else RepeatDirection.DOWN
+            val direction = if (match.groupValues[4].uppercase() == "RIGHT")
+                RepeatDirection.RIGHT else RepeatDirection.DOWN
             return CellContent.RepeatMarker(
                 collection = match.groupValues[1],
                 range = match.groupValues[2],
                 variable = match.groupValues[3].ifEmpty { match.groupValues[1] },
                 direction = direction
             )
+        }
+
+        // 플로팅 이미지 마커 - ${floatimage(name, position, size)}
+        FLOATIMAGE_PATTERN.find(text)?.let { match ->
+            val name = match.groupValues[1]
+            val position = match.groupValues[2].takeIf { it.isNotEmpty() }
+            val sizeStr = match.groupValues[3]
+            val sizeSpec = parseSizeSpec(sizeStr)
+            return CellContent.FloatingImageMarker(name, position, sizeSpec)
         }
 
         // 이미지 마커
@@ -428,20 +433,33 @@ class TemplateAnalyzer {
 
         // 아이템 필드 (반복 영역 내 변수와 일치하는지 확인)
         ITEM_FIELD_PATTERN.find(text)?.let { match ->
-            val itemVar = match.groupValues[1]
-            val fieldPath = match.groupValues[2]
-            if (repeatItemVariable != null && itemVar == repeatItemVariable) {
-                return CellContent.ItemField(itemVar, fieldPath, text)
+            if (repeatItemVariable != null && match.groupValues[1] == repeatItemVariable) {
+                return CellContent.ItemField(match.groupValues[1], match.groupValues[2], text)
             }
         }
 
         // 단순 변수
-        if (VARIABLE_PATTERN.containsMatchIn(text)) {
-            val varName = VARIABLE_PATTERN.find(text)!!.groupValues[1]
-            return CellContent.Variable(varName, text)
+        VARIABLE_PATTERN.find(text)?.let { match ->
+            return CellContent.Variable(match.groupValues[1], text)
         }
 
         return CellContent.StaticString(text)
+    }
+
+    /**
+     * 이미지 크기 명세 파싱
+     *
+     * @param sizeStr "width:height" 형식 (예: "100:200", "0:-1", "-1:-1")
+     * @return ImageSizeSpec
+     */
+    private fun parseSizeSpec(sizeStr: String?): ImageSizeSpec {
+        if (sizeStr.isNullOrEmpty()) return ImageSizeSpec.FIT_TO_CELL
+        val parts = sizeStr.split(":")
+        if (parts.size != 2) return ImageSizeSpec.FIT_TO_CELL
+        return ImageSizeSpec(
+            width = parts[0].toIntOrNull() ?: 0,
+            height = parts[1].toIntOrNull() ?: 0
+        )
     }
 
     private fun Sheet.maxColumnIndex(): Int =

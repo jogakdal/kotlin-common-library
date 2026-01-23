@@ -1,6 +1,6 @@
 package com.hunet.common.excel.engine
 
-import com.hunet.common.excel.FormulaExpansionException
+import com.hunet.common.excel.exception.FormulaExpansionException
 import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.CellType
 import org.apache.poi.ss.util.CellRangeAddress
@@ -40,7 +40,7 @@ internal class RepeatExpansionProcessor {
      */
     fun expandColumnsRight(
         sheet: XSSFSheet,
-        repeatRow: RowBlueprint.RepeatRow,
+        repeatRow: RowSpec.RepeatRow,
         itemCount: Int
     ) {
         val templateColCount = repeatRow.repeatEndCol - repeatRow.repeatStartCol + 1
@@ -118,7 +118,7 @@ internal class RepeatExpansionProcessor {
      */
     fun copyMergedRegionsForRepeat(
         sheet: XSSFSheet,
-        repeatRow: RowBlueprint.RepeatRow,
+        repeatRow: RowSpec.RepeatRow,
         itemCount: Int,
         templateMergedRegions: List<CellRangeAddress>
     ) {
@@ -156,7 +156,7 @@ internal class RepeatExpansionProcessor {
      */
     fun expandConditionalFormattingForRepeat(
         sheet: XSSFSheet,
-        repeatRow: RowBlueprint.RepeatRow,
+        repeatRow: RowSpec.RepeatRow,
         itemCount: Int
     ) {
         if (itemCount <= 1) return
@@ -210,7 +210,7 @@ internal class RepeatExpansionProcessor {
      */
     fun expandFormulasAfterRepeat(
         sheet: XSSFSheet,
-        repeatRow: RowBlueprint.RepeatRow,
+        repeatRow: RowSpec.RepeatRow,
         itemCount: Int,
         templateRowCount: Int,
         rowsInserted: Int
@@ -259,7 +259,7 @@ internal class RepeatExpansionProcessor {
      */
     fun expandFormulasAfterRightRepeat(
         sheet: XSSFSheet,
-        repeatRow: RowBlueprint.RepeatRow,
+        repeatRow: RowSpec.RepeatRow,
         itemCount: Int,
         templateColCount: Int,
         colsInserted: Int
