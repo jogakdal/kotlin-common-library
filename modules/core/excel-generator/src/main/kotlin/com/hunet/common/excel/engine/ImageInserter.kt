@@ -7,8 +7,6 @@ import org.apache.poi.ss.usermodel.Sheet
 import org.apache.poi.ss.usermodel.Workbook
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.XSSFClientAnchor
-import org.apache.poi.xssf.usermodel.XSSFDrawing
-import org.apache.poi.xssf.usermodel.XSSFSheet
 import java.io.ByteArrayInputStream
 import javax.imageio.ImageIO
 
@@ -31,66 +29,17 @@ class ImageInserter {
         private const val EMU_PER_PIXEL = 9525
 
         /** 셀 테두리가 보이도록 적용하는 기본 마진 */
-        private const val FLOATING_IMAGE_MARGIN_PX = 1
-        private const val FLOATING_IMAGE_MARGIN_EMU = FLOATING_IMAGE_MARGIN_PX * EMU_PER_PIXEL
+        private const val IMAGE_MARGIN_PX = 1
+        private const val IMAGE_MARGIN_EMU = IMAGE_MARGIN_PX * EMU_PER_PIXEL
     }
 
     /**
-     * 셀 위치에 이미지 삽입 (지정 영역에 맞춰 크기 조정)
-     */
-    fun insertImage(
-        workbook: Workbook,
-        sheet: Sheet,
-        imageBytes: ByteArray,
-        rowIndex: Int,
-        colIndex: Int,
-        mergedRegion: CellRangeAddress? = null
-    ) {
-        val imageTypeStr = imageBytes.detectImageTypeForPoi()
-        val pictureType = IMAGE_TYPE_MAP[imageTypeStr]
-            ?: throw IllegalArgumentException("지원하지 않는 이미지 형식: $imageTypeStr")
-
-        val pictureIdx = workbook.addPicture(imageBytes, pictureType)
-        val drawing = sheet.createDrawingPatriarch()
-        val anchor = createAnchor(workbook, rowIndex, colIndex, mergedRegion)
-
-        drawing.createPicture(anchor, pictureIdx)
-    }
-
-    /**
-     * XSSF 전용 이미지 삽입 (앵커 미세 조정 가능)
-     */
-    fun insertImageXssf(
-        workbook: Workbook,
-        sheet: XSSFSheet,
-        imageBytes: ByteArray,
-        rowIndex: Int,
-        colIndex: Int,
-        mergedRegion: CellRangeAddress? = null,
-        marginPx: Int = 5
-    ) {
-        val imageTypeStr = imageBytes.detectImageTypeForPoi()
-        val pictureType = IMAGE_TYPE_MAP[imageTypeStr]
-            ?: throw IllegalArgumentException("지원하지 않는 이미지 형식: $imageTypeStr")
-
-        val pictureIdx = workbook.addPicture(imageBytes, pictureType)
-        val drawing = sheet.createDrawingPatriarch() as XSSFDrawing
-        val anchor = createXssfAnchor(rowIndex, colIndex, mergedRegion, marginPx)
-        drawing.createPicture(anchor, pictureIdx)
-    }
-
-    /**
-     * 플로팅 이미지 삽입 (유연한 크기 지정)
+     * 이미지 삽입
      *
-     * @param workbook 워크북
-     * @param sheet 시트
-     * @param imageBytes 이미지 바이트 배열
-     * @param rowIndex 시작 행 (0-based)
-     * @param colIndex 시작 열 (0-based)
-     * @param sizeSpec 크기 명세
+     * @param sizeSpec 크기 명세 (기본값: 셀 크기에 맞춤)
      * @param mergedRegion 병합 영역 (크기 계산에 사용)
      */
-    fun insertFloatingImage(
+    fun insertImage(
         workbook: Workbook,
         sheet: Sheet,
         imageBytes: ByteArray,
@@ -258,14 +207,14 @@ class ImageInserter {
         val imageHeightPx = image.height.toDouble()
 
         val (endCol, dx2) = calculateEndColWithEmu(
-            sheet, colIndex, imageWidthPx + FLOATING_IMAGE_MARGIN_PX
+            sheet, colIndex, imageWidthPx + IMAGE_MARGIN_PX
         )
         val (endRow, dy2) = calculateEndRowWithEmu(
-            sheet, rowIndex, imageHeightPx + FLOATING_IMAGE_MARGIN_PX
+            sheet, rowIndex, imageHeightPx + IMAGE_MARGIN_PX
         )
 
         return XSSFClientAnchor(
-            FLOATING_IMAGE_MARGIN_EMU, FLOATING_IMAGE_MARGIN_EMU,  // dx1, dy1 (시작 마진)
+            IMAGE_MARGIN_EMU, IMAGE_MARGIN_EMU,  // dx1, dy1 (시작 마진)
             dx2, dy2,  // dx2, dy2 (끝점)
             colIndex, rowIndex,
             endCol, endRow
@@ -282,8 +231,8 @@ class ImageInserter {
     ): XSSFClientAnchor {
         return if (mergedRegion != null) {
             XSSFClientAnchor(
-                FLOATING_IMAGE_MARGIN_EMU, FLOATING_IMAGE_MARGIN_EMU,
-                -FLOATING_IMAGE_MARGIN_EMU, -FLOATING_IMAGE_MARGIN_EMU,
+                IMAGE_MARGIN_EMU, IMAGE_MARGIN_EMU,
+                -IMAGE_MARGIN_EMU, -IMAGE_MARGIN_EMU,
                 mergedRegion.firstColumn, mergedRegion.firstRow,
                 mergedRegion.lastColumn + 1, mergedRegion.lastRow + 1
             ).apply {
@@ -291,8 +240,8 @@ class ImageInserter {
             }
         } else {
             XSSFClientAnchor(
-                FLOATING_IMAGE_MARGIN_EMU, FLOATING_IMAGE_MARGIN_EMU,
-                -FLOATING_IMAGE_MARGIN_EMU, -FLOATING_IMAGE_MARGIN_EMU,
+                IMAGE_MARGIN_EMU, IMAGE_MARGIN_EMU,
+                -IMAGE_MARGIN_EMU, -IMAGE_MARGIN_EMU,
                 colIndex, rowIndex,
                 colIndex + 1, rowIndex + 1
             ).apply {
@@ -323,18 +272,18 @@ class ImageInserter {
         val endCol = mergedRegion?.lastColumn ?: colIndex
         val startRow = mergedRegion?.firstRow ?: rowIndex
         val endRow = mergedRegion?.lastRow ?: rowIndex
-        val marginPx = FLOATING_IMAGE_MARGIN_PX * 2
+        val marginPx = IMAGE_MARGIN_PX * 2
 
         return if (fitToWidth) {
             val cellWidthPx = getCellWidthInPixels(sheet, colIndex, mergedRegion) - marginPx
             val targetHeightPx = cellWidthPx * aspectRatio
             val (targetEndRow, remainingHeightEmu) = calculateEndRowWithEmu(
-                sheet, startRow, targetHeightPx + FLOATING_IMAGE_MARGIN_PX
+                sheet, startRow, targetHeightPx + IMAGE_MARGIN_PX
             )
 
             XSSFClientAnchor(
-                FLOATING_IMAGE_MARGIN_EMU, FLOATING_IMAGE_MARGIN_EMU,
-                -FLOATING_IMAGE_MARGIN_EMU, remainingHeightEmu,
+                IMAGE_MARGIN_EMU, IMAGE_MARGIN_EMU,
+                -IMAGE_MARGIN_EMU, remainingHeightEmu,
                 startCol, startRow,
                 endCol + 1, targetEndRow
             ).apply {
@@ -344,12 +293,12 @@ class ImageInserter {
             val cellHeightPx = getCellHeightInPixels(sheet, rowIndex, mergedRegion) - marginPx
             val targetWidthPx = cellHeightPx / aspectRatio
             val (targetEndCol, remainingWidthEmu) = calculateEndColWithEmu(
-                sheet, startCol, targetWidthPx + FLOATING_IMAGE_MARGIN_PX
+                sheet, startCol, targetWidthPx + IMAGE_MARGIN_PX
             )
 
             XSSFClientAnchor(
-                FLOATING_IMAGE_MARGIN_EMU, FLOATING_IMAGE_MARGIN_EMU,
-                remainingWidthEmu, -FLOATING_IMAGE_MARGIN_EMU,
+                IMAGE_MARGIN_EMU, IMAGE_MARGIN_EMU,
+                remainingWidthEmu, -IMAGE_MARGIN_EMU,
                 startCol, startRow,
                 targetEndCol, endRow + 1
             ).apply {
@@ -364,7 +313,7 @@ class ImageInserter {
         startRow: Int,
         targetHeightPx: Double
     ): Pair<Int, Int> {
-        var accumulatedHeight = -FLOATING_IMAGE_MARGIN_PX.toDouble()
+        var accumulatedHeight = -IMAGE_MARGIN_PX.toDouble()
         var currentRow = startRow
 
         while (accumulatedHeight < targetHeightPx && currentRow - startRow < 100) {
@@ -386,7 +335,7 @@ class ImageInserter {
         startCol: Int,
         targetWidthPx: Double
     ): Pair<Int, Int> {
-        var accumulatedWidth = -FLOATING_IMAGE_MARGIN_PX.toDouble()
+        var accumulatedWidth = -IMAGE_MARGIN_PX.toDouble()
         var currentCol = startCol
 
         while (accumulatedWidth < targetWidthPx && currentCol - startCol < 100) {
@@ -410,32 +359,5 @@ class ImageInserter {
             rowObj.heightInPoints.toDouble()
         }
         return heightPt * 96 / 72
-    }
-
-    private fun createXssfAnchor(
-        rowIndex: Int,
-        colIndex: Int,
-        mergedRegion: CellRangeAddress?,
-        marginPx: Int
-    ): XSSFClientAnchor {
-        val marginEmu = marginPx * EMU_PER_PIXEL
-
-        return if (mergedRegion != null) {
-            XSSFClientAnchor(
-                marginEmu, marginEmu, -marginEmu, -marginEmu,
-                mergedRegion.firstColumn, mergedRegion.firstRow,
-                mergedRegion.lastColumn + 1, mergedRegion.lastRow + 1
-            ).apply {
-                anchorType = ClientAnchor.AnchorType.MOVE_AND_RESIZE
-            }
-        } else {
-            XSSFClientAnchor(
-                marginEmu, marginEmu, -marginEmu, -marginEmu,
-                colIndex, rowIndex,
-                colIndex + 1, rowIndex + 1
-            ).apply {
-                anchorType = ClientAnchor.AnchorType.MOVE_AND_RESIZE
-            }
-        }
     }
 }

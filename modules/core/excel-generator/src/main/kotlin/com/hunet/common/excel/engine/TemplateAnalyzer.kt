@@ -2,6 +2,7 @@ package com.hunet.common.excel.engine
 
 import com.hunet.common.excel.toColumnIndex
 import org.apache.poi.ss.usermodel.*
+import org.apache.poi.ss.util.AreaReference
 import org.apache.poi.xssf.usermodel.XSSFConditionalFormattingRule
 import org.apache.poi.xssf.usermodel.XSSFSheet
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
@@ -26,9 +27,10 @@ class TemplateAnalyzer {
         // ${repeat(collection=employees, range=A6:C6, var=emp)}
         // ${repeat(collection=employees, range=B5:B7, var=emp, direction=RIGHT)}
         // ${repeat(employees, A6:C6, emp)}
+        // ${repeat(employees, DataRange, emp)}  ← Named Range 지원
         // Arguments can be quoted (", ', `) or unquoted
         private val REPEAT_PATTERN = Regex(
-            """\$\{repeat\s*\(\s*(?:collection\s*=\s*)?["'`]?(\w+)["'`]?\s*,\s*(?:range\s*=\s*)?["'`]?([A-Za-z]+\d+:[A-Za-z]+\d+)["'`]?\s*(?:,\s*(?:var\s*=\s*)?["'`]?(\w+)["'`]?)?(?:\s*,\s*(?:direction\s*=\s*)?["'`]?(DOWN|RIGHT)["'`]?)?\s*\)\}""",
+            """\$\{repeat\s*\(\s*(?:collection\s*=\s*)?["'`]?(\w+)["'`]?\s*,\s*(?:range\s*=\s*)?["'`]?([A-Za-z]+\d+:[A-Za-z]+\d+|\w+)["'`]?\s*(?:,\s*(?:var\s*=\s*)?["'`]?(\w+)["'`]?)?(?:\s*,\s*(?:direction\s*=\s*)?["'`]?(DOWN|RIGHT)["'`]?)?\s*\)\}""",
             RegexOption.IGNORE_CASE
         )
 
@@ -38,13 +40,13 @@ class TemplateAnalyzer {
         // ${item.field} or ${item.field.subfield}
         private val ITEM_FIELD_PATTERN = Regex("""\$\{(\w+)\.(\w+(?:\.\w+)*)}""")
 
-        // ${image.name}
-        private val IMAGE_PATTERN = Regex("""\$\{image\.(\w+)}""")
+        // ${image.name} - 레거시 문법 (하위 호환성)
+        private val IMAGE_LEGACY_PATTERN = Regex("""\$\{image\.(\w+)}""")
 
-        // ${floatimage(name)} or ${floatimage(name, position)} or ${floatimage(name, position, size)}
-        // Arguments can be quoted (", ', `) or unquoted: floatimage(ci, B5, 0:-1) == floatimage(ci, "B5", "0:-1")
-        private val FLOATIMAGE_PATTERN = Regex(
-            """\$\{floatimage\((\w+)(?:\s*,\s*["'`]?([A-Za-z]*\d*)["'`]?)?(?:\s*,\s*["'`]?(-?\d+:-?\d+)["'`]?)?\)}"""
+        // ${image(name)} or ${image(name, position)} or ${image(name, position, size)}
+        // Arguments can be quoted (", ', `) or unquoted: image(ci, B5, 0:-1) == image(ci, "B5", "0:-1")
+        private val IMAGE_PATTERN = Regex(
+            """\$\{image\((\w+)(?:\s*,\s*["'`]?([A-Za-z]*\d*)["'`]?)?(?:\s*,\s*["'`]?(-?\d+:-?\d+)["'`]?)?\)}"""
         )
     }
 
@@ -73,7 +75,7 @@ class TemplateAnalyzer {
     }
 
     private fun analyzeSheet(workbook: XSSFWorkbook, sheet: Sheet, sheetIndex: Int): SheetSpec {
-        val repeatRegions = findRepeatRegions(sheet)
+        val repeatRegions = findRepeatRegions(workbook, sheet)
 
         return SheetSpec(
             sheetName = sheet.sheetName,
@@ -228,7 +230,7 @@ class TemplateAnalyzer {
     /**
      * ${repeat(...)} 마커를 찾아 반복 영역 정보 추출
      */
-    private fun findRepeatRegions(sheet: Sheet): List<RepeatRegionSpec> {
+    private fun findRepeatRegions(workbook: Workbook, sheet: Sheet): List<RepeatRegionSpec> {
         val regions = mutableListOf<RepeatRegionSpec>()
 
         sheet.forEach { row ->
@@ -242,7 +244,7 @@ class TemplateAnalyzer {
                         val directionStr = match.groupValues[4].uppercase()
                         val direction = if (directionStr == "RIGHT") RepeatDirection.RIGHT else RepeatDirection.DOWN
 
-                        val cellRange = parseRange(range)
+                        val cellRange = parseRange(workbook, range)
                         regions.add(RepeatRegionSpec(
                             collection = collection,
                             variable = variable,
@@ -261,11 +263,31 @@ class TemplateAnalyzer {
     }
 
     /**
-     * 범위 문자열 파싱 (예: "A6:C8" -> CellRange)
+     * 범위 문자열 파싱
+     *
+     * @param workbook Named Range 조회용 워크북
+     * @param range 셀 범위("A6:C8") 또는 Named Range("DataRange")
+     * @return CellRange
      */
-    private fun parseRange(range: String): CellRange {
-        val (startRef, endRef) = range.split(":")
-        return CellRange(parseCellRef(startRef), parseCellRef(endRef))
+    private fun parseRange(workbook: Workbook, range: String): CellRange {
+        // 콜론이 있으면 직접 셀 참조
+        if (":" in range) {
+            val (startRef, endRef) = range.split(":")
+            return CellRange(parseCellRef(startRef), parseCellRef(endRef))
+        }
+
+        // Named Range 조회
+        val namedRange = workbook.getName(range)
+            ?: throw IllegalArgumentException("Named Range를 찾을 수 없습니다: $range")
+
+        val areaRef = AreaReference(namedRange.refersToFormula, workbook.spreadsheetVersion)
+        val firstCell = areaRef.firstCell
+        val lastCell = areaRef.lastCell
+
+        return CellRange(
+            CellCoord(firstCell.row, firstCell.col.toInt()),
+            CellCoord(lastCell.row, lastCell.col.toInt())
+        )
     }
 
     /**
@@ -345,7 +367,7 @@ class TemplateAnalyzer {
         )
     }
 
-    private fun findRepeatRegionInRow(row: Row): RepeatRegionSpec? {
+    private fun findRepeatRegionInRow(workbook: Workbook, row: Row): RepeatRegionSpec? {
         row.forEach { cell ->
             if (cell.cellType == CellType.STRING) {
                 REPEAT_PATTERN.find(cell.stringCellValue ?: "")?.let { match ->
@@ -354,7 +376,7 @@ class TemplateAnalyzer {
                     val variable = match.groupValues[3].ifEmpty { collection }
                     val directionStr = match.groupValues[4].uppercase()
                     val direction = if (directionStr == "RIGHT") RepeatDirection.RIGHT else RepeatDirection.DOWN
-                    val cellRange = parseRange(range)
+                    val cellRange = parseRange(workbook, range)
                     return RepeatRegionSpec(
                         collection, variable,
                         cellRange.start.row, cellRange.end.row,
@@ -417,17 +439,16 @@ class TemplateAnalyzer {
             )
         }
 
-        // 플로팅 이미지 마커 - ${floatimage(name, position, size)}
-        FLOATIMAGE_PATTERN.find(text)?.let { match ->
+        // 이미지 마커 - ${image(name, position, size)}
+        IMAGE_PATTERN.find(text)?.let { match ->
             val name = match.groupValues[1]
             val position = match.groupValues[2].takeIf { it.isNotEmpty() }
-            val sizeStr = match.groupValues[3]
-            val sizeSpec = parseSizeSpec(sizeStr)
-            return CellContent.FloatingImageMarker(name, position, sizeSpec)
+            val sizeSpec = parseSizeSpec(match.groupValues[3])
+            return CellContent.ImageMarker(name, position, sizeSpec)
         }
 
-        // 이미지 마커
-        IMAGE_PATTERN.find(text)?.let { match ->
+        // 이미지 마커 (레거시) - ${image.name}
+        IMAGE_LEGACY_PATTERN.find(text)?.let { match ->
             return CellContent.ImageMarker(match.groupValues[1])
         }
 

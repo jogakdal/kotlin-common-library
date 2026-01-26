@@ -44,16 +44,13 @@ internal class XssfRenderingStrategy : RenderingStrategy {
         return XSSFWorkbook(ByteArrayInputStream(templateBytes)).use { workbook ->
             val blueprint = context.analyzer.analyzeFromWorkbook(workbook)
             val imageLocations = mutableListOf<ImageLocation>()
-            val floatingImageLocations = mutableListOf<FloatingImageLocation>()
 
             blueprint.sheets.forEachIndexed { index, sheetSpec ->
                 val sheet = workbook.getSheetAt(index) as XSSFSheet
-                processSheetXssf(sheet, sheetSpec, data, imageLocations, floatingImageLocations, context)
+                processSheetXssf(sheet, sheetSpec, data, imageLocations, context)
             }
 
-            // 이미지 삽입 (반복 처리 후)
             insertImages(workbook, imageLocations, data, context)
-            insertFloatingImages(workbook, floatingImageLocations, data, context)
 
             // 수식 재계산
             workbook.creationHelper.createFormulaEvaluator().evaluateAll()
@@ -70,7 +67,6 @@ internal class XssfRenderingStrategy : RenderingStrategy {
         blueprint: SheetSpec,
         data: Map<String, Any>,
         imageLocations: MutableList<ImageLocation>,
-        floatingImageLocations: MutableList<FloatingImageLocation>,
         context: RenderingContext
     ) {
         // 반복 영역 확장 (뒤에서부터 처리하여 인덱스 꼬임 방지)
@@ -145,7 +141,7 @@ internal class XssfRenderingStrategy : RenderingStrategy {
         }
 
         clearRepeatMarkers(sheet)
-        substituteVariablesXssf(sheet, blueprint, data, rowOffsets, imageLocations, floatingImageLocations, context)
+        substituteVariablesXssf(sheet, blueprint, data, rowOffsets, imageLocations, context)
     }
 
     private fun clearRepeatMarkers(sheet: XSSFSheet) {
@@ -167,7 +163,6 @@ internal class XssfRenderingStrategy : RenderingStrategy {
         data: Map<String, Any>,
         rowOffsets: Map<Int, Int>,
         imageLocations: MutableList<ImageLocation>,
-        floatingImageLocations: MutableList<FloatingImageLocation>,
         context: RenderingContext
     ) {
         var currentOffset = 0
@@ -178,7 +173,7 @@ internal class XssfRenderingStrategy : RenderingStrategy {
                     val actualRowIndex = rowSpec.templateRowIndex + currentOffset
                     val row = sheet.getRow(actualRowIndex) ?: continue
                     substituteRowVariables(
-                        sheet, row, rowSpec.cells, data, imageLocations, floatingImageLocations, context,
+                        sheet, row, rowSpec.cells, data, imageLocations, context,
                         rowOffset = currentOffset
                     )
                 }
@@ -208,8 +203,7 @@ internal class XssfRenderingStrategy : RenderingStrategy {
 
                                     substituteRowVariables(
                                         sheet, row, cellSpecs, itemData,
-                                        imageLocations, floatingImageLocations, context,
-                                        // floatimage position에는 전체 오프셋 적용
+                                        imageLocations, context,
                                         rowOffset = currentOffset + totalRepeatOffset,
                                         repeatItemIndex = itemIdx
                                     )
@@ -245,8 +239,7 @@ internal class XssfRenderingStrategy : RenderingStrategy {
 
                                         processCellContent(
                                             cell, cellSpec.content, itemData,
-                                            sheet.workbook.getSheetIndex(sheet), imageLocations, floatingImageLocations, context,
-                                            // floatimage position에는 전체 오프셋 적용
+                                            sheet.workbook.getSheetIndex(sheet), imageLocations, context,
                                             rowOffset = currentOffset, colOffset = colShiftAmount,
                                             repeatItemIndex = itemIdx
                                         )
@@ -262,7 +255,7 @@ internal class XssfRenderingStrategy : RenderingStrategy {
 
                                     processCellContent(
                                         cell, cellSpec.content, data,
-                                        sheet.workbook.getSheetIndex(sheet), imageLocations, floatingImageLocations, context,
+                                        sheet.workbook.getSheetIndex(sheet), imageLocations, context,
                                         rowOffset = currentOffset, colOffset = colShiftAmount
                                     )
                                 }
@@ -284,7 +277,6 @@ internal class XssfRenderingStrategy : RenderingStrategy {
         cellSpecs: List<CellSpec>,
         data: Map<String, Any>,
         imageLocations: MutableList<ImageLocation>,
-        floatingImageLocations: MutableList<FloatingImageLocation>,
         context: RenderingContext,
         rowOffset: Int = 0,
         colOffset: Int = 0,
@@ -295,7 +287,7 @@ internal class XssfRenderingStrategy : RenderingStrategy {
             val cell = row.getCell(cellSpec.columnIndex) ?: continue
             processCellContent(
                 cell, cellSpec.content, data, sheetIndex,
-                imageLocations, floatingImageLocations, context,
+                imageLocations, context,
                 rowOffset, colOffset, repeatItemIndex
             )
         }
@@ -307,7 +299,6 @@ internal class XssfRenderingStrategy : RenderingStrategy {
         data: Map<String, Any>,
         sheetIndex: Int,
         imageLocations: MutableList<ImageLocation>,
-        floatingImageLocations: MutableList<FloatingImageLocation>,
         context: RenderingContext,
         rowOffset: Int = 0,
         colOffset: Int = 0,
@@ -335,19 +326,7 @@ internal class XssfRenderingStrategy : RenderingStrategy {
             }
 
             is CellContent.ImageMarker -> {
-                imageLocations.add(
-                    ImageLocation(
-                        sheetIndex = sheetIndex,
-                        imageName = content.imageName,
-                        rowIndex = cell.rowIndex,
-                        colIndex = cell.columnIndex
-                    )
-                )
-                cell.setBlank()
-            }
-
-            is CellContent.FloatingImageMarker -> {
-                // position이 지정된 floatimage는 첫 번째 반복에서만 처리 (중복 방지)
+                // position이 지정된 이미지는 첫 번째 반복에서만 처리 (중복 방지)
                 if (content.position != null && repeatItemIndex > 0) {
                     cell.setBlank()
                     return
@@ -355,14 +334,13 @@ internal class XssfRenderingStrategy : RenderingStrategy {
 
                 val (targetRow, targetCol) = if (content.position != null) {
                     val (baseRow, baseCol) = parseCellRef(content.position)
-                    // position으로 지정된 셀에 현재 반복 오프셋 적용
                     (baseRow + rowOffset) to (baseCol + colOffset)
                 } else {
                     cell.rowIndex to cell.columnIndex
                 }
 
-                floatingImageLocations.add(
-                    FloatingImageLocation(
+                imageLocations.add(
+                    ImageLocation(
                         sheetIndex = sheetIndex,
                         imageName = content.imageName,
                         rowIndex = targetRow,
@@ -402,27 +380,7 @@ internal class XssfRenderingStrategy : RenderingStrategy {
                 ?: continue
 
             val sheet = workbook.getSheetAt(location.sheetIndex) as XSSFSheet
-            context.imageInserter.insertImageXssf(
-                workbook, sheet, imageBytes,
-                location.rowIndex, location.colIndex,
-                sheet.findMergedRegion(location.rowIndex, location.colIndex)
-            )
-        }
-    }
-
-    private fun insertFloatingImages(
-        workbook: XSSFWorkbook,
-        floatingImageLocations: List<FloatingImageLocation>,
-        data: Map<String, Any>,
-        context: RenderingContext
-    ) {
-        for (location in floatingImageLocations) {
-            val imageBytes = data["image.${location.imageName}"] as? ByteArray
-                ?: data[location.imageName] as? ByteArray
-                ?: continue
-
-            val sheet = workbook.getSheetAt(location.sheetIndex) as XSSFSheet
-            context.imageInserter.insertFloatingImage(
+            context.imageInserter.insertImage(
                 workbook, sheet, imageBytes,
                 location.rowIndex, location.colIndex,
                 location.sizeSpec,
@@ -446,23 +404,12 @@ internal class XssfRenderingStrategy : RenderingStrategy {
 }
 
 /**
- * 이미지 위치 정보.
+ * 이미지 위치 정보
  */
 internal data class ImageLocation(
     val sheetIndex: Int,
     val imageName: String,
     val rowIndex: Int,
     val colIndex: Int,
-    val mergedRegion: CellRangeAddress? = null
-)
-
-/**
- * 플로팅 이미지 위치 정보.
- */
-internal data class FloatingImageLocation(
-    val sheetIndex: Int,
-    val imageName: String,
-    val rowIndex: Int,
-    val colIndex: Int,
-    val sizeSpec: ImageSizeSpec
+    val sizeSpec: ImageSizeSpec = ImageSizeSpec.FIT_TO_CELL
 )

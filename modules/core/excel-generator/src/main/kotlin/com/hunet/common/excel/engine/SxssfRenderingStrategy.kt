@@ -53,15 +53,13 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
                     workbook.xssfWorkbook.getCellStyleAt(style.index.toInt())
                 }
                 val imageLocations = mutableListOf<ImageLocation>()
-                val floatingImageLocations = mutableListOf<FloatingImageLocation>()
 
                 blueprint.sheets.forEachIndexed { index, sheetSpec ->
                     val sheet = workbook.getSheetAt(index) as SXSSFSheet
-                    processSheetSxssf(sheet, sheetSpec, data, styleMap, imageLocations, floatingImageLocations, index, context)
+                    processSheetSxssf(sheet, sheetSpec, data, styleMap, imageLocations, index, context)
                 }
 
                 insertImagesSxssf(workbook, imageLocations, data, context)
-                insertFloatingImagesSxssf(workbook, floatingImageLocations, data, context)
 
                 for (i in 0 until workbook.numberOfSheets) {
                     workbook.getSheetAt(i).forceFormulaRecalculation = true
@@ -106,7 +104,6 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
         data: Map<String, Any>,
         styleMap: Map<Short, CellStyle>,
         imageLocations: MutableList<ImageLocation>,
-        floatingImageLocations: MutableList<FloatingImageLocation>,
         sheetIndex: Int,
         context: RenderingContext
     ) {
@@ -130,7 +127,6 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
             templateMergedRegions = blueprint.mergedRegions,
             repeatRegions = repeatRegions,
             imageLocations = imageLocations,
-            floatingImageLocations = floatingImageLocations,
             context = context
         )
 
@@ -184,7 +180,7 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
                         RepeatDirection.RIGHT -> {
                             writeRowSxssfWithRightExpansion(
                                 sheet, currentRowIndex, rowSpec, blueprint, data, items, styleMap,
-                                blueprint.mergedRegions, imageLocations, floatingImageLocations, sheetIndex, context
+                                blueprint.mergedRegions, imageLocations, sheetIndex, context
                             )
                             currentRowIndex += templateRowCount
                         }
@@ -220,11 +216,10 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
         val templateMergedRegions: List<CellRangeAddress>,
         val repeatRegions: Map<Int, RowSpec.RepeatRow>,
         val imageLocations: MutableList<ImageLocation>,
-        val floatingImageLocations: MutableList<FloatingImageLocation>,
         val context: RenderingContext
     ) {
         fun copy(data: Map<String, Any>): RowWriteContext =
-            RowWriteContext(sheet, sheetIndex, data, styleMap, templateMergedRegions, repeatRegions, imageLocations, floatingImageLocations, context)
+            RowWriteContext(sheet, sheetIndex, data, styleMap, templateMergedRegions, repeatRegions, imageLocations, context)
     }
 
     private fun writeRowSxssf(
@@ -336,34 +331,7 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
                 }
 
                 is CellContent.ImageMarker -> {
-                    val templateRow = blueprint.templateRowIndex
-                    val mergedRegion = ctx.templateMergedRegions.find { region ->
-                        templateRow >= region.firstRow && templateRow <= region.lastRow &&
-                            cellSpec.columnIndex >= region.firstColumn && cellSpec.columnIndex <= region.lastColumn
-                    }?.let { templateRegion ->
-                        val rowDiff = rowIndex - templateRow
-                        CellRangeAddress(
-                            templateRegion.firstRow + rowDiff,
-                            templateRegion.lastRow + rowDiff,
-                            templateRegion.firstColumn,
-                            templateRegion.lastColumn
-                        )
-                    }
-
-                    ctx.imageLocations.add(
-                        ImageLocation(
-                            sheetIndex = ctx.sheetIndex,
-                            imageName = content.imageName,
-                            rowIndex = rowIndex,
-                            colIndex = cellSpec.columnIndex,
-                            mergedRegion = mergedRegion
-                        )
-                    )
-                    cell.setBlank()
-                }
-
-                is CellContent.FloatingImageMarker -> {
-                    // position이 지정된 floatimage는 첫 번째 반복에서만 처리 (중복 방지)
+                    // position이 지정된 이미지는 첫 번째 반복에서만 처리 (중복 방지)
                     if (content.position != null && repeatItemIndex > 0) {
                         cell.setBlank()
                         continue@cellLoop
@@ -371,14 +339,13 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
 
                     val (targetRow, targetCol) = if (content.position != null) {
                         val (baseRow, baseCol) = parseCellRef(content.position)
-                        // position으로 지정된 셀에 전체 반복 오프셋 적용
                         (baseRow + totalRowOffset) to baseCol
                     } else {
                         rowIndex to cellSpec.columnIndex
                     }
 
-                    ctx.floatingImageLocations.add(
-                        FloatingImageLocation(
+                    ctx.imageLocations.add(
+                        ImageLocation(
                             sheetIndex = ctx.sheetIndex,
                             imageName = content.imageName,
                             rowIndex = targetRow,
@@ -406,7 +373,6 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
         styleMap: Map<Short, CellStyle>,
         templateMergedRegions: List<CellRangeAddress>,
         imageLocations: MutableList<ImageLocation>,
-        floatingImageLocations: MutableList<FloatingImageLocation>,
         sheetIndex: Int,
         context: RenderingContext
     ) {
@@ -475,7 +441,7 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
 
                     writeCellContentSxssf(
                         cell, adjustedContent, data, null, sheet, templateMergedRegions,
-                        imageLocations, floatingImageLocations, sheetIndex, currentRowIndex, actualColIndex, context,
+                        imageLocations, sheetIndex, currentRowIndex, actualColIndex, context,
                         colOffset = colShiftAmount
                     )
                 }
@@ -496,7 +462,7 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
                         styleMap[cellSpec.styleIndex]?.let { cell.cellStyle = it }
                         writeCellContentSxssf(
                             cell, cellSpec.content, itemData, repeatRow.itemVariable,
-                            sheet, templateMergedRegions, imageLocations, floatingImageLocations, sheetIndex, currentRowIndex, targetColIdx, context,
+                            sheet, templateMergedRegions, imageLocations, sheetIndex, currentRowIndex, targetColIdx, context,
                             colOffset = colShiftAmount,
                             repeatItemIndex = itemIdx
                         )
@@ -514,7 +480,6 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
         sheet: SXSSFSheet,
         templateMergedRegions: List<CellRangeAddress>,
         imageLocations: MutableList<ImageLocation>,
-        floatingImageLocations: MutableList<FloatingImageLocation>,
         sheetIndex: Int,
         rowIndex: Int,
         colIndex: Int,
@@ -555,20 +520,7 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
             }
 
             is CellContent.ImageMarker -> {
-                imageLocations.add(
-                    ImageLocation(
-                        sheetIndex = sheetIndex,
-                        imageName = content.imageName,
-                        rowIndex = rowIndex,
-                        colIndex = colIndex,
-                        mergedRegion = null
-                    )
-                )
-                cell.setBlank()
-            }
-
-            is CellContent.FloatingImageMarker -> {
-                // position이 지정된 floatimage는 첫 번째 반복에서만 처리 (중복 방지)
+                // position이 지정된 이미지는 첫 번째 반복에서만 처리 (중복 방지)
                 if (content.position != null && repeatItemIndex > 0) {
                     cell.setBlank()
                     return
@@ -576,14 +528,13 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
 
                 val (targetRow, targetCol) = if (content.position != null) {
                     val (baseRow, baseCol) = parseCellRef(content.position)
-                    // position으로 지정된 셀에 전체 반복 오프셋 적용
                     baseRow to (baseCol + colOffset)
                 } else {
                     rowIndex to colIndex
                 }
 
-                floatingImageLocations.add(
-                    FloatingImageLocation(
+                imageLocations.add(
+                    ImageLocation(
                         sheetIndex = sheetIndex,
                         imageName = content.imageName,
                         rowIndex = targetRow,
@@ -614,26 +565,6 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
             val sheet = workbook.getSheetAt(location.sheetIndex)
 
             context.imageInserter.insertImage(
-                workbook, sheet, imageBytes,
-                location.rowIndex, location.colIndex, location.mergedRegion
-            )
-        }
-    }
-
-    private fun insertFloatingImagesSxssf(
-        workbook: SXSSFWorkbook,
-        floatingImageLocations: List<FloatingImageLocation>,
-        data: Map<String, Any>,
-        context: RenderingContext
-    ) {
-        for (location in floatingImageLocations) {
-            val imageBytes = data["image.${location.imageName}"] as? ByteArray
-                ?: data[location.imageName] as? ByteArray
-                ?: continue
-
-            val sheet = workbook.getSheetAt(location.sheetIndex)
-
-            context.imageInserter.insertFloatingImage(
                 workbook, sheet, imageBytes,
                 location.rowIndex, location.colIndex,
                 location.sizeSpec,

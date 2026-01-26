@@ -26,7 +26,6 @@ data class WorkbookSpec(
                     is CellContent.Variable -> variables += content.variableName
                     is CellContent.RepeatMarker -> collections += content.collection
                     is CellContent.ImageMarker -> images += content.imageName
-                    is CellContent.FloatingImageMarker -> images += content.imageName
                     is CellContent.FormulaWithVariables -> variables += content.variableNames
                     else -> {}
                 }
@@ -182,14 +181,15 @@ sealed class CellContent {
         val variableNames: List<String>
     ) : CellContent()
 
-    /** 이미지 마커 - ${image.logo} */
-    data class ImageMarker(val imageName: String) : CellContent()
-
-    /** 플로팅 이미지 마커 - ${floatimage(name, position, size)} */
-    data class FloatingImageMarker(
+    /**
+     * 이미지 마커 - ${image.name} 또는 ${image(name, position, size)}
+     * @param position null이면 마커 셀 위치 사용
+     * @param sizeSpec 크기 명세 (기본값: 셀 크기에 맞춤)
+     */
+    data class ImageMarker(
         val imageName: String,
-        val position: String?,      // null이면 마커 셀 위치 사용
-        val sizeSpec: ImageSizeSpec
+        val position: String? = null,
+        val sizeSpec: ImageSizeSpec = ImageSizeSpec.FIT_TO_CELL
     ) : CellContent()
 
     /** 반복 마커 - ${repeat(...)} - 분석 후 제거됨 */
