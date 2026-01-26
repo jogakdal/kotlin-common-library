@@ -26,7 +26,7 @@ include(
     ":apidoc-annotations",
     ":test-support",
     ":jpa-repository-extension",
-    ":excel-generator"
+    ":tbeg"
 )
 
 project(":common-core").projectDir = file("modules/core/common-core")
@@ -35,4 +35,4 @@ project(":apidoc-core").projectDir = file("modules/apidoc/apidoc-core")
 project(":apidoc-annotations").projectDir = file("modules/apidoc/apidoc-annotations")
 project(":test-support").projectDir = file("modules/test/test-support")
 project(":jpa-repository-extension").projectDir = file("modules/jpa/jpa-repository-extension")
-project(":excel-generator").projectDir = file("modules/core/excel-generator")
+project(":tbeg").projectDir = file("modules/core/template-based-excel-generator")
