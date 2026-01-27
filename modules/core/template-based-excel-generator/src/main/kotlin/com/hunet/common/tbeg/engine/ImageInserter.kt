@@ -1,6 +1,7 @@
 package com.hunet.common.tbeg.engine
 
 import com.hunet.common.tbeg.detectImageTypeForPoi
+import com.hunet.common.tbeg.toColumnIndex
 import org.apache.poi.ss.usermodel.ClientAnchor
 import org.apache.poi.ss.usermodel.Picture
 import org.apache.poi.ss.usermodel.Sheet
@@ -31,6 +32,71 @@ class ImageInserter {
         /** 셀 테두리가 보이도록 적용하는 기본 마진 */
         private const val IMAGE_MARGIN_PX = 1
         private const val IMAGE_MARGIN_EMU = IMAGE_MARGIN_PX * EMU_PER_PIXEL
+    }
+
+    /**
+     * 위치/범위 문자열 기반 이미지 삽입
+     *
+     * @param position 위치 문자열 - null(마커 셀), 단일 셀(B5), 또는 범위(B5:D10)
+     * @param markerRowIndex 마커 셀 행 (position이 null일 때 사용)
+     * @param markerColIndex 마커 셀 열 (position이 null일 때 사용)
+     * @param sizeSpec 크기 명세 - 범위 지정 시 무시되고 범위 크기에 맞춤
+     * @param markerMergedRegion 마커 셀의 병합 영역
+     */
+    fun insertImageWithPosition(
+        workbook: Workbook,
+        sheet: Sheet,
+        imageBytes: ByteArray,
+        position: String?,
+        markerRowIndex: Int,
+        markerColIndex: Int,
+        sizeSpec: ImageSizeSpec,
+        markerMergedRegion: CellRangeAddress? = null
+    ) {
+        when {
+            // position이 null - 마커 셀 위치에 삽입
+            position == null -> {
+                insertImage(workbook, sheet, imageBytes, markerRowIndex, markerColIndex, sizeSpec, markerMergedRegion)
+            }
+            // position이 범위 (B5:D10) - 범위 전체에 맞춤
+            position.contains(":") -> {
+                val (startRef, endRef) = position.split(":")
+                val (startRow, startCol) = parseCellRef(startRef)
+                val (endRow, endCol) = parseCellRef(endRef)
+                val rangeAddress = CellRangeAddress(startRow, endRow, startCol, endCol)
+                // 범위 지정 시 sizeSpec 무시하고 범위 크기에 맞춤
+                insertImage(workbook, sheet, imageBytes, startRow, startCol, ImageSizeSpec.FIT_TO_CELL, rangeAddress)
+            }
+            // position이 단일 셀 (B5)
+            else -> {
+                val (targetRow, targetCol) = parseCellRef(position)
+                // 지정 위치의 병합 영역 확인
+                val targetMergedRegion = findMergedRegion(sheet, targetRow, targetCol)
+                insertImage(workbook, sheet, imageBytes, targetRow, targetCol, sizeSpec, targetMergedRegion)
+            }
+        }
+    }
+
+    /**
+     * 셀 참조 파싱 (예: "B5" -> Pair(4, 1))
+     */
+    private fun parseCellRef(ref: String): Pair<Int, Int> {
+        val colPart = ref.takeWhile(Char::isLetter)
+        val rowPart = ref.dropWhile(Char::isLetter)
+        return Pair(rowPart.toInt() - 1, toColumnIndex(colPart))
+    }
+
+    /**
+     * 병합 영역 찾기
+     */
+    private fun findMergedRegion(sheet: Sheet, rowIndex: Int, colIndex: Int): CellRangeAddress? {
+        for (i in 0 until sheet.numMergedRegions) {
+            val region = sheet.getMergedRegion(i)
+            if (region.isInRange(rowIndex, colIndex)) {
+                return region
+            }
+        }
+        return null
     }
 
     /**

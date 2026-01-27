@@ -48,6 +48,22 @@ class TemplateAnalyzer {
         private val IMAGE_PATTERN = Regex(
             """\$\{image\((\w+)(?:\s*,\s*["'`]?([A-Za-z]*\d*)["'`]?)?(?:\s*,\s*["'`]?(-?\d+:-?\d+)["'`]?)?\)}"""
         )
+
+        // =TBEG_REPEAT(collection, range) or =TBEG_REPEAT(collection, range, var) or =TBEG_REPEAT(collection, range, var, direction)
+        // Excel formula: TBEG_REPEAT(items, A2:D5, item, DOWN)
+        // Range can be cell range (A2:D5) or Named Range (DataRange)
+        private val FORMULA_REPEAT_PATTERN = Regex(
+            """TBEG_REPEAT\s*\(\s*(\w+)\s*,\s*([A-Za-z]+\d+:[A-Za-z]+\d+|\w+)\s*(?:,\s*(\w+))?(?:\s*,\s*(DOWN|RIGHT))?\s*\)""",
+            RegexOption.IGNORE_CASE
+        )
+
+        // =TBEG_IMAGE(name) or =TBEG_IMAGE(name, position) or =TBEG_IMAGE(name, range) or =TBEG_IMAGE(name, position, size)
+        // position: single cell (B5) or range (B5:D10)
+        // size: "width:height" format (100:50, 0:-1, -1:-1)
+        private val FORMULA_IMAGE_PATTERN = Regex(
+            """TBEG_IMAGE\s*\(\s*(\w+)(?:\s*,\s*([A-Za-z]+\d+(?::[A-Za-z]+\d+)?))?(?:\s*,\s*"?(-?\d+:-?\d+)"?)?\s*\)""",
+            RegexOption.IGNORE_CASE
+        )
     }
 
     /**
@@ -228,16 +244,39 @@ class TemplateAnalyzer {
     }
 
     /**
-     * ${repeat(...)} 마커를 찾아 반복 영역 정보 추출
+     * ${repeat(...)} 또는 =TBEG_REPEAT(...) 마커를 찾아 반복 영역 정보 추출
      */
     private fun findRepeatRegions(workbook: Workbook, sheet: Sheet): List<RepeatRegionSpec> {
         val regions = mutableListOf<RepeatRegionSpec>()
 
         sheet.forEach { row ->
             row.forEach { cell ->
+                // 텍스트 마커: ${repeat(...)}
                 if (cell.cellType == CellType.STRING) {
                     val text = cell.stringCellValue ?: return@forEach
                     REPEAT_PATTERN.find(text)?.let { match ->
+                        val collection = match.groupValues[1]
+                        val range = match.groupValues[2]
+                        val variable = match.groupValues[3].ifEmpty { collection }
+                        val directionStr = match.groupValues[4].uppercase()
+                        val direction = if (directionStr == "RIGHT") RepeatDirection.RIGHT else RepeatDirection.DOWN
+
+                        val cellRange = parseRange(workbook, range)
+                        regions.add(RepeatRegionSpec(
+                            collection = collection,
+                            variable = variable,
+                            startRow = cellRange.start.row,
+                            endRow = cellRange.end.row,
+                            startCol = cellRange.start.col,
+                            endCol = cellRange.end.col,
+                            direction = direction
+                        ))
+                    }
+                }
+                // 수식 마커: =TBEG_REPEAT(...)
+                else if (cell.cellType == CellType.FORMULA) {
+                    val formula = cell.cellFormula ?: return@forEach
+                    FORMULA_REPEAT_PATTERN.find(formula)?.let { match ->
                         val collection = match.groupValues[1]
                         val range = match.groupValues[2]
                         val variable = match.groupValues[3].ifEmpty { collection }
@@ -416,13 +455,40 @@ class TemplateAnalyzer {
     }
 
     /**
-     * 수식 내용 분석 - 변수 포함 여부 확인
+     * 수식 내용 분석 - TBEG 마커 또는 변수 포함 여부 확인
      */
-    private fun analyzeFormulaContent(formula: String): CellContent =
-        VARIABLE_PATTERN.findAll(formula).map { it.groupValues[1] }.toList().let { variables ->
+    private fun analyzeFormulaContent(formula: String): CellContent {
+        // TBEG_REPEAT 수식 마커
+        FORMULA_REPEAT_PATTERN.find(formula)?.let { match ->
+            val collection = match.groupValues[1]
+            val range = match.groupValues[2]
+            val variable = match.groupValues[3].ifEmpty { collection }
+            val direction = if (match.groupValues[4].uppercase() == "RIGHT")
+                RepeatDirection.RIGHT else RepeatDirection.DOWN
+            return CellContent.RepeatMarker(collection, range, variable, direction)
+        }
+
+        // TBEG_IMAGE 수식 마커
+        FORMULA_IMAGE_PATTERN.find(formula)?.let { match ->
+            val name = match.groupValues[1]
+            val positionOrRange = match.groupValues[2].takeIf { it.isNotEmpty() }
+            val sizeStr = match.groupValues[3].takeIf { it.isNotEmpty() }
+
+            // 범위인 경우 (B5:D10) sizeSpec은 FIT_TO_RANGE로 처리
+            val sizeSpec = when {
+                positionOrRange?.contains(":") == true -> ImageSizeSpec.FIT_TO_CELL  // 범위 크기에 맞춤
+                sizeStr != null -> parseSizeSpec(sizeStr)
+                else -> ImageSizeSpec.FIT_TO_CELL
+            }
+            return CellContent.ImageMarker(name, positionOrRange, sizeSpec)
+        }
+
+        // 일반 수식 - 변수 포함 여부 확인
+        return VARIABLE_PATTERN.findAll(formula).map { it.groupValues[1] }.toList().let { variables ->
             if (variables.isNotEmpty()) CellContent.FormulaWithVariables(formula, variables)
             else CellContent.Formula(formula)
         }
+    }
 
     private fun analyzeStringContent(text: String?, repeatItemVariable: String?): CellContent {
         if (text.isNullOrEmpty()) return CellContent.Empty

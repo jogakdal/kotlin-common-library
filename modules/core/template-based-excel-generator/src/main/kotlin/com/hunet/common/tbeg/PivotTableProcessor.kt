@@ -4,6 +4,7 @@ import com.hunet.common.logging.commonLogger
 import org.apache.poi.openxml4j.opc.OPCPackage
 import org.apache.poi.openxml4j.opc.PackagePart
 import org.apache.poi.ss.usermodel.*
+import org.apache.poi.ss.formula.SheetNameFormatter
 import org.apache.poi.ss.util.AreaReference
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.ss.util.CellReference
@@ -427,9 +428,12 @@ internal class PivotTableProcessor(
             val expectedCols = 1 + info.dataFields.size
             pivotSheet.clearArea(pivotLocation.row, pivotLocation.col.toInt(), expectedRows + 2, expectedCols + 1)
 
-            // 피벗 테이블 생성
+            // 피벗 테이블 생성 (시트 이름에 공백/특수문자가 있으면 따옴표 필요)
+            val formattedSheetName = StringBuilder().also {
+                SheetNameFormatter.appendFormat(it, info.sourceSheetName)
+            }.toString()
             val areaReference = AreaReference(
-                "${info.sourceSheetName}!${newSourceRange.formatAsString()}",
+                "$formattedSheetName!${newSourceRange.formatAsString()}",
                 workbook.spreadsheetVersion
             )
             val pivotTable = pivotSheet.createPivotTable(areaReference, pivotLocation, sourceSheet).apply {
@@ -966,6 +970,18 @@ internal class PivotTableProcessor(
                 if ("recordCount=" in xml) xml.replace(RECORD_COUNT_REGEX, """recordCount="$recordCount"""")
                 else xml.replace("<pivotCacheDefinition ", """<pivotCacheDefinition recordCount="$recordCount" """)
             }
+            // refreshedDate를 Excel 날짜 형식으로 변환 (POI가 밀리초 타임스탬프를 사용하므로)
+            .let { xml ->
+                REFRESHED_DATE_REGEX.find(xml)?.let { match ->
+                    val currentValue = match.groupValues[1].toDoubleOrNull()
+                    if (currentValue != null && currentValue > 1_000_000_000_000) {
+                        // 밀리초 타임스탬프를 Excel 날짜로 변환
+                        // Excel 날짜 = (밀리초 / 86400000) + 25569 (1970-01-01의 Excel 날짜)
+                        val excelDate = (currentValue / 86_400_000.0) + 25569.0
+                        xml.replace(match.value, """refreshedDate="$excelDate"""")
+                    } else xml
+                } ?: xml
+            }
 
         return fields.fold(baseXml) { xml, field ->
             val sharedItemsXml = field.buildSharedItemsXml()
@@ -985,7 +1001,10 @@ internal class PivotTableProcessor(
         isNumeric -> buildString {
             append("""<sharedItems containsSemiMixedTypes="0" containsString="0" containsNumber="1" """)
             if (isInteger) append("""containsInteger="1" """)
-            append("""minValue="$minValue" maxValue="$maxValue"/>""")
+            // 정수일 경우 소수점 제거 (Excel 호환성)
+            val minStr = if (isInteger) minValue?.toLong()?.toString() ?: "0" else minValue.toString()
+            val maxStr = if (isInteger) maxValue?.toLong()?.toString() ?: "0" else maxValue.toString()
+            append("""minValue="$minStr" maxValue="$maxStr"/>""")
         }
         else -> "<sharedItems/>"
     }
@@ -1252,6 +1271,7 @@ internal class PivotTableProcessor(
         private val PIVOT_CACHE_REL_REGEX by lazy { Regex("""<Relationship[^>]*pivotCache[^>]*/>\s*""") }
         private val REFRESH_ON_LOAD_REGEX by lazy { Regex("""refreshOnLoad="(true|1)"""") }
         private val REFRESHED_VERSION_REGEX by lazy { Regex("""refreshedVersion="\d+"""") }
+        private val REFRESHED_DATE_REGEX by lazy { Regex("""refreshedDate="([^"]+)"""") }
         private val RECORD_COUNT_REGEX by lazy { Regex("""recordCount="\d+"""") }
         private val SHARED_ITEMS_REGEX by lazy {
             Regex("""<sharedItems[^>]*/>|<sharedItems[^>]*>.*?</sharedItems>""", RegexOption.DOT_MATCHES_ALL)

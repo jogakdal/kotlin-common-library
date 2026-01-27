@@ -1,13 +1,14 @@
 package com.hunet.common.tbeg.engine
 
 import com.hunet.common.tbeg.exception.FormulaExpansionException
-import com.hunet.common.tbeg.findMergedRegion
-import com.hunet.common.tbeg.parseCellRef
+import com.hunet.common.tbeg.removeAbsPath
 import com.hunet.common.tbeg.setInitialView
 import com.hunet.common.tbeg.toColumnLetter
 import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.CellStyle
-import org.apache.poi.ss.util.CellRangeAddress
+import org.apache.poi.ss.usermodel.Sheet
+import org.apache.poi.ss.usermodel.Workbook
+import org.apache.poi.xssf.streaming.SXSSFFormulaEvaluator
 import org.apache.poi.xssf.streaming.SXSSFSheet
 import org.apache.poi.xssf.streaming.SXSSFWorkbook
 import org.apache.poi.xssf.usermodel.XSSFCellStyle
@@ -31,53 +32,105 @@ import java.io.ByteArrayOutputStream
  * - 이미 작성된 행 접근 불가
  * - 차트/피벗 테이블은 별도 처리 필요
  */
-internal class SxssfRenderingStrategy : RenderingStrategy {
+internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
     override val name: String = "SXSSF"
 
-    override fun render(
+    // 템플릿에서 추출한 스타일을 SXSSF 워크북에 매핑
+    private var styleMap: Map<Short, CellStyle> = emptyMap()
+
+    // ========== 추상 메서드 구현 ==========
+
+    override fun <T> withWorkbook(
         templateBytes: ByteArray,
-        data: Map<String, Any>,
-        context: RenderingContext
-    ): ByteArray {
+        block: (workbook: Workbook, xssfWorkbook: XSSFWorkbook) -> T
+    ): T {
         // dxfs 스타일 유지를 위해 템플릿 워크북을 닫지 않고 재사용
         val templateWorkbook = XSSFWorkbook(ByteArrayInputStream(templateBytes))
 
         try {
-            val blueprint = context.analyzer.analyzeFromWorkbook(templateWorkbook)
-            val styleRegistry = extractStyles(templateWorkbook)
-
-            clearSheetContents(templateWorkbook)
-
             return SXSSFWorkbook(templateWorkbook, 100).use { workbook ->
-                val styleMap = styleRegistry.mapValues { (_, style) ->
-                    workbook.xssfWorkbook.getCellStyleAt(style.index.toInt())
-                }
-                val imageLocations = mutableListOf<ImageLocation>()
-
-                blueprint.sheets.forEachIndexed { index, sheetSpec ->
-                    val sheet = workbook.getSheetAt(index) as SXSSFSheet
-                    processSheetSxssf(sheet, sheetSpec, data, styleMap, imageLocations, index, context)
-                }
-
-                insertImagesSxssf(workbook, imageLocations, data, context)
-
-                for (i in 0 until workbook.numberOfSheets) {
-                    workbook.getSheetAt(i).forceFormulaRecalculation = true
-                }
-
-                // 파일 열 때 첫 번째 시트 A1 셀에 포커스
-                workbook.setInitialView()
-
-                ByteArrayOutputStream().also { out ->
-                    workbook.write(out)
-                }.toByteArray()
+                block(workbook, templateWorkbook)
             }
         } finally {
             templateWorkbook.close()
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
+    override fun beforeProcessSheets(
+        workbook: Workbook,
+        blueprint: WorkbookSpec,
+        data: Map<String, Any>,
+        context: RenderingContext
+    ) {
+        val sxssfWorkbook = workbook as SXSSFWorkbook
+        val xssfWorkbook = sxssfWorkbook.xssfWorkbook
+
+        // 스타일 추출 및 매핑
+        val styleRegistry = extractStyles(xssfWorkbook)
+        styleMap = styleRegistry.mapValues { (_, style) ->
+            xssfWorkbook.getCellStyleAt(style.index.toInt())
+        }
+
+        // 시트 내용 클리어 (새로 생성)
+        clearSheetContents(xssfWorkbook)
+    }
+
+    override fun processSheet(
+        sheet: Sheet,
+        sheetIndex: Int,
+        blueprint: SheetSpec,
+        data: Map<String, Any>,
+        imageLocations: MutableList<ImageLocation>,
+        context: RenderingContext
+    ) {
+        val sxssfSheet = sheet as SXSSFSheet
+        processSheetSxssf(sxssfSheet, sheetIndex, blueprint, data, imageLocations, context)
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    override fun afterProcessSheets(workbook: Workbook, context: RenderingContext) {
+        val sxssfWorkbook = workbook as SXSSFWorkbook
+
+        // 수식 평가 및 calcChain 정리
+        evaluateFormulasAndClearCalcChain(sxssfWorkbook)
+
+        for (i in 0 until sxssfWorkbook.numberOfSheets) {
+            sxssfWorkbook.getSheetAt(i).forceFormulaRecalculation = true
+        }
+
+        // 파일 열 때 첫 번째 시트 A1 셀에 포커스
+        sxssfWorkbook.setInitialView()
+    }
+
+    override fun finalizeWorkbook(workbook: Workbook): ByteArray {
+        // 저장 후 absPath 제거 (Excel이 파일 열 때 "수정됨" 상태 방지)
+        return ByteArrayOutputStream().also { out ->
+            workbook.write(out)
+        }.toByteArray().removeAbsPath()
+    }
+
+    // ========== SXSSF 특화 로직 ==========
+
+    /**
+     * SXSSF에서 수식 평가 및 calcChain 정리.
+     */
+    private fun evaluateFormulasAndClearCalcChain(workbook: SXSSFWorkbook) {
+        val xssfWorkbook = workbook.xssfWorkbook
+
+        runCatching {
+            // SXSSF에서 수식 평가 (아직 flush되지 않은 행만 평가 가능)
+            SXSSFFormulaEvaluator.evaluateAllFormulaCells(workbook, false)
+        }
+
+        // calcChain 비우기
+        clearCalcChain(xssfWorkbook)
+    }
+
     private fun clearSheetContents(workbook: XSSFWorkbook) {
+        // calcChain 항목 비우기 (템플릿의 수식 참조 정리)
+        clearCalcChain(workbook)
+
         for (i in 0 until workbook.numberOfSheets) {
             val sheet = workbook.getSheetAt(i)
             for (rowIdx in sheet.lastRowNum downTo 0) {
@@ -100,11 +153,10 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
 
     private fun processSheetSxssf(
         sheet: SXSSFSheet,
+        sheetIndex: Int,
         blueprint: SheetSpec,
         data: Map<String, Any>,
-        styleMap: Map<Short, CellStyle>,
         imageLocations: MutableList<ImageLocation>,
-        sheetIndex: Int,
         context: RenderingContext
     ) {
         blueprint.columnWidths.forEach { (col, width) -> sheet.setColumnWidth(col, width) }
@@ -124,7 +176,6 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
             sheetIndex = sheetIndex,
             data = data,
             styleMap = styleMap,
-            templateMergedRegions = blueprint.mergedRegions,
             repeatRegions = repeatRegions,
             imageLocations = imageLocations,
             context = context
@@ -135,7 +186,7 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
         for (rowSpec in blueprint.rows) {
             when (rowSpec) {
                 is RowSpec.StaticRow -> {
-                    writeRowSxssf(ctx, currentRowIndex, rowSpec, null, 0, rowOffset, totalRowOffset = rowOffset)
+                    writeRowSxssf(ctx, currentRowIndex, rowSpec, 0, rowOffset, totalRowOffset = rowOffset)
                     currentRowIndex++
                 }
 
@@ -147,7 +198,6 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
 
                     when (rowSpec.direction) {
                         RepeatDirection.DOWN -> {
-                            // 전체 반복 오프셋 (반복 완료 후의 총 오프셋)
                             val totalRepeatOffset = (items.size * templateRowCount) - templateRowCount
 
                             items.forEachIndexed { itemIdx, item ->
@@ -166,7 +216,7 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
 
                                     writeRowSxssf(
                                         itemCtx, currentRowIndex, currentRowBp,
-                                        rowSpec.itemVariable, formulaRepeatIndex, rowOffset,
+                                        formulaRepeatIndex, rowOffset,
                                         repeatRow = rowSpec,
                                         repeatItemIndex = itemIdx,
                                         totalRowOffset = rowOffset + totalRepeatOffset
@@ -179,8 +229,8 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
 
                         RepeatDirection.RIGHT -> {
                             writeRowSxssfWithRightExpansion(
-                                sheet, currentRowIndex, rowSpec, blueprint, data, items, styleMap,
-                                blueprint.mergedRegions, imageLocations, sheetIndex, context
+                                sheet, currentRowIndex, rowSpec, blueprint, data, items,
+                                imageLocations, sheetIndex, context
                             )
                             currentRowIndex += templateRowCount
                         }
@@ -213,20 +263,18 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
         val sheetIndex: Int,
         val data: Map<String, Any>,
         val styleMap: Map<Short, CellStyle>,
-        val templateMergedRegions: List<CellRangeAddress>,
         val repeatRegions: Map<Int, RowSpec.RepeatRow>,
         val imageLocations: MutableList<ImageLocation>,
         val context: RenderingContext
     ) {
         fun copy(data: Map<String, Any>): RowWriteContext =
-            RowWriteContext(sheet, sheetIndex, data, styleMap, templateMergedRegions, repeatRegions, imageLocations, context)
+            RowWriteContext(sheet, sheetIndex, data, styleMap, repeatRegions, imageLocations, context)
     }
 
     private fun writeRowSxssf(
         ctx: RowWriteContext,
         rowIndex: Int,
         blueprint: RowSpec,
-        itemVariable: String?,
         repeatIndex: Int,
         rowOffset: Int,
         repeatRow: RowSpec.RepeatRow? = null,
@@ -252,115 +300,126 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
             val cell = row.createCell(cellSpec.columnIndex)
             ctx.styleMap[cellSpec.styleIndex]?.let { cell.cellStyle = it }
 
-            when (val content = cellSpec.content) {
-                is CellContent.Empty -> {}
+            processCellContentSxssf(
+                cell, cellSpec.content, ctx.data, ctx.sheetIndex,
+                ctx.imageLocations, ctx.context,
+                repeatIndex, rowOffset, totalRowOffset, repeatItemIndex,
+                ctx.repeatRegions, blueprint, cellSpec.columnIndex, rowIndex
+            )
+        }
+    }
 
-                is CellContent.StaticString -> {
-                    val evaluated = ctx.context.evaluateText(content.value, ctx.data)
-                    cell.setCellValue(evaluated)
+    /**
+     * SXSSF용 셀 내용 처리.
+     * 수식은 FormulaAdjuster로 수동 조정이 필요합니다.
+     */
+    private fun processCellContentSxssf(
+        cell: Cell,
+        content: CellContent,
+        data: Map<String, Any>,
+        sheetIndex: Int,
+        imageLocations: MutableList<ImageLocation>,
+        context: RenderingContext,
+        repeatIndex: Int,
+        rowOffset: Int,
+        totalRowOffset: Int,
+        repeatItemIndex: Int,
+        repeatRegions: Map<Int, RowSpec.RepeatRow>,
+        blueprint: RowSpec,
+        columnIndex: Int,
+        rowIndex: Int
+    ) {
+        when (content) {
+            is CellContent.Formula -> {
+                // SXSSF에서 수식은 수동 조정 필요
+                processFormulaSxssf(
+                    cell, content, data,
+                    repeatIndex, rowOffset, repeatRegions, blueprint, columnIndex, rowIndex
+                )
+            }
+
+            is CellContent.FormulaWithVariables -> {
+                var substitutedFormula = context.evaluateText(content.formula, data)
+                if (repeatIndex > 0) {
+                    substitutedFormula = FormulaAdjuster.adjustForRepeatIndex(substitutedFormula, repeatIndex)
                 }
+                cell.cellFormula = substitutedFormula
+            }
 
-                is CellContent.StaticNumber -> cell.setCellValue(content.value)
+            is CellContent.ImageMarker -> {
+                processImageMarker(
+                    cell, content, sheetIndex, imageLocations,
+                    totalRowOffset, 0, repeatItemIndex
+                )
+            }
 
-                is CellContent.StaticBoolean -> cell.setCellValue(content.value)
+            else -> {
+                // 나머지는 부모 클래스의 공통 처리
+                processCellContent(
+                    cell, content, data, sheetIndex, imageLocations, context,
+                    totalRowOffset, 0, repeatItemIndex
+                )
+            }
+        }
+    }
 
-                is CellContent.Variable -> {
-                    val evaluated = ctx.context.evaluateText(content.originalText, ctx.data)
-                    setCellValue(cell, evaluated)
-                }
+    /**
+     * SXSSF에서 수식을 처리합니다.
+     * shiftRows가 없으므로 FormulaAdjuster로 수동 조정합니다.
+     */
+    private fun processFormulaSxssf(
+        cell: Cell,
+        content: CellContent.Formula,
+        data: Map<String, Any>,
+        repeatIndex: Int,
+        rowOffset: Int,
+        repeatRegions: Map<Int, RowSpec.RepeatRow>,
+        blueprint: RowSpec,
+        columnIndex: Int,
+        rowIndex: Int
+    ) {
+        var adjustedFormula = content.formula
+        var formulaExpanded = false
 
-                is CellContent.ItemField -> {
-                    val item = ctx.data[content.itemVariable]
-                    val value = ctx.context.resolveFieldPath(item, content.fieldPath)
-                    setCellValue(cell, value)
-                }
+        if (repeatIndex > 0) {
+            adjustedFormula = FormulaAdjuster.adjustForRepeatIndex(adjustedFormula, repeatIndex)
+        }
 
-                is CellContent.Formula -> {
-                    var adjustedFormula = content.formula
-                    var formulaExpanded = false
-
-                    if (repeatIndex > 0) {
-                        adjustedFormula = FormulaAdjuster.adjustForRepeatIndex(adjustedFormula, repeatIndex)
-                    }
-
-                    if (rowOffset > 0 && blueprint is RowSpec.StaticRow) {
-                        val repeatEndRow = ctx.repeatRegions.values.maxOfOrNull { it.repeatEndRowIndex } ?: -1
-                        if (repeatEndRow >= 0 && blueprint.templateRowIndex > repeatEndRow) {
-                            for (repeatRegion in ctx.repeatRegions.values) {
-                                val items = ctx.data[repeatRegion.collectionName] as? List<*> ?: continue
-                                val templateRowCount = repeatRegion.repeatEndRowIndex - repeatRegion.templateRowIndex + 1
-                                val (expanded, hasDiscontinuous) = FormulaAdjuster.expandSingleRefToRange(
-                                    adjustedFormula,
-                                    repeatRegion.templateRowIndex,
-                                    repeatRegion.repeatEndRowIndex,
-                                    items.size,
-                                    templateRowCount
-                                )
-                                if (expanded != adjustedFormula) {
-                                    if (hasDiscontinuous && items.size > 255) {
-                                        throw FormulaExpansionException(
-                                            sheetName = ctx.sheet.sheetName,
-                                            cellRef = "${toColumnLetter(cellSpec.columnIndex)}${rowIndex + 1}",
-                                            formula = content.formula
-                                        )
-                                    }
-                                    adjustedFormula = expanded
-                                    formulaExpanded = true
-                                }
-                            }
-
-                            if (!formulaExpanded) {
-                                adjustedFormula = FormulaAdjuster.adjustForRowExpansion(
-                                    adjustedFormula, 0, repeatEndRow, rowOffset
-                                )
-                            }
-                        }
-                    }
-
-                    cell.cellFormula = adjustedFormula
-                }
-
-                is CellContent.FormulaWithVariables -> {
-                    var substitutedFormula = ctx.context.evaluateText(content.formula, ctx.data)
-
-                    if (repeatIndex > 0) {
-                        substitutedFormula = FormulaAdjuster.adjustForRepeatIndex(substitutedFormula, repeatIndex)
-                    }
-
-                    cell.cellFormula = substitutedFormula
-                }
-
-                is CellContent.ImageMarker -> {
-                    // position이 지정된 이미지는 첫 번째 반복에서만 처리 (중복 방지)
-                    if (content.position != null && repeatItemIndex > 0) {
-                        cell.setBlank()
-                        continue@cellLoop
-                    }
-
-                    val (targetRow, targetCol) = if (content.position != null) {
-                        val (baseRow, baseCol) = parseCellRef(content.position)
-                        (baseRow + totalRowOffset) to baseCol
-                    } else {
-                        rowIndex to cellSpec.columnIndex
-                    }
-
-                    ctx.imageLocations.add(
-                        ImageLocation(
-                            sheetIndex = ctx.sheetIndex,
-                            imageName = content.imageName,
-                            rowIndex = targetRow,
-                            colIndex = targetCol,
-                            sizeSpec = content.sizeSpec
-                        )
+        if (rowOffset > 0 && blueprint is RowSpec.StaticRow) {
+            val repeatEndRow = repeatRegions.values.maxOfOrNull { it.repeatEndRowIndex } ?: -1
+            if (repeatEndRow >= 0 && blueprint.templateRowIndex > repeatEndRow) {
+                for (repeatRegion in repeatRegions.values) {
+                    val items = data[repeatRegion.collectionName] as? List<*> ?: continue
+                    val templateRowCount = repeatRegion.repeatEndRowIndex - repeatRegion.templateRowIndex + 1
+                    val (expanded, hasDiscontinuous) = FormulaAdjuster.expandSingleRefToRange(
+                        adjustedFormula,
+                        repeatRegion.templateRowIndex,
+                        repeatRegion.repeatEndRowIndex,
+                        items.size,
+                        templateRowCount
                     )
-                    cell.setBlank()
+                    if (expanded != adjustedFormula) {
+                        if (hasDiscontinuous && items.size > 255) {
+                            throw FormulaExpansionException(
+                                sheetName = cell.sheet.sheetName,
+                                cellRef = "${toColumnLetter(columnIndex)}${rowIndex + 1}",
+                                formula = content.formula
+                            )
+                        }
+                        adjustedFormula = expanded
+                        formulaExpanded = true
+                    }
                 }
 
-                is CellContent.RepeatMarker -> {
-                    cell.setBlank()
+                if (!formulaExpanded) {
+                    adjustedFormula = FormulaAdjuster.adjustForRowExpansion(
+                        adjustedFormula, 0, repeatEndRow, rowOffset
+                    )
                 }
             }
         }
+
+        cell.cellFormula = adjustedFormula
     }
 
     private fun writeRowSxssfWithRightExpansion(
@@ -370,8 +429,6 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
         blueprint: SheetSpec,
         data: Map<String, Any>,
         items: List<*>,
-        styleMap: Map<Short, CellStyle>,
-        templateMergedRegions: List<CellRangeAddress>,
         imageLocations: MutableList<ImageLocation>,
         sheetIndex: Int,
         context: RenderingContext
@@ -401,48 +458,13 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
                     val cell = row.createCell(actualColIndex)
                     styleMap[cellSpec.styleIndex]?.let { cell.cellStyle = it }
 
-                    val adjustedContent = if (cellSpec.content is CellContent.Formula) {
-                        var formula = (cellSpec.content as CellContent.Formula).formula
-
-                        if (colShiftAmount > 0) {
-                            formula = FormulaAdjuster.adjustForColumnExpansion(
-                                formula,
-                                repeatRow.repeatEndCol + 1,
-                                colShiftAmount
-                            )
-                        }
-
-                        if (cellSpec.columnIndex > repeatRow.repeatEndCol && items.size > 1) {
-                            val (expandedFormula, hasDiscontinuous) = FormulaAdjuster.expandSingleRefToColumnRange(
-                                formula,
-                                repeatRow.repeatStartCol,
-                                repeatRow.repeatEndCol,
-                                repeatRow.templateRowIndex,
-                                repeatRow.repeatEndRowIndex,
-                                items.size,
-                                templateColCount
-                            )
-                            if (expandedFormula != formula) {
-                                if (hasDiscontinuous && items.size > 255) {
-                                    throw FormulaExpansionException(
-                                        sheetName = sheet.sheetName,
-                                        cellRef = "${toColumnLetter(actualColIndex)}${currentRowIndex + 1}",
-                                        formula = formula
-                                    )
-                                }
-                                formula = expandedFormula
-                            }
-                        }
-
-                        CellContent.Formula(formula)
-                    } else {
-                        cellSpec.content
-                    }
+                    val adjustedContent = adjustContentForRightExpansion(
+                        cellSpec, repeatRow, items, colShiftAmount, sheet, currentRowIndex, actualColIndex
+                    )
 
                     writeCellContentSxssf(
-                        cell, adjustedContent, data, null, sheet, templateMergedRegions,
-                        imageLocations, sheetIndex, currentRowIndex, actualColIndex, context,
-                        colOffset = colShiftAmount
+                        cell, adjustedContent, data, imageLocations, sheetIndex,
+                        context, colOffset = colShiftAmount
                     )
                 }
             }
@@ -461,10 +483,8 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
                         val cell = row.createCell(targetColIdx)
                         styleMap[cellSpec.styleIndex]?.let { cell.cellStyle = it }
                         writeCellContentSxssf(
-                            cell, cellSpec.content, itemData, repeatRow.itemVariable,
-                            sheet, templateMergedRegions, imageLocations, sheetIndex, currentRowIndex, targetColIdx, context,
-                            colOffset = colShiftAmount,
-                            repeatItemIndex = itemIdx
+                            cell, cellSpec.content, itemData, imageLocations, sheetIndex,
+                            context, colOffset = colShiftAmount, repeatItemIndex = itemIdx
                         )
                     }
                 }
@@ -472,44 +492,67 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
         }
     }
 
+    /**
+     * 오른쪽 확장 시 수식을 조정합니다.
+     */
+    private fun adjustContentForRightExpansion(
+        cellSpec: CellSpec,
+        repeatRow: RowSpec.RepeatRow,
+        items: List<*>,
+        colShiftAmount: Int,
+        sheet: SXSSFSheet,
+        currentRowIndex: Int,
+        actualColIndex: Int
+    ): CellContent {
+        if (cellSpec.content !is CellContent.Formula) return cellSpec.content
+
+        val templateColCount = repeatRow.repeatEndCol - repeatRow.repeatStartCol + 1
+        var formula = cellSpec.content.formula
+
+        if (colShiftAmount > 0) {
+            formula = FormulaAdjuster.adjustForColumnExpansion(
+                formula,
+                repeatRow.repeatEndCol + 1,
+                colShiftAmount
+            )
+        }
+
+        if (cellSpec.columnIndex > repeatRow.repeatEndCol && items.size > 1) {
+            val (expandedFormula, hasDiscontinuous) = FormulaAdjuster.expandSingleRefToColumnRange(
+                formula,
+                repeatRow.repeatStartCol,
+                repeatRow.repeatEndCol,
+                repeatRow.templateRowIndex,
+                repeatRow.repeatEndRowIndex,
+                items.size,
+                templateColCount
+            )
+            if (expandedFormula != formula) {
+                if (hasDiscontinuous && items.size > 255) {
+                    throw FormulaExpansionException(
+                        sheetName = sheet.sheetName,
+                        cellRef = "${toColumnLetter(actualColIndex)}${currentRowIndex + 1}",
+                        formula = formula
+                    )
+                }
+                formula = expandedFormula
+            }
+        }
+
+        return CellContent.Formula(formula)
+    }
+
     private fun writeCellContentSxssf(
         cell: Cell,
         content: CellContent,
         data: Map<String, Any>,
-        itemVariable: String?,
-        sheet: SXSSFSheet,
-        templateMergedRegions: List<CellRangeAddress>,
         imageLocations: MutableList<ImageLocation>,
         sheetIndex: Int,
-        rowIndex: Int,
-        colIndex: Int,
         context: RenderingContext,
         colOffset: Int = 0,
         repeatItemIndex: Int = 0
     ) {
         when (content) {
-            is CellContent.Empty -> {}
-
-            is CellContent.StaticString -> {
-                val evaluated = context.evaluateText(content.value, data)
-                cell.setCellValue(evaluated)
-            }
-
-            is CellContent.StaticNumber -> cell.setCellValue(content.value)
-
-            is CellContent.StaticBoolean -> cell.setCellValue(content.value)
-
-            is CellContent.Variable -> {
-                val evaluated = context.evaluateText(content.originalText, data)
-                setCellValue(cell, evaluated)
-            }
-
-            is CellContent.ItemField -> {
-                val item = data[content.itemVariable]
-                val value = context.resolveFieldPath(item, content.fieldPath)
-                setCellValue(cell, value)
-            }
-
             is CellContent.Formula -> {
                 cell.cellFormula = content.formula
             }
@@ -520,69 +563,18 @@ internal class SxssfRenderingStrategy : RenderingStrategy {
             }
 
             is CellContent.ImageMarker -> {
-                // position이 지정된 이미지는 첫 번째 반복에서만 처리 (중복 방지)
-                if (content.position != null && repeatItemIndex > 0) {
-                    cell.setBlank()
-                    return
-                }
-
-                val (targetRow, targetCol) = if (content.position != null) {
-                    val (baseRow, baseCol) = parseCellRef(content.position)
-                    baseRow to (baseCol + colOffset)
-                } else {
-                    rowIndex to colIndex
-                }
-
-                imageLocations.add(
-                    ImageLocation(
-                        sheetIndex = sheetIndex,
-                        imageName = content.imageName,
-                        rowIndex = targetRow,
-                        colIndex = targetCol,
-                        sizeSpec = content.sizeSpec
-                    )
+                processImageMarker(
+                    cell, content, sheetIndex, imageLocations,
+                    0, colOffset, repeatItemIndex
                 )
-                cell.setBlank()
             }
 
-            is CellContent.RepeatMarker -> {
-                cell.setBlank()
+            else -> {
+                processCellContent(
+                    cell, content, data, sheetIndex, imageLocations, context,
+                    0, colOffset, repeatItemIndex
+                )
             }
-        }
-    }
-
-    private fun insertImagesSxssf(
-        workbook: SXSSFWorkbook,
-        imageLocations: List<ImageLocation>,
-        data: Map<String, Any>,
-        context: RenderingContext
-    ) {
-        for (location in imageLocations) {
-            val imageBytes = data["image.${location.imageName}"] as? ByteArray
-                ?: data[location.imageName] as? ByteArray
-                ?: continue
-
-            val sheet = workbook.getSheetAt(location.sheetIndex)
-
-            context.imageInserter.insertImage(
-                workbook, sheet, imageBytes,
-                location.rowIndex, location.colIndex,
-                location.sizeSpec,
-                sheet.findMergedRegion(location.rowIndex, location.colIndex)
-            )
-        }
-    }
-
-    private fun setCellValue(cell: Cell, value: Any?) {
-        when (value) {
-            null -> cell.setBlank()
-            is String -> cell.setCellValue(value)
-            is Number -> cell.setCellValue(value.toDouble())
-            is Boolean -> cell.setCellValue(value)
-            is java.time.LocalDate -> cell.setCellValue(value)
-            is java.time.LocalDateTime -> cell.setCellValue(value)
-            is java.util.Date -> cell.setCellValue(value)
-            else -> cell.setCellValue(value.toString())
         }
     }
 }

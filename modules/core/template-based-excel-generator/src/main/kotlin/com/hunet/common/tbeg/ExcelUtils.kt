@@ -10,7 +10,10 @@ import org.apache.poi.ss.usermodel.Sheet
 import org.apache.poi.ss.usermodel.Workbook
 import org.apache.poi.ss.util.CellAddress
 import org.apache.poi.ss.util.CellRangeAddress
+import org.apache.poi.openxml4j.opc.OPCPackage
+import org.apache.poi.openxml4j.opc.PackagingURIHelper
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.OutputStream
 
@@ -78,9 +81,35 @@ internal fun String.escapeXml(): String = this
 
 /**
  * XSSFWorkbook을 ByteArray로 변환합니다.
+ * absPath 제거: 템플릿의 원본 경로가 저장되어 있으면 Excel이 파일 열 때
+ * 경로 불일치로 인해 "수정됨" 상태가 될 수 있음
  */
 internal fun XSSFWorkbook.toByteArray(): ByteArray =
-    ByteArrayOutputStream().also { write(it) }.toByteArray()
+    ByteArrayOutputStream().also { write(it) }.toByteArray().removeAbsPath()
+
+// AlternateContent 요소를 제거하는 정규식 (absPath 포함)
+private val ALTERNATE_CONTENT_REGEX = Regex(
+    """<mc:AlternateContent>.*?</mc:AlternateContent>""",
+    RegexOption.DOT_MATCHES_ALL
+)
+
+/**
+ * xlsx 바이트 배열에서 workbook.xml의 absPath (원본 파일 경로) 요소를 제거합니다.
+ * Excel이 파일을 열 때 경로 불일치로 인해 "수정됨" 상태가 되는 것을 방지합니다.
+ */
+internal fun ByteArray.removeAbsPath(): ByteArray {
+    return OPCPackage.open(ByteArrayInputStream(this)).use { pkg ->
+        val workbookPartName = PackagingURIHelper.createPartName("/xl/workbook.xml")
+        pkg.getPart(workbookPartName)?.let { part ->
+            val originalXml = part.inputStream.bufferedReader().readText()
+            val modifiedXml = originalXml.replace(ALTERNATE_CONTENT_REGEX, "")
+            if (originalXml != modifiedXml) {
+                part.outputStream.use { it.write(modifiedXml.toByteArray(Charsets.UTF_8)) }
+            }
+        }
+        ByteArrayOutputStream().also { pkg.save(it) }.toByteArray()
+    }
+}
 
 /**
  * XSSFWorkbook의 모든 시트를 Sequence로 반환합니다.
