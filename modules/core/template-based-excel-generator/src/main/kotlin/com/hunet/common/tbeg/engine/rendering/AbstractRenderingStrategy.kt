@@ -1,7 +1,7 @@
-package com.hunet.common.tbeg.engine
+package com.hunet.common.tbeg.engine.rendering
 
-import com.hunet.common.tbeg.findMergedRegion
-import com.hunet.common.tbeg.parseCellRef
+import com.hunet.common.tbeg.engine.core.findMergedRegion
+import com.hunet.common.tbeg.engine.core.parseCellRef
 import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.Sheet
 import org.apache.poi.ss.usermodel.Workbook

@@ -1,4 +1,4 @@
-package com.hunet.common.tbeg
+package com.hunet.common.tbeg.engine.core
 
 import com.hunet.common.logging.commonLogger
 import java.io.ByteArrayInputStream

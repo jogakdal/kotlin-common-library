@@ -1,8 +1,8 @@
-package com.hunet.common.tbeg.engine.processors
+package com.hunet.common.tbeg.engine.pipeline.processors
 
-import com.hunet.common.tbeg.ChartProcessor
-import com.hunet.common.tbeg.engine.ExcelProcessor
-import com.hunet.common.tbeg.engine.ProcessingContext
+import com.hunet.common.tbeg.engine.core.ChartProcessor
+import com.hunet.common.tbeg.engine.pipeline.ExcelProcessor
+import com.hunet.common.tbeg.engine.pipeline.ProcessingContext
 
 /**
  * 차트 복원 프로세서.

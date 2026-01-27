@@ -1,6 +1,6 @@
 package com.hunet.common.tbeg.exception
 
-import com.hunet.common.tbeg.engine.RequiredNames
+import com.hunet.common.tbeg.engine.rendering.RequiredNames
 
 /**
  * 템플릿에 정의된 데이터가 DataProvider에 없을 때 발생하는 예외.

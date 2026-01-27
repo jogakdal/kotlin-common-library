@@ -1,8 +1,8 @@
-package com.hunet.common.tbeg.engine.processors
+package com.hunet.common.tbeg.engine.pipeline.processors
 
-import com.hunet.common.tbeg.PivotTableProcessor
-import com.hunet.common.tbeg.engine.ExcelProcessor
-import com.hunet.common.tbeg.engine.ProcessingContext
+import com.hunet.common.tbeg.engine.core.PivotTableProcessor
+import com.hunet.common.tbeg.engine.pipeline.ExcelProcessor
+import com.hunet.common.tbeg.engine.pipeline.ProcessingContext
 
 /**
  * 피벗 테이블 추출 프로세서.

@@ -1,10 +1,11 @@
-package com.hunet.common.tbeg.engine
+package com.hunet.common.tbeg.engine.pipeline
 
-import com.hunet.common.tbeg.ChartProcessor
 import com.hunet.common.tbeg.DocumentMetadata
 import com.hunet.common.tbeg.ExcelDataProvider
 import com.hunet.common.tbeg.ExcelGeneratorConfig
-import com.hunet.common.tbeg.PivotTableProcessor
+import com.hunet.common.tbeg.engine.core.ChartProcessor
+import com.hunet.common.tbeg.engine.core.PivotTableProcessor
+import com.hunet.common.tbeg.engine.rendering.RequiredNames
 
 /**
  * Excel 처리 파이프라인의 컨텍스트.

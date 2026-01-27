@@ -1,7 +1,7 @@
-package com.hunet.common.tbeg.engine
+package com.hunet.common.tbeg.engine.rendering
 
-import com.hunet.common.tbeg.toColumnIndex
-import com.hunet.common.tbeg.toColumnLetter
+import com.hunet.common.tbeg.engine.core.toColumnIndex
+import com.hunet.common.tbeg.engine.core.toColumnLetter
 
 /**
  * 셀 참조 정보를 담는 데이터 클래스

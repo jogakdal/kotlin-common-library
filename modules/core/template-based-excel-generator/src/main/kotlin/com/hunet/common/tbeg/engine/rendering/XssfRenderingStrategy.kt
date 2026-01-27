@@ -1,7 +1,7 @@
-package com.hunet.common.tbeg.engine
+package com.hunet.common.tbeg.engine.rendering
 
-import com.hunet.common.tbeg.setInitialView
-import com.hunet.common.tbeg.toByteArray
+import com.hunet.common.tbeg.engine.core.setInitialView
+import com.hunet.common.tbeg.engine.core.toByteArray
 import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.CellCopyPolicy
 import org.apache.poi.ss.usermodel.CellType
@@ -31,11 +31,24 @@ import java.io.ByteArrayInputStream
 internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
     companion object {
         private val REPEAT_MARKER_PATTERN = Regex("""\$\{repeat\s*\(""", RegexOption.IGNORE_CASE)
+        private val FORMULA_MARKER_PATTERN = Regex("""TBEG_(REPEAT|IMAGE)\s*\(""", RegexOption.IGNORE_CASE)
     }
 
     override val name: String = "XSSF"
 
     // ========== 추상 메서드 구현 ==========
+
+    override fun beforeProcessSheets(
+        workbook: Workbook,
+        blueprint: WorkbookSpec,
+        data: Map<String, Any>,
+        context: RenderingContext
+    ) {
+        // 모든 시트의 마커 셀 미리 비우기 (shiftRows 시 POI 경고 방지)
+        for (i in 0 until workbook.numberOfSheets) {
+            clearAllMarkers(workbook.getSheetAt(i) as XSSFSheet)
+        }
+    }
 
     override fun <T> withWorkbook(
         templateBytes: ByteArray,
@@ -117,7 +130,6 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
             }
         }
 
-        clearRepeatMarkers(sheet)
         substituteVariablesXssf(sheet, blueprint, data, rowOffsets, imageLocations, context)
     }
 
@@ -173,14 +185,27 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         }
     }
 
-    private fun clearRepeatMarkers(sheet: XSSFSheet) {
+    /**
+     * 시트에서 모든 TBEG 마커 셀을 비웁니다.
+     * shiftRows 전에 호출하여 POI 경고를 방지합니다.
+     */
+    private fun clearAllMarkers(sheet: XSSFSheet) {
         sheet.forEach { row ->
             row.forEach { cell ->
-                if (cell.cellType == CellType.STRING) {
-                    val text = cell.stringCellValue ?: return@forEach
-                    if (REPEAT_MARKER_PATTERN.containsMatchIn(text)) {
-                        cell.setBlank()
+                when (cell.cellType) {
+                    CellType.STRING -> {
+                        val text = cell.stringCellValue ?: return@forEach
+                        if (REPEAT_MARKER_PATTERN.containsMatchIn(text)) {
+                            cell.setBlank()
+                        }
                     }
+                    CellType.FORMULA -> {
+                        val formula = cell.cellFormula ?: return@forEach
+                        if (FORMULA_MARKER_PATTERN.containsMatchIn(formula)) {
+                            cell.setBlank()
+                        }
+                    }
+                    else -> {}
                 }
             }
         }

@@ -1,4 +1,4 @@
-package com.hunet.common.tbeg.engine
+package com.hunet.common.tbeg.engine.rendering
 
 /**
  * 템플릿 렌더링 전략 인터페이스.

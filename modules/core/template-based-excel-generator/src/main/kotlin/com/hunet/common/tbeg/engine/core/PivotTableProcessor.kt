@@ -1,5 +1,6 @@
-package com.hunet.common.tbeg
+package com.hunet.common.tbeg.engine.core
 
+import com.hunet.common.tbeg.ExcelGeneratorConfig
 import com.hunet.common.logging.commonLogger
 import org.apache.poi.openxml4j.opc.OPCPackage
 import org.apache.poi.openxml4j.opc.PackagePart

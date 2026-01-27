@@ -1,9 +1,9 @@
-package com.hunet.common.tbeg.engine.processors
+package com.hunet.common.tbeg.engine.pipeline.processors
 
 import com.hunet.common.tbeg.DocumentMetadata
-import com.hunet.common.tbeg.engine.ExcelProcessor
-import com.hunet.common.tbeg.engine.ProcessingContext
-import com.hunet.common.tbeg.toByteArray
+import com.hunet.common.tbeg.engine.pipeline.ExcelProcessor
+import com.hunet.common.tbeg.engine.pipeline.ProcessingContext
+import com.hunet.common.tbeg.engine.core.toByteArray
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.ByteArrayInputStream
 import java.util.*

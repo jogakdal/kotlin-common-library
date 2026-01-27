@@ -1,7 +1,7 @@
-package com.hunet.common.tbeg.engine
+package com.hunet.common.tbeg.engine.rendering
 
-import com.hunet.common.tbeg.detectImageTypeForPoi
-import com.hunet.common.tbeg.toColumnIndex
+import com.hunet.common.tbeg.engine.core.detectImageTypeForPoi
+import com.hunet.common.tbeg.engine.core.toColumnIndex
 import org.apache.poi.ss.usermodel.ClientAnchor
 import org.apache.poi.ss.usermodel.Picture
 import org.apache.poi.ss.usermodel.Sheet
