@@ -306,4 +306,110 @@ internal class RepeatExpansionProcessor {
             }
         }
     }
+
+    // ========== PositionCalculator 연동 메서드 ==========
+
+    /**
+     * PositionCalculator를 사용하여 수식을 확장합니다 (XSSF 모드용).
+     *
+     * repeat 영역 이후 행의 수식에서 반복 영역 내 셀 참조를 범위로 확장합니다.
+     *
+     * @param sheet 대상 시트
+     * @param expansion repeat 확장 정보
+     * @param itemCount 반복 아이템 수
+     */
+    fun expandFormulasWithCalculator(
+        sheet: XSSFSheet,
+        expansion: PositionCalculator.RepeatExpansion,
+        itemCount: Int
+    ) {
+        if (itemCount <= 1 || expansion.rowExpansion <= 0) return
+
+        val newRepeatEndRow = expansion.finalEndRow
+
+        for (rowIdx in (newRepeatEndRow + 1)..sheet.lastRowNum) {
+            val row = sheet.getRow(rowIdx) ?: continue
+            row.forEach { cell ->
+                if (cell.cellType == CellType.FORMULA) {
+                    val originalFormula = cell.cellFormula
+                    val (expandedFormula, hasDiscontinuous) = FormulaAdjuster.expandToRangeWithCalculator(
+                        originalFormula, expansion, itemCount
+                    )
+
+                    if (expandedFormula != originalFormula) {
+                        if (hasDiscontinuous && itemCount > 255) {
+                            throw FormulaExpansionException(
+                                sheetName = sheet.sheetName,
+                                cellRef = cell.address.formatAsString(),
+                                formula = originalFormula
+                            )
+                        }
+                        cell.cellFormula = expandedFormula
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * PositionCalculator를 사용하여 반복 영역 내 병합 영역을 복제합니다 (XSSF 모드용).
+     *
+     * @param sheet 대상 시트
+     * @param expansion repeat 확장 정보
+     * @param itemCount 반복 아이템 수
+     * @param templateMergedRegions 템플릿의 병합 영역 목록
+     */
+    fun copyMergedRegionsWithCalculator(
+        sheet: XSSFSheet,
+        expansion: PositionCalculator.RepeatExpansion,
+        itemCount: Int,
+        templateMergedRegions: List<CellRangeAddress>
+    ) {
+        if (itemCount <= 1) return
+
+        val region = expansion.region
+        val templateRowCount = region.endRow - region.startRow + 1
+        val templateColCount = region.endCol - region.startCol + 1
+
+        // 반복 영역 내 병합 영역 찾기
+        val repeatMergedRegions = templateMergedRegions.filter { merged ->
+            merged.firstRow >= region.startRow &&
+                merged.lastRow <= region.endRow &&
+                merged.firstColumn >= region.startCol &&
+                merged.lastColumn <= region.endCol
+        }
+
+        // 각 추가 아이템에 대해 병합 영역 복제
+        for (itemIdx in 1 until itemCount) {
+            for (templateMerged in repeatMergedRegions) {
+                val relativeFirstRow = templateMerged.firstRow - region.startRow
+                val relativeLastRow = templateMerged.lastRow - region.startRow
+                val relativeFirstCol = templateMerged.firstColumn - region.startCol
+                val relativeLastCol = templateMerged.lastColumn - region.startCol
+
+                val newRegion = when (region.direction) {
+                    RepeatDirection.DOWN -> {
+                        val rowOffset = itemIdx * templateRowCount
+                        CellRangeAddress(
+                            expansion.finalStartRow + rowOffset + relativeFirstRow,
+                            expansion.finalStartRow + rowOffset + relativeLastRow,
+                            expansion.finalStartCol + relativeFirstCol,
+                            expansion.finalStartCol + relativeLastCol
+                        )
+                    }
+                    RepeatDirection.RIGHT -> {
+                        val colOffset = itemIdx * templateColCount
+                        CellRangeAddress(
+                            expansion.finalStartRow + relativeFirstRow,
+                            expansion.finalStartRow + relativeLastRow,
+                            expansion.finalStartCol + colOffset + relativeFirstCol,
+                            expansion.finalStartCol + colOffset + relativeLastCol
+                        )
+                    }
+                }
+
+                runCatching { sheet.addMergedRegion(newRegion) }
+            }
+        }
+    }
 }

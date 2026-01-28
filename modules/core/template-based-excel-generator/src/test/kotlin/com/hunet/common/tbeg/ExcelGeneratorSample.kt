@@ -59,8 +59,9 @@ import java.util.concurrent.TimeUnit
  */
 object ExcelGeneratorSample {
 
-    // 샘플 데이터 클래스 (Employee)
+    // 샘플 데이터 클래스
     data class Employee(val name: String, val position: String, val salary: Int)
+    data class Department(val name: String, val members: Int, val office: String)
 
     @JvmStatic
     fun main(args: Array<String>) {
@@ -164,12 +165,18 @@ object ExcelGeneratorSample {
         val data = mapOf(
             "title" to "2026년 직원 현황",
             "date" to LocalDate.now().toString(),
+            "secondTitle" to "부서별 현황",
             "linkText" to "(주)휴넷 홈페이지",
             "url" to "https://www.hunet.co.kr",
             "employees" to listOf(
                 Employee("황용호", "부장", 8000),
                 Employee("한용호", "과장", 6500),
                 Employee("홍용호", "대리", 4500)
+            ),
+            "department" to listOf(
+                Department("개발팀", 15, "본관 3층"),
+                Department("기획팀", 8, "본관 2층"),
+                Department("인사팀", 5, "별관 1층")
             ),
             "logo" to loadImage("hunet_logo.png"),
             "ci" to loadImage("hunet_ci.png")
@@ -240,6 +247,7 @@ object ExcelGeneratorSample {
             // 단순 값
             value("title", "2026년 직원 현황(대용량)")
             value("date", LocalDate.now().toString())
+            value("secondTitle", "부서별 현황")
             value("linkText", "(주)휴넷 홈페이지")
             value("url", "https://www.hunet.co.kr")
 
@@ -252,6 +260,15 @@ object ExcelGeneratorSample {
                 // 이 블록은 실제로 데이터가 필요할 때 호출됨
                 // 실제 사용 시: repository.streamAll().iterator()
                 generateLargeDataSet().iterator()
+            }
+
+            // 부서 컬렉션
+            items("department") {
+                listOf(
+                    Department("개발팀", 15, "본관 3층"),
+                    Department("기획팀", 8, "본관 2층"),
+                    Department("인사팀", 5, "별관 1층")
+                ).iterator()
             }
         }
 
@@ -344,11 +361,16 @@ object ExcelGeneratorSample {
         val data = mapOf(
             "title" to "2026년 직원 현황(비동기 생성)",
             "date" to LocalDate.now().toString(),
+            "secondTitle" to "부서별 현황",
             "linkText" to "(주)휴넷 홈페이지",
             "url" to "https://www.hunet.co.kr",
             "employees" to listOf(
                 Employee("황용호", "부장", 8000),
                 Employee("한용호", "과장", 6500)
+            ),
+            "department" to listOf(
+                Department("개발팀", 15, "본관 3층"),
+                Department("기획팀", 8, "본관 2층")
             ),
             "logo" to loadImage("hunet_logo.png"),
             "ci" to loadImage("hunet_ci.png")
@@ -503,6 +525,7 @@ object ExcelGeneratorSample {
         val dataProvider = simpleDataProvider {
             value("title", "2026년 직원 현황(대용량 비동기)")
             value("date", LocalDate.now().toString())
+            value("secondTitle", "부서별 현황")
             value("linkText", "(주)휴넷 홈페이지")
             value("url", "https://www.hunet.co.kr")
             image("logo", loadImage("hunet_logo.png") ?: byteArrayOf())
@@ -511,6 +534,15 @@ object ExcelGeneratorSample {
             // 대용량 데이터 - 실제로는 DB 스트리밍 쿼리 사용
             items("employees") {
                 generateLargeDataSet(dataCount).iterator()
+            }
+
+            // 부서 컬렉션
+            items("department") {
+                listOf(
+                    Department("개발팀", 15, "본관 3층"),
+                    Department("기획팀", 8, "본관 2층"),
+                    Department("인사팀", 5, "별관 1층")
+                ).iterator()
             }
         }
 
@@ -636,6 +668,7 @@ object ExcelGeneratorSample {
         val dataProvider = simpleDataProvider {
             value("title", "2026년 직원 현황(암호화)")
             value("date", LocalDate.now().toString())
+            value("secondTitle", "부서별 현황")
             value("linkText", "(주)휴넷 홈페이지")
             value("url", "https://www.hunet.co.kr")
             image("logo", loadImage("hunet_logo.png") ?: byteArrayOf())
@@ -643,6 +676,15 @@ object ExcelGeneratorSample {
 
             items("employees") {
                 generateLargeDataSet(dataCount).iterator()
+            }
+
+            // 부서 컬렉션
+            items("department") {
+                listOf(
+                    Department("개발팀", 15, "본관 3층"),
+                    Department("기획팀", 8, "본관 2층"),
+                    Department("인사팀", 5, "별관 1층")
+                ).iterator()
             }
         }
 
@@ -760,6 +802,7 @@ object ExcelGeneratorSample {
             // 단순 값
             value("title", "2026년 직원 현황(메타데이터 포함)")
             value("date", LocalDate.now().toString())
+            value("secondTitle", "부서별 현황")
             value("linkText", "(주)휴넷 홈페이지")
             value("url", "https://www.hunet.co.kr")
 
@@ -773,6 +816,15 @@ object ExcelGeneratorSample {
                     Employee("황용호", "부장", 8000),
                     Employee("한용호", "과장", 6500),
                     Employee("홍용호", "대리", 4500)
+                ).iterator()
+            }
+
+            // 부서 컬렉션
+            items("department") {
+                listOf(
+                    Department("개발팀", 15, "본관 3층"),
+                    Department("기획팀", 8, "본관 2층"),
+                    Department("인사팀", 5, "별관 1층")
                 ).iterator()
             }
 

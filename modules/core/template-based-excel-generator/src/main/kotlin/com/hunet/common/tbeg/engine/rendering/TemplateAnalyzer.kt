@@ -322,7 +322,13 @@ class TemplateAnalyzer {
         val namedRange = workbook.getName(range)
             ?: throw IllegalArgumentException("Named Range를 찾을 수 없습니다: $range")
 
-        val areaRef = AreaReference(namedRange.refersToFormula, workbook.spreadsheetVersion)
+        val formula = namedRange.refersToFormula
+        // 참조가 깨진 경우(#REF!) 처리
+        if (formula.contains("#REF!")) {
+            throw IllegalArgumentException("Named Range '$range'의 참조가 유효하지 않습니다: $formula")
+        }
+
+        val areaRef = AreaReference(formula, workbook.spreadsheetVersion)
         val firstCell = areaRef.firstCell
         val lastCell = areaRef.lastCell
 

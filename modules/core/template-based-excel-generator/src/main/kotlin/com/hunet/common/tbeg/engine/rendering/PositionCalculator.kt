@@ -1,0 +1,421 @@
+package com.hunet.common.tbeg.engine.rendering
+
+import com.hunet.common.tbeg.exception.TemplateProcessingException
+import org.apache.poi.ss.util.CellRangeAddress
+
+/**
+ * 템플릿 요소의 최종 위치를 계산합니다.
+ *
+ * repeat 확장에 따른 모든 요소의 위치 변화를 추적하고,
+ * 각 요소의 최종 행/열 위치를 계산합니다.
+ *
+ * **핵심 원칙**:
+ * - 위치 계산 시 collection의 size만 필요 (lazy loading 호환)
+ * - 실제 데이터 접근은 셀에 값을 쓸 때 한 번만 수행
+ *
+ * **위치 결정 규칙 (모든 요소에 동일 적용)**:
+ * 1. 어느 repeat에도 영향받지 않는 요소: 템플릿 위치 그대로 고정
+ * 2. 하나의 repeat에만 영향받는 요소: 그 repeat 확장만큼 밀림
+ * 3. 두 개 이상의 repeat에 영향받는 요소: 가장 많이 밀리는 위치로 이동
+ */
+class PositionCalculator(
+    private val repeatRegions: List<RepeatRegionSpec>,
+    private val collectionSizes: Map<String, Int>
+) {
+    /**
+     * repeat 확장 정보
+     *
+     * @property region 원본 repeat 영역 명세
+     * @property finalStartRow 확장 시작 행 (이전 repeat 영향 반영)
+     * @property finalStartCol 확장 시작 열
+     * @property rowExpansion 행 확장량 (DOWN 방향)
+     * @property colExpansion 열 확장량 (RIGHT 방향)
+     */
+    data class RepeatExpansion(
+        val region: RepeatRegionSpec,
+        val finalStartRow: Int,
+        val finalStartCol: Int,
+        val rowExpansion: Int,
+        val colExpansion: Int
+    ) {
+        /** 이 repeat의 확장된 최종 끝 행 */
+        val finalEndRow: Int get() = finalStartRow + (region.endRow - region.startRow) + rowExpansion
+
+        /** 이 repeat의 확장된 최종 끝 열 */
+        val finalEndCol: Int get() = finalStartCol + (region.endCol - region.startCol) + colExpansion
+    }
+
+    private val expansions = mutableListOf<RepeatExpansion>()
+    private var calculated = false
+
+    /**
+     * 모든 repeat의 확장 정보를 계산합니다.
+     * repeat 간 의존성을 고려하여 순차적으로 처리합니다.
+     *
+     * @return 계산된 확장 정보 리스트 (위→아래, 왼쪽→오른쪽 순서)
+     */
+    fun calculate(): List<RepeatExpansion> {
+        if (calculated) return expansions.toList()
+
+        // 1. repeat을 위치순으로 정렬 (위→아래, 왼쪽→오른쪽)
+        val sorted = repeatRegions.sortedWith(
+            compareBy({ it.startRow }, { it.startCol })
+        )
+
+        // 2. 각 열 범위별 누적 행 오프셋 추적
+        // key: 열 범위를 대표하는 ID, value: 누적 행 오프셋
+        val rowOffsetsByColumnRange = mutableMapOf<ColumnRangeKey, Int>()
+
+        // 3. 각 행 범위별 누적 열 오프셋 추적
+        // key: 행 범위를 대표하는 ID, value: 누적 열 오프셋
+        val colOffsetsByRowRange = mutableMapOf<RowRangeKey, Int>()
+
+        // 4. 각 repeat 처리
+        for (region in sorted) {
+            // 이 repeat이 받는 영향 계산 (이전 repeat들에 의해)
+            val affectedRowOffset = calculateAffectedRowOffset(region, expansions)
+            val affectedColOffset = calculateAffectedColOffset(region, expansions)
+
+            // 최종 시작 위치
+            val finalStartRow = region.startRow + affectedRowOffset
+            val finalStartCol = region.startCol + affectedColOffset
+
+            // 확장량 계산 (size만 사용 - 데이터 접근 불필요)
+            val itemCount = collectionSizes[region.collection] ?: 0
+            val (rowExp, colExp) = calculateExpansionAmount(region, itemCount)
+
+            val expansion = RepeatExpansion(region, finalStartRow, finalStartCol, rowExp, colExp)
+            expansions.add(expansion)
+        }
+
+        calculated = true
+        return expansions.toList()
+    }
+
+    /**
+     * 특정 템플릿 위치(행, 열)가 최종적으로 어디로 이동하는지 계산합니다.
+     *
+     * @param templateRow 템플릿 행 인덱스 (0-based)
+     * @param templateCol 템플릿 열 인덱스 (0-based)
+     * @return (최종 행, 최종 열) 쌍
+     */
+    fun getFinalPosition(templateRow: Int, templateCol: Int): Pair<Int, Int> {
+        if (!calculated) calculate()
+
+        var rowOffset = 0
+        var colOffset = 0
+
+        for (expansion in expansions) {
+            // 이 요소가 해당 repeat에 영향받는지 확인
+            val affectsRow = isAffectedByRepeatRow(templateRow, templateCol, expansion)
+            val affectsCol = isAffectedByRepeatCol(templateRow, templateCol, expansion)
+
+            // 여러 repeat 아래에 있는 요소는 모든 오프셋이 누적됨
+            if (affectsRow) {
+                rowOffset += expansion.rowExpansion
+            }
+            if (affectsCol) {
+                colOffset += expansion.colExpansion
+            }
+        }
+
+        return (templateRow + rowOffset) to (templateCol + colOffset)
+    }
+
+    /**
+     * 특정 템플릿 범위가 최종적으로 어떻게 변하는지 계산합니다.
+     *
+     * 병합 셀이나 범위의 경우, 포함된 모든 열의 오프셋 중 최대값을 적용합니다.
+     * 예: A열이 4행, B열이 2행 밀릴 때 A10:B10 → A14:B14 (max 적용)
+     *
+     * @param templateFirstRow 템플릿 시작 행 (0-based)
+     * @param templateLastRow 템플릿 끝 행 (0-based)
+     * @param templateFirstCol 템플릿 시작 열 (0-based)
+     * @param templateLastCol 템플릿 끝 열 (0-based)
+     * @return 최종 CellRangeAddress
+     */
+    fun getFinalRange(
+        templateFirstRow: Int,
+        templateLastRow: Int,
+        templateFirstCol: Int,
+        templateLastCol: Int
+    ): CellRangeAddress {
+        // 범위에 포함된 모든 열에 대해 행 오프셋을 계산하고 최대값 선택
+        var maxRowOffset = 0
+        for (col in templateFirstCol..templateLastCol) {
+            val (finalRow, _) = getFinalPosition(templateFirstRow, col)
+            val rowOffset = finalRow - templateFirstRow
+            maxRowOffset = maxOf(maxRowOffset, rowOffset)
+        }
+
+        // 범위에 포함된 모든 행에 대해 열 오프셋을 계산하고 최대값 선택
+        var maxColOffset = 0
+        for (row in templateFirstRow..templateLastRow) {
+            val (_, finalCol) = getFinalPosition(row, templateFirstCol)
+            val colOffset = finalCol - templateFirstCol
+            maxColOffset = maxOf(maxColOffset, colOffset)
+        }
+
+        return CellRangeAddress(
+            templateFirstRow + maxRowOffset,
+            templateLastRow + maxRowOffset,
+            templateFirstCol + maxColOffset,
+            templateLastCol + maxColOffset
+        )
+    }
+
+    /**
+     * 특정 repeat 영역 내에서 특정 아이템 인덱스의 행 시작 위치를 계산합니다.
+     *
+     * @param expansion repeat 확장 정보
+     * @param itemIndex 아이템 인덱스 (0-based)
+     * @param templateRowOffset 템플릿 내 행 오프셋 (0 = 첫 행)
+     * @return 최종 행 인덱스
+     */
+    fun getRowForRepeatItem(
+        expansion: RepeatExpansion,
+        itemIndex: Int,
+        templateRowOffset: Int = 0
+    ): Int {
+        val templateRowCount = expansion.region.endRow - expansion.region.startRow + 1
+        return expansion.finalStartRow + (itemIndex * templateRowCount) + templateRowOffset
+    }
+
+    /**
+     * 특정 repeat 영역 내에서 특정 아이템 인덱스의 열 시작 위치를 계산합니다.
+     *
+     * @param expansion repeat 확장 정보
+     * @param itemIndex 아이템 인덱스 (0-based)
+     * @param templateColOffset 템플릿 내 열 오프셋 (0 = 첫 열)
+     * @return 최종 열 인덱스
+     */
+    fun getColForRepeatItem(
+        expansion: RepeatExpansion,
+        itemIndex: Int,
+        templateColOffset: Int = 0
+    ): Int {
+        val templateColCount = expansion.region.endCol - expansion.region.startCol + 1
+        return expansion.finalStartCol + (itemIndex * templateColCount) + templateColOffset
+    }
+
+    /**
+     * 특정 collection의 확장 정보를 반환합니다.
+     *
+     * 주의: 같은 collection이 여러 위치에서 사용되면 첫 번째 것만 반환됩니다.
+     * 정확한 expansion을 찾으려면 [getExpansionForRegion]을 사용하세요.
+     */
+    fun getExpansionFor(collectionName: String): RepeatExpansion? {
+        if (!calculated) calculate()
+        return expansions.find { it.region.collection == collectionName }
+    }
+
+    /**
+     * 특정 repeat 영역의 확장 정보를 반환합니다.
+     *
+     * 같은 collection이 여러 위치에서 사용될 때 정확한 expansion을 찾기 위해 사용합니다.
+     *
+     * @param collectionName collection 이름
+     * @param startRow repeat 시작 행 (템플릿 기준)
+     * @param startCol repeat 시작 열 (템플릿 기준)
+     * @return 해당 영역의 확장 정보, 없으면 null
+     */
+    fun getExpansionForRegion(collectionName: String, startRow: Int, startCol: Int): RepeatExpansion? {
+        if (!calculated) calculate()
+        return expansions.find {
+            it.region.collection == collectionName &&
+                it.region.startRow == startRow &&
+                it.region.startCol == startCol
+        }
+    }
+
+    /**
+     * 특정 collection의 모든 확장 정보를 반환합니다.
+     *
+     * 같은 collection이 여러 위치에서 사용될 때 모든 expansion을 가져옵니다.
+     */
+    fun getExpansionsFor(collectionName: String): List<RepeatExpansion> {
+        if (!calculated) calculate()
+        return expansions.filter { it.region.collection == collectionName }
+    }
+
+    /**
+     * 모든 확장 정보를 반환합니다.
+     */
+    fun getExpansions(): List<RepeatExpansion> {
+        if (!calculated) calculate()
+        return expansions.toList()
+    }
+
+    // ========== Private Helper Methods ==========
+
+    /**
+     * repeat 영역의 확장량을 계산합니다.
+     */
+    private fun calculateExpansionAmount(region: RepeatRegionSpec, itemCount: Int): Pair<Int, Int> {
+        if (itemCount <= 0) return 0 to 0
+
+        return when (region.direction) {
+            RepeatDirection.DOWN -> {
+                val templateRowCount = region.endRow - region.startRow + 1
+                val rowExpansion = maxOf(0, (itemCount - 1) * templateRowCount)
+                rowExpansion to 0
+            }
+            RepeatDirection.RIGHT -> {
+                val templateColCount = region.endCol - region.startCol + 1
+                val colExpansion = maxOf(0, (itemCount - 1) * templateColCount)
+                0 to colExpansion
+            }
+        }
+    }
+
+    /**
+     * 특정 repeat가 이전 repeat들에 의해 받는 행 오프셋을 계산합니다.
+     * 여러 repeat 아래에 있으면 모든 오프셋이 누적됩니다.
+     */
+    private fun calculateAffectedRowOffset(
+        region: RepeatRegionSpec,
+        previousExpansions: List<RepeatExpansion>
+    ): Int {
+        var totalOffset = 0
+
+        for (expansion in previousExpansions) {
+            if (expansion.region.direction != RepeatDirection.DOWN) continue
+
+            // 이 repeat가 이전 repeat에 영향받는지 확인:
+            // - 이전 repeat의 열 범위와 겹치고
+            // - 이전 repeat보다 아래에 있으면 영향받음
+            val columnsOverlap = region.overlapsColumns(expansion.region)
+            val isBelowPrevious = region.startRow > expansion.region.endRow
+
+            if (columnsOverlap && isBelowPrevious) {
+                totalOffset += expansion.rowExpansion
+            }
+        }
+
+        return totalOffset
+    }
+
+    /**
+     * 특정 repeat가 이전 repeat들에 의해 받는 열 오프셋을 계산합니다.
+     * 여러 repeat 오른쪽에 있으면 모든 오프셋이 누적됩니다.
+     */
+    private fun calculateAffectedColOffset(
+        region: RepeatRegionSpec,
+        previousExpansions: List<RepeatExpansion>
+    ): Int {
+        var totalOffset = 0
+
+        for (expansion in previousExpansions) {
+            if (expansion.region.direction != RepeatDirection.RIGHT) continue
+
+            // 이 repeat가 이전 repeat에 영향받는지 확인:
+            // - 이전 repeat의 행 범위와 겹치고
+            // - 이전 repeat보다 오른쪽에 있으면 영향받음
+            val rowsOverlap = region.overlapsRows(expansion.region)
+            val isRightOfPrevious = region.startCol > expansion.region.endCol
+
+            if (rowsOverlap && isRightOfPrevious) {
+                totalOffset += expansion.colExpansion
+            }
+        }
+
+        return totalOffset
+    }
+
+    /**
+     * 요소가 특정 repeat 확장에 의해 행 방향으로 영향받는지 확인합니다.
+     */
+    private fun isAffectedByRepeatRow(
+        templateRow: Int,
+        templateCol: Int,
+        expansion: RepeatExpansion
+    ): Boolean {
+        if (expansion.region.direction != RepeatDirection.DOWN) return false
+        if (expansion.rowExpansion <= 0) return false
+
+        // repeat 아래에 있고 열 범위가 겹치면 영향받음
+        val isBelowRepeat = templateRow > expansion.region.endRow
+        val columnsOverlap = templateCol in expansion.region.startCol..expansion.region.endCol
+
+        return isBelowRepeat && columnsOverlap
+    }
+
+    /**
+     * 요소가 특정 repeat 확장에 의해 열 방향으로 영향받는지 확인합니다.
+     */
+    private fun isAffectedByRepeatCol(
+        templateRow: Int,
+        templateCol: Int,
+        expansion: RepeatExpansion
+    ): Boolean {
+        if (expansion.region.direction != RepeatDirection.RIGHT) return false
+        if (expansion.colExpansion <= 0) return false
+
+        // repeat 오른쪽에 있고 행 범위가 겹치면 영향받음
+        val isRightOfRepeat = templateCol > expansion.region.endCol
+        val rowsOverlap = templateRow in expansion.region.startRow..expansion.region.endRow
+
+        return isRightOfRepeat && rowsOverlap
+    }
+
+    /**
+     * 특정 행이 expansion에 의해 받는 행 오프셋을 계산합니다.
+     */
+    private fun calculateRowOffsetFromExpansion(templateRow: Int, expansion: RepeatExpansion): Int {
+        if (expansion.region.direction != RepeatDirection.DOWN) return 0
+        if (templateRow <= expansion.region.endRow) return 0
+        return expansion.rowExpansion
+    }
+
+    /** 열 범위를 식별하기 위한 키 */
+    private data class ColumnRangeKey(val startCol: Int, val endCol: Int)
+
+    /** 행 범위를 식별하기 위한 키 */
+    private data class RowRangeKey(val startRow: Int, val endRow: Int)
+
+    companion object {
+        /**
+         * repeat 영역 간 범위 겹침을 검사합니다.
+         * 어떤 두 repeat이든 2D 범위가 겹치면 예외 발생
+         *
+         * @throws TemplateProcessingException repeat 영역이 겹치는 경우
+         */
+        fun validateNoOverlap(regions: List<RepeatRegionSpec>) {
+            for (i in regions.indices) {
+                for (j in i + 1 until regions.size) {
+                    if (regions[i].overlaps(regions[j])) {
+                        throw TemplateProcessingException(
+                            errorType = TemplateProcessingException.ErrorType.INVALID_PARAMETER_VALUE,
+                            details = "repeat 영역이 겹칩니다: " +
+                                "${regions[i].collection}(${regions[i].direction}, 행 ${regions[i].startRow + 1}-${regions[i].endRow + 1}, 열 ${regions[i].startCol + 1}-${regions[i].endCol + 1}), " +
+                                "${regions[j].collection}(${regions[j].direction}, 행 ${regions[j].startRow + 1}-${regions[j].endRow + 1}, 열 ${regions[j].startCol + 1}-${regions[j].endCol + 1})"
+                        )
+                    }
+                }
+            }
+        }
+
+        /**
+         * 데이터에서 collection 크기를 추출합니다.
+         *
+         * @param data 템플릿 데이터
+         * @param repeatRegions repeat 영역 목록
+         * @return collection 이름 → 아이템 수 맵
+         */
+        fun extractCollectionSizes(
+            data: Map<String, Any>,
+            repeatRegions: List<RepeatRegionSpec>
+        ): Map<String, Int> {
+            return repeatRegions.associate { region ->
+                val items = data[region.collection]
+                val size = when (items) {
+                    is List<*> -> items.size
+                    is Collection<*> -> items.size
+                    is Iterable<*> -> items.count()
+                    else -> 0
+                }
+                region.collection to size
+            }
+        }
+    }
+}

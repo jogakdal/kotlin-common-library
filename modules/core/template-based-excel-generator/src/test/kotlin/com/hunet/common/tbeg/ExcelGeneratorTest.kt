@@ -182,6 +182,7 @@ class ExcelGeneratorTest {
         javaClass.getResourceAsStream("/$fileName")?.readBytes()
 
     data class Employee(val name: String, val position: String, val salary: Int)
+    data class Department(val name: String, val members: Int, val office: String)
 
     private fun createTestData(employeeCount: Int = 3): Map<String, Any> {
         val employees = (1..employeeCount).map { i ->
@@ -848,9 +849,11 @@ class ExcelGeneratorTest {
             val provider = simpleDataProvider {
                 value("title", "테스트 보고서")
                 value("date", "2024-01-07")
+                value("secondTitle", "부서별 현황")
                 value("linkText", "(주)휴넷 홈페이지")
                 value("url", "https://www.hunet.co.kr")
                 items("employees", listOf(Employee("황용호", "부장", 8000)))
+                items("department", listOf(Department("개발팀", 15, "본관 3층")))
                 loadImage("hunet_logo.png")?.let { image("logo", it) }
                 loadImage("hunet_ci.png")?.let { image("ci", it) }
             }

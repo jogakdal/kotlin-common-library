@@ -227,6 +227,21 @@ data class RepeatRegionSpec(
     fun overlapsColumns(other: RepeatRegionSpec): Boolean {
         return !(endCol < other.startCol || startCol > other.endCol)
     }
+
+    /**
+     * 다른 repeat 영역과 행 범위가 겹치는지 확인
+     */
+    fun overlapsRows(other: RepeatRegionSpec): Boolean {
+        return !(endRow < other.startRow || startRow > other.endRow)
+    }
+
+    /**
+     * 다른 repeat 영역과 2D 공간(행×열)에서 겹치는지 확인
+     * (방향에 관계없이 행×열 범위가 겹치면 true)
+     */
+    fun overlaps(other: RepeatRegionSpec): Boolean {
+        return overlapsRows(other) && overlapsColumns(other)
+    }
 }
 
 /**

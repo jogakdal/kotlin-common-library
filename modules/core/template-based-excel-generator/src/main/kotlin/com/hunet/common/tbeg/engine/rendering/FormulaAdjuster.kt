@@ -492,4 +492,185 @@ object FormulaAdjuster {
 
         return result to hasDiscontinuous
     }
+
+    // ========== PositionCalculator 연동 메서드 ==========
+
+    /**
+     * PositionCalculator를 사용하여 수식 내 셀 참조의 위치를 조정합니다.
+     *
+     * 모든 셀 참조가 PositionCalculator의 getFinalPosition()을 통해
+     * 최종 위치로 변환됩니다.
+     *
+     * @param formula 원본 수식
+     * @param calculator 위치 계산기
+     * @param formulaRow 수식이 위치한 템플릿 행 (0-based)
+     * @param formulaCol 수식이 위치한 템플릿 열 (0-based)
+     * @return 조정된 수식
+     */
+    fun adjustWithPositionCalculator(
+        formula: String,
+        calculator: PositionCalculator,
+        formulaRow: Int,
+        formulaCol: Int
+    ): String {
+        // 범위 참조 위치 수집 (범위 내부 셀은 별도 처리 방지)
+        val ranges = RANGE_PATTERN.findAll(formula).map { it.range }.toList()
+
+        // 범위 참조 먼저 처리
+        var result = RANGE_CAPTURE_PATTERN.replace(formula) { match ->
+            val startColAbs = match.groupValues[1]
+            val startCol = match.groupValues[2].uppercase()
+            val startRowAbs = match.groupValues[3]
+            val startRow = match.groupValues[4].toInt()
+
+            val endColAbs = match.groupValues[5]
+            val endCol = match.groupValues[6].uppercase()
+            val endRowAbs = match.groupValues[7]
+            val endRow = match.groupValues[8].toInt()
+
+            // 절대 참조 여부에 따라 위치 계산
+            val (newStartRow, newStartCol) = if (startRowAbs == "$" && startColAbs == "$") {
+                startRow to toColumnIndex(startCol)
+            } else {
+                val (r, c) = calculator.getFinalPosition(startRow - 1, toColumnIndex(startCol))
+                val finalRow = if (startRowAbs == "$") startRow else r + 1
+                val finalCol = if (startColAbs == "$") toColumnIndex(startCol) else c
+                finalRow to finalCol
+            }
+
+            val (newEndRow, newEndCol) = if (endRowAbs == "$" && endColAbs == "$") {
+                endRow to toColumnIndex(endCol)
+            } else {
+                val (r, c) = calculator.getFinalPosition(endRow - 1, toColumnIndex(endCol))
+                val finalRow = if (endRowAbs == "$") endRow else r + 1
+                val finalCol = if (endColAbs == "$") toColumnIndex(endCol) else c
+                finalRow to finalCol
+            }
+
+            val newStartColName = toColumnLetter(newStartCol)
+            val newEndColName = toColumnLetter(newEndCol)
+
+            "$startColAbs$newStartColName$startRowAbs$newStartRow:$endColAbs$newEndColName$endRowAbs$newEndRow"
+        }
+
+        // 단일 셀 참조 처리 (범위 외부만)
+        val newRanges = RANGE_PATTERN.findAll(result).map { it.range }.toList()
+
+        result = CELL_REF_PATTERN.replace(result) { match ->
+            // 이 매치가 범위의 일부인지 확인
+            val isPartOfRange = newRanges.any { range ->
+                match.range.first >= range.first && match.range.last <= range.last
+            }
+
+            if (isPartOfRange) {
+                match.value
+            } else {
+                val ref = match.toCellRef()
+                if (ref.isRowAbsolute && ref.isColAbsolute) {
+                    match.value
+                } else {
+                    val (newRow, newCol) = calculator.getFinalPosition(ref.row - 1, toColumnIndex(ref.col))
+                    val finalRow = if (ref.isRowAbsolute) ref.row else newRow + 1
+                    val finalCol = if (ref.isColAbsolute) ref.col else toColumnLetter(newCol)
+                    "${ref.colAbs}$finalCol${ref.rowAbs}$finalRow"
+                }
+            }
+        }
+
+        return result
+    }
+
+    /**
+     * repeat 영역 내 셀 참조를 범위로 확장합니다 (PositionCalculator 사용).
+     *
+     * repeat 영역 외부의 수식에서 반복 영역 내 셀을 참조하는 경우,
+     * 해당 참조를 확장된 범위로 변환합니다.
+     *
+     * @param formula 원본 수식
+     * @param expansion 대상 repeat 확장 정보
+     * @param itemCount 반복 아이템 수
+     * @return 확장된 수식과 비연속 참조 여부
+     */
+    fun expandToRangeWithCalculator(
+        formula: String,
+        expansion: PositionCalculator.RepeatExpansion,
+        itemCount: Int
+    ): Pair<String, Boolean> {
+        if (itemCount <= 1) return formula to false
+
+        val region = expansion.region
+        val templateRowCount = region.endRow - region.startRow + 1
+        val templateColCount = region.endCol - region.startCol + 1
+
+        var hasDiscontinuous = false
+        val ranges = RANGE_PATTERN.findAll(formula).map { it.range }.toList()
+
+        val result = CELL_REF_PATTERN.replace(formula) { match ->
+            val isPartOfRange = ranges.any { range ->
+                match.range.first >= range.first && match.range.last <= range.last
+            }
+
+            if (isPartOfRange) {
+                match.value
+            } else {
+                val ref = match.toCellRef()
+                val rowIndex = ref.row - 1
+                val colIndex = toColumnIndex(ref.col)
+
+                // 반복 영역 내의 셀인지 확인
+                val inRepeatRow = rowIndex in region.startRow..region.endRow
+                val inRepeatCol = colIndex in region.startCol..region.endCol
+
+                if (!inRepeatRow || !inRepeatCol) {
+                    match.value
+                } else if (ref.isRowAbsolute && region.direction == RepeatDirection.DOWN) {
+                    match.value
+                } else if (ref.isColAbsolute && region.direction == RepeatDirection.RIGHT) {
+                    match.value
+                } else {
+                    when (region.direction) {
+                        RepeatDirection.DOWN -> {
+                            if (templateRowCount == 1) {
+                                // 연속 범위
+                                val startRow = expansion.finalStartRow + (rowIndex - region.startRow) + 1
+                                val endRow = startRow + (itemCount - 1)
+                                val col = toColumnLetter(colIndex)
+                                "${ref.colAbs}$col${ref.rowAbs}$startRow:${ref.colAbs}$col${ref.rowAbs}$endRow"
+                            } else {
+                                // 비연속 셀 나열
+                                hasDiscontinuous = true
+                                val relativeRow = rowIndex - region.startRow
+                                val cells = (0 until itemCount).map { idx ->
+                                    val newRow = expansion.finalStartRow + (idx * templateRowCount) + relativeRow + 1
+                                    val col = toColumnLetter(colIndex)
+                                    "${ref.colAbs}$col${ref.rowAbs}$newRow"
+                                }
+                                cells.joinToString(",")
+                            }
+                        }
+                        RepeatDirection.RIGHT -> {
+                            if (templateColCount == 1) {
+                                // 연속 범위
+                                val startCol = expansion.finalStartCol + (colIndex - region.startCol)
+                                val endCol = startCol + (itemCount - 1)
+                                val row = ref.row
+                                "${ref.colAbs}${toColumnLetter(startCol)}${ref.rowAbs}$row:${ref.colAbs}${toColumnLetter(endCol)}${ref.rowAbs}$row"
+                            } else {
+                                // 비연속 셀 나열
+                                hasDiscontinuous = true
+                                val relativeCol = colIndex - region.startCol
+                                val cells = (0 until itemCount).map { idx ->
+                                    val newCol = expansion.finalStartCol + (idx * templateColCount) + relativeCol
+                                    "${ref.colAbs}${toColumnLetter(newCol)}${ref.rowAbs}${ref.row}"
+                                }
+                                cells.joinToString(",")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return result to hasDiscontinuous
+    }
 }

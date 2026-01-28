@@ -292,4 +292,107 @@ internal class SheetLayoutApplier {
         ps.headerMargin = printSetup.headerMargin
         ps.footerMargin = printSetup.footerMargin
     }
+
+    // ========== PositionCalculator 연동 메서드 ==========
+
+    /**
+     * 병합 영역 적용 (PositionCalculator 사용)
+     *
+     * PositionCalculator를 사용하여 각 병합 영역의 최종 위치를 계산합니다.
+     *
+     * @param sheet 대상 시트
+     * @param mergedRegions 템플릿의 병합 영역 목록
+     * @param calculator 위치 계산기
+     */
+    fun applyMergedRegionsWithCalculator(
+        sheet: SXSSFSheet,
+        mergedRegions: List<CellRangeAddress>,
+        calculator: PositionCalculator
+    ) {
+        val addedRegions = mutableSetOf<String>()
+
+        for (region in mergedRegions) {
+            val finalRange = calculator.getFinalRange(
+                region.firstRow, region.lastRow,
+                region.firstColumn, region.lastColumn
+            )
+
+            val key = "${finalRange.firstRow}:${finalRange.lastRow}:${finalRange.firstColumn}:${finalRange.lastColumn}"
+            if (key !in addedRegions) {
+                runCatching { sheet.addMergedRegion(finalRange) }
+                addedRegions.add(key)
+            }
+        }
+    }
+
+    /**
+     * 반복 영역 내 병합 영역을 각 아이템에 대해 복제합니다 (PositionCalculator 사용).
+     *
+     * @param sheet 대상 시트
+     * @param mergedRegions 템플릿의 병합 영역 목록
+     * @param expansion repeat 확장 정보
+     * @param itemCount 반복 아이템 수
+     */
+    fun applyMergedRegionsForRepeatWithCalculator(
+        sheet: SXSSFSheet,
+        mergedRegions: List<CellRangeAddress>,
+        expansion: PositionCalculator.RepeatExpansion,
+        itemCount: Int
+    ) {
+        if (itemCount <= 0) return
+
+        val region = expansion.region
+        val templateRowCount = region.endRow - region.startRow + 1
+        val templateColCount = region.endCol - region.startCol + 1
+        val addedRegions = mutableSetOf<String>()
+
+        // 반복 영역 내의 병합 영역만 필터
+        val repeatMergedRegions = mergedRegions.filter { merged ->
+            merged.firstRow >= region.startRow &&
+                merged.lastRow <= region.endRow &&
+                merged.firstColumn >= region.startCol &&
+                merged.lastColumn <= region.endCol
+        }
+
+        for (itemIdx in 0 until itemCount) {
+            for (templateMerged in repeatMergedRegions) {
+                val relativeFirstRow = templateMerged.firstRow - region.startRow
+                val relativeLastRow = templateMerged.lastRow - region.startRow
+                val relativeFirstCol = templateMerged.firstColumn - region.startCol
+                val relativeLastCol = templateMerged.lastColumn - region.startCol
+
+                val (newFirstRow, newFirstCol) = when (region.direction) {
+                    RepeatDirection.DOWN -> {
+                        (expansion.finalStartRow + (itemIdx * templateRowCount) + relativeFirstRow) to
+                            (expansion.finalStartCol + relativeFirstCol)
+                    }
+                    RepeatDirection.RIGHT -> {
+                        (expansion.finalStartRow + relativeFirstRow) to
+                            (expansion.finalStartCol + (itemIdx * templateColCount) + relativeFirstCol)
+                    }
+                }
+
+                val (newLastRow, newLastCol) = when (region.direction) {
+                    RepeatDirection.DOWN -> {
+                        (expansion.finalStartRow + (itemIdx * templateRowCount) + relativeLastRow) to
+                            (expansion.finalStartCol + relativeLastCol)
+                    }
+                    RepeatDirection.RIGHT -> {
+                        (expansion.finalStartRow + relativeLastRow) to
+                            (expansion.finalStartCol + (itemIdx * templateColCount) + relativeLastCol)
+                    }
+                }
+
+                val key = "$newFirstRow:$newLastRow:$newFirstCol:$newLastCol"
+                if (key !in addedRegions) {
+                    runCatching {
+                        sheet.addMergedRegion(
+                            CellRangeAddress(newFirstRow, newLastRow, newFirstCol, newLastCol)
+                        )
+                    }
+                    addedRegions.add(key)
+                }
+            }
+        }
+    }
 }

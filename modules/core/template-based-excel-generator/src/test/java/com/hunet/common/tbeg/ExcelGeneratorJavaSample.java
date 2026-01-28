@@ -84,6 +84,25 @@ public class ExcelGeneratorJavaSample {
         public int getSalary() { return salary; }
     }
 
+    /**
+     * 샘플 데이터 클래스 (Department).
+     */
+    public static class Department {
+        private final String name;
+        private final int members;
+        private final String office;
+
+        public Department(String name, int members, String office) {
+            this.name = name;
+            this.members = members;
+            this.office = office;
+        }
+
+        public String getName() { return name; }
+        public int getMembers() { return members; }
+        public String getOffice() { return office; }
+    }
+
     public static void main(String[] args) throws Exception {
         Path moduleDir = findModuleDir();
         Path outputDir = moduleDir.resolve("build/samples-java");
@@ -134,12 +153,18 @@ public class ExcelGeneratorJavaSample {
         Map<String, Object> data = new HashMap<>();
         data.put("title", "2026년 직원 현황");
         data.put("date", LocalDate.now().toString());
+        data.put("secondTitle", "부서별 현황");
         data.put("linkText", "(주)휴넷 홈페이지");
         data.put("url", "https://www.hunet.co.kr");
         data.put("employees", Arrays.asList(
             new Employee("황용호", "부장", 8000),
             new Employee("한용호", "과장", 6500),
             new Employee("홍용호", "대리", 4500)
+        ));
+        data.put("department", Arrays.asList(
+            new Department("개발팀", 15, "본관 3층"),
+            new Department("기획팀", 8, "본관 2층"),
+            new Department("인사팀", 5, "별관 1층")
         ));
 
         // 이미지 추가 (있는 경우)
@@ -185,6 +210,7 @@ public class ExcelGeneratorJavaSample {
             // 단순 값
             .value("title", "2026년 직원 현황(대용량)")
             .value("date", LocalDate.now().toString())
+            .value("secondTitle", "부서별 현황")
             .value("linkText", "(주)휴넷 홈페이지")
             .value("url", "https://www.hunet.co.kr")
             // 이미지
@@ -192,6 +218,12 @@ public class ExcelGeneratorJavaSample {
             .image("ci", ci != null ? ci : new byte[0])
             // 컬렉션 - 지연 로딩 (Java Supplier 사용)
             .itemsFromSupplier("employees", () -> generateLargeDataSet(100))
+            // 부서 컬렉션
+            .items("department", Arrays.asList(
+                new Department("개발팀", 15, "본관 3층"),
+                new Department("기획팀", 8, "본관 2층"),
+                new Department("인사팀", 5, "별관 1층")
+            ))
             .build();
 
         System.out.println("\tDataProvider 생성 완료 (데이터는 아직 로드되지 않음)");
@@ -249,11 +281,16 @@ public class ExcelGeneratorJavaSample {
         Map<String, Object> data = new HashMap<>();
         data.put("title", "2026년 직원 현황(비동기 생성)");
         data.put("date", LocalDate.now().toString());
+        data.put("secondTitle", "부서별 현황");
         data.put("linkText", "(주)휴넷 홈페이지");
         data.put("url", "https://www.hunet.co.kr");
         data.put("employees", Arrays.asList(
             new Employee("황용호", "부장", 8000),
             new Employee("한용호", "과장", 6500)
+        ));
+        data.put("department", Arrays.asList(
+            new Department("개발팀", 15, "본관 3층"),
+            new Department("기획팀", 8, "본관 2층")
         ));
 
         byte[] logo = loadImage("hunet_logo.png");
@@ -370,12 +407,19 @@ public class ExcelGeneratorJavaSample {
         SimpleDataProvider dataProvider = SimpleDataProvider.builder()
             .value("title", "2026년 직원 현황(대용량 비동기)")
             .value("date", LocalDate.now().toString())
+            .value("secondTitle", "부서별 현황")
             .value("linkText", "(주)휴넷 홈페이지")
             .value("url", "https://www.hunet.co.kr")
             .image("logo", logo != null ? logo : new byte[0])
             .image("ci", ci != null ? ci : new byte[0])
             // 대용량 데이터 - 실제로는 DB 스트리밍 쿼리 사용
             .itemsFromSupplier("employees", () -> generateLargeDataSet(dataCount))
+            // 부서 컬렉션
+            .items("department", Arrays.asList(
+                new Department("개발팀", 15, "본관 3층"),
+                new Department("기획팀", 8, "본관 2층"),
+                new Department("인사팀", 5, "별관 1층")
+            ))
             .build();
 
         System.out.println("\tDataProvider 생성 완료 (" + dataCount + "건 데이터 지연 로딩 예정)");
@@ -476,11 +520,18 @@ public class ExcelGeneratorJavaSample {
         SimpleDataProvider dataProvider = SimpleDataProvider.builder()
             .value("title", "2026년 직원 현황(암호화)")
             .value("date", LocalDate.now().toString())
+            .value("secondTitle", "부서별 현황")
             .value("linkText", "(주)휴넷 홈페이지")
             .value("url", "https://www.hunet.co.kr")
             .image("logo", logo != null ? logo : new byte[0])
             .image("ci", ci != null ? ci : new byte[0])
             .itemsFromSupplier("employees", () -> generateLargeDataSet(dataCount))
+            // 부서 컬렉션
+            .items("department", Arrays.asList(
+                new Department("개발팀", 15, "본관 3층"),
+                new Department("기획팀", 8, "본관 2층"),
+                new Department("인사팀", 5, "별관 1층")
+            ))
             .build();
 
         System.out.println("\tDataProvider 생성 완료 (" + dataCount + "건 데이터 지연 로딩 예정)");
@@ -594,6 +645,7 @@ public class ExcelGeneratorJavaSample {
         SimpleDataProvider dataProvider = SimpleDataProvider.builder()
             .value("title", "2026년 직원 현황(메타데이터 포함)")
             .value("date", LocalDate.now().toString())
+            .value("secondTitle", "부서별 현황")
             .value("linkText", "(주)휴넷 홈페이지")
             .value("url", "https://www.hunet.co.kr")
             .image("logo", logo != null ? logo : new byte[0])
@@ -602,6 +654,12 @@ public class ExcelGeneratorJavaSample {
                 new Employee("황용호", "부장", 8000),
                 new Employee("한용호", "과장", 6500),
                 new Employee("홍용호", "대리", 4500)
+            ))
+            // 부서 컬렉션
+            .items("department", Arrays.asList(
+                new Department("개발팀", 15, "본관 3층"),
+                new Department("기획팀", 8, "본관 2층"),
+                new Department("인사팀", 5, "별관 1층")
             ))
             // 문서 메타데이터 설정
             .metadata((java.util.function.Consumer<DocumentMetadata.Builder>) meta -> meta
