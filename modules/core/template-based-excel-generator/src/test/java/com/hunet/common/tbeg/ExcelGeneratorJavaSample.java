@@ -264,7 +264,7 @@ public class ExcelGeneratorJavaSample {
         InputStream template = loadTemplate();
 
         // 비동기 작업 제출 (익명 클래스로 리스너 구현)
-        GenerationJob job = generator.submit(
+        GenerationJob job = generator.submitToFile(
             template,
             SimpleDataProvider.of(data),
             outputDir,
@@ -383,7 +383,7 @@ public class ExcelGeneratorJavaSample {
         InputStream template = loadTemplate();
 
         // 비동기 작업 제출
-        GenerationJob job = generator.submit(
+        GenerationJob job = generator.submitToFile(
             template,
             dataProvider,
             outputDir,
@@ -488,7 +488,7 @@ public class ExcelGeneratorJavaSample {
         InputStream template = loadTemplate();
 
         // 비동기 작업 제출 (암호 포함)
-        GenerationJob job = generator.submit(
+        GenerationJob job = generator.submitToFile(
             template,
             dataProvider,
             outputDir,

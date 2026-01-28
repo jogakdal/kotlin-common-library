@@ -295,7 +295,7 @@ public class TbegSpringBootJavaSample {
      *     public ResponseEntity<JobResponse> generateReportAsync(@RequestBody ReportRequest request) {
      *         Resource template = resourceLoader.getResource("classpath:templates/template.xlsx");
      *
-     *         GenerationJob job = excelGenerator.submit(
+     *         GenerationJob job = excelGenerator.submitToFile(
      *             template.getInputStream(),
      *             SimpleDataProvider.of(request.toDataMap()),
      *             Path.of("/output"),
@@ -341,7 +341,7 @@ public class TbegSpringBootJavaSample {
         if (ci != null) data.put("ci", ci);
 
         // 비동기 작업 제출
-        GenerationJob job = excelGenerator.submit(
+        GenerationJob job = excelGenerator.submitToFile(
             templateResource.getInputStream(),
             SimpleDataProvider.of(data),
             outputDir,
@@ -416,7 +416,7 @@ public class TbegSpringBootJavaSample {
      *             .itemsFromSupplier("employees", () -> employeeRepository.streamAll().iterator())
      *             .build();
      *
-     *         GenerationJob job = excelGenerator.submit(
+     *         GenerationJob job = excelGenerator.submitToFile(
      *             template.getInputStream(),
      *             provider,
      *             Path.of("/output"),
@@ -463,7 +463,7 @@ public class TbegSpringBootJavaSample {
 
         System.out.println("\tDataProvider 생성 완료 (" + dataCount + "건 데이터 지연 로딩 예정)");
 
-        GenerationJob job = excelGenerator.submit(
+        GenerationJob job = excelGenerator.submitToFile(
             templateResource.getInputStream(),
             dataProvider,
             outputDir,
@@ -538,7 +538,7 @@ public class TbegSpringBootJavaSample {
      *             .itemsFromSupplier("employees", () -> employeeRepository.streamAll().iterator())
      *             .build();
      *
-     *         GenerationJob job = excelGenerator.submit(
+     *         GenerationJob job = excelGenerator.submitToFile(
      *             template.getInputStream(),
      *             provider,
      *             Path.of("/output"),
@@ -583,7 +583,7 @@ public class TbegSpringBootJavaSample {
 
         System.out.println("\tDataProvider 생성 완료 (" + dataCount + "건 데이터)");
 
-        GenerationJob job = excelGenerator.submit(
+        GenerationJob job = excelGenerator.submitToFile(
             templateResource.getInputStream(),
             dataProvider,
             outputDir,

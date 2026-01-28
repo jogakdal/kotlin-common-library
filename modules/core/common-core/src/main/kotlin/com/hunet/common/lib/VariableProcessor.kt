@@ -272,7 +272,7 @@ class VariableProcessor(registries: List<VariableResolverRegistry>) {
     private fun resolveObjectProperty(obj: Any, propertyName: String): Any? {
         val clazz = obj::class.java
 
-        // 1. 필드 접근 시도
+        // 필드 접근 시도
         try {
             val field = clazz.getDeclaredField(propertyName)
             field.isAccessible = true
@@ -281,7 +281,7 @@ class VariableProcessor(registries: List<VariableResolverRegistry>) {
             // 필드 없음, getter 시도
         }
 
-        // 2. getter 메서드 시도 (getPropertyName)
+        // getter 메서드 시도 (getPropertyName)
         try {
             val getterName = "get${propertyName.replaceFirstChar { it.uppercase() }}"
             val getter = clazz.getMethod(getterName)
@@ -290,7 +290,7 @@ class VariableProcessor(registries: List<VariableResolverRegistry>) {
             // getter 없음
         }
 
-        // 3. is 접두사 getter 시도 (isPropertyName) - Boolean
+        // is 접두사 getter 시도 (isPropertyName) - Boolean
         try {
             val isGetterName = "is${propertyName.replaceFirstChar { it.uppercase() }}"
             val isGetter = clazz.getMethod(isGetterName)
@@ -299,7 +299,7 @@ class VariableProcessor(registries: List<VariableResolverRegistry>) {
             // is getter 없음
         }
 
-        // 4. Kotlin 프로퍼티 접근 시도 (프로퍼티명과 동일한 메서드)
+        // Kotlin 프로퍼티 접근 시도 (프로퍼티명과 동일한 메서드)
         try {
             val method = clazz.getMethod(propertyName)
             return method.invoke(obj)
@@ -309,5 +309,4 @@ class VariableProcessor(registries: List<VariableResolverRegistry>) {
 
         return null
     }
-
 }

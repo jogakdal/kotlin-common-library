@@ -79,6 +79,14 @@ tasks.register<JavaExec>("runRenderingEngineSample") {
     mainClass.set("com.hunet.common.tbeg.TemplateRenderingEngineSample")
 }
 
+// 다중 Repeat 영역 샘플 실행 태스크
+tasks.register<JavaExec>("runMultiRepeatSample") {
+    group = "application"
+    description = "다중 Repeat 영역 샘플 실행"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.hunet.common.tbeg.MultiRepeatSample")
+}
+
 // 테스트 클래스패스 출력 (java 명령 실행용)
 tasks.register("printTestClasspath") {
     doLast {

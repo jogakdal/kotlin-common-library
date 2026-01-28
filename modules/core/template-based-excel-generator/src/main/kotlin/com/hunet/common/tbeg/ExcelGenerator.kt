@@ -45,7 +45,7 @@ import java.util.concurrent.Executors
  *
  * ## 비동기 실행 (API 서버용)
  * ```kotlin
- * val job = generator.submit(template, provider, outputDir, "report",
+ * val job = generator.submitToFile(template, provider, outputDir, "report",
  *     listener = object : ExcelGenerationListener {
  *         override fun onCompleted(jobId: String, result: GenerationResult) {
  *             eventPublisher.publish(ReportReadyEvent(jobId, result.filePath))
@@ -129,6 +129,28 @@ class ExcelGenerator @JvmOverloads constructor(
      * 예: "report" → "report_20240106_143052.xlsx"
      *
      * @param template 템플릿 입력 스트림
+     * @param data 바인딩할 데이터 맵
+     * @param outputDir 출력 디렉토리 경로
+     * @param baseFileName 기본 파일명 (확장자 제외)
+     * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
+     * @return 생성된 파일의 경로
+     */
+    @JvmOverloads
+    fun generateToFile(
+        template: InputStream,
+        data: Map<String, Any>,
+        outputDir: Path,
+        baseFileName: String,
+        password: String? = null
+    ): Path = generateToFile(template, SimpleDataProvider.of(data), outputDir, baseFileName, password)
+
+    /**
+     * Excel을 생성하여 파일로 저장합니다.
+     *
+     * 파일명에 타임스탬프가 자동으로 추가됩니다.
+     * 예: "report" → "report_20240106_143052.xlsx"
+     *
+     * @param template 템플릿 입력 스트림
      * @param dataProvider 데이터 제공자
      * @param outputDir 출력 디렉토리 경로
      * @param baseFileName 기본 파일명 (확장자 제외)
@@ -184,6 +206,20 @@ class ExcelGenerator @JvmOverloads constructor(
      * 비동기로 Excel을 생성합니다.
      *
      * @param template 템플릿 입력 스트림
+     * @param data 바인딩할 데이터 맵
+     * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
+     * @return 생성된 Excel 파일의 바이트 배열
+     */
+    suspend fun generateAsync(
+        template: InputStream,
+        data: Map<String, Any>,
+        password: String? = null
+    ): ByteArray = generateAsync(template, SimpleDataProvider.of(data), password)
+
+    /**
+     * 비동기로 Excel을 생성합니다.
+     *
+     * @param template 템플릿 입력 스트림
      * @param dataProvider 데이터 제공자
      * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
      * @return 생성된 Excel 파일의 바이트 배열
@@ -193,6 +229,24 @@ class ExcelGenerator @JvmOverloads constructor(
         dataProvider: ExcelDataProvider,
         password: String? = null
     ): ByteArray = withContext(dispatcher) { generate(template, dataProvider, password) }
+
+    /**
+     * 비동기로 Excel을 생성하여 파일로 저장합니다.
+     *
+     * @param template 템플릿 입력 스트림
+     * @param data 바인딩할 데이터 맵
+     * @param outputDir 출력 디렉토리 경로
+     * @param baseFileName 기본 파일명 (확장자 제외)
+     * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
+     * @return 생성된 파일의 경로
+     */
+    suspend fun generateToFileAsync(
+        template: InputStream,
+        data: Map<String, Any>,
+        outputDir: Path,
+        baseFileName: String,
+        password: String? = null
+    ): Path = generateToFileAsync(template, SimpleDataProvider.of(data), outputDir, baseFileName, password)
 
     /**
      * 비동기로 Excel을 생성하여 파일로 저장합니다.
@@ -220,6 +274,18 @@ class ExcelGenerator @JvmOverloads constructor(
      * CompletableFuture로 Excel을 생성합니다.
      *
      * @param template 템플릿 입력 스트림
+     * @param data 바인딩할 데이터 맵
+     * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
+     * @return 생성된 Excel 파일의 바이트 배열을 담은 CompletableFuture
+     */
+    @JvmOverloads
+    fun generateFuture(template: InputStream, data: Map<String, Any>, password: String? = null) =
+        generateFuture(template, SimpleDataProvider.of(data), password)
+
+    /**
+     * CompletableFuture로 Excel을 생성합니다.
+     *
+     * @param template 템플릿 입력 스트림
      * @param dataProvider 데이터 제공자
      * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
      * @return 생성된 Excel 파일의 바이트 배열을 담은 CompletableFuture
@@ -227,6 +293,25 @@ class ExcelGenerator @JvmOverloads constructor(
     @JvmOverloads
     fun generateFuture(template: InputStream, dataProvider: ExcelDataProvider, password: String? = null) =
         scope.future { generate(template, dataProvider, password) }
+
+    /**
+     * CompletableFuture로 Excel을 생성하여 파일로 저장합니다.
+     *
+     * @param template 템플릿 입력 스트림
+     * @param data 바인딩할 데이터 맵
+     * @param outputDir 출력 디렉토리 경로
+     * @param baseFileName 기본 파일명 (확장자 제외)
+     * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
+     * @return 생성된 파일의 경로를 담은 CompletableFuture
+     */
+    @JvmOverloads
+    fun generateToFileFuture(
+        template: InputStream,
+        data: Map<String, Any>,
+        outputDir: Path,
+        baseFileName: String,
+        password: String? = null
+    ) = generateToFileFuture(template, SimpleDataProvider.of(data), outputDir, baseFileName, password)
 
     /**
      * CompletableFuture로 Excel을 생성하여 파일로 저장합니다.
@@ -251,7 +336,98 @@ class ExcelGenerator @JvmOverloads constructor(
 
     /**
      * 비동기 작업을 제출하고 작업 핸들을 반환합니다.
-     * API 서버에서 즉시 응답 후 백그라운드 처리에 적합합니다.
+     * 완료 시 바이트 배열을 GenerationResult.bytes로 받습니다.
+     *
+     * @param template 템플릿 입력 스트림
+     * @param data 바인딩할 데이터 맵
+     * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
+     * @param listener 작업 진행 상태를 받을 리스너 (선택)
+     * @return 작업 핸들 (취소, 완료 대기 등에 사용)
+     */
+    @JvmOverloads
+    fun submit(
+        template: InputStream,
+        data: Map<String, Any>,
+        password: String? = null,
+        listener: ExcelGenerationListener? = null
+    ): GenerationJob = submit(template, SimpleDataProvider.of(data), password, listener)
+
+    /**
+     * 비동기 작업을 제출하고 작업 핸들을 반환합니다.
+     * 완료 시 바이트 배열을 GenerationResult.bytes로 받습니다.
+     *
+     * @param template 템플릿 입력 스트림
+     * @param dataProvider 데이터 제공자
+     * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
+     * @param listener 작업 진행 상태를 받을 리스너 (선택)
+     * @return 작업 핸들 (취소, 완료 대기 등에 사용)
+     */
+    @JvmOverloads
+    fun submit(
+        template: InputStream,
+        dataProvider: ExcelDataProvider,
+        password: String? = null,
+        listener: ExcelGenerationListener? = null
+    ): GenerationJob {
+        val jobId = UUID.randomUUID().toString()
+        val job = DefaultGenerationJob(jobId)
+        val startTime = System.currentTimeMillis()
+
+        listener?.onStarted(jobId)
+
+        scope.launch {
+            runCatching {
+                if (job.checkCancelled()) {
+                    listener?.onCancelled(jobId)
+                    return@launch
+                }
+
+                val bytes = generate(template, dataProvider, password)
+
+                GenerationResult(
+                    jobId = jobId,
+                    bytes = bytes,
+                    durationMs = System.currentTimeMillis() - startTime
+                )
+            }.onSuccess { result ->
+                job.complete(result)
+                listener?.onCompleted(jobId, result)
+            }.onFailure { error ->
+                job.completeExceptionally(error as Exception)
+                listener?.onFailed(jobId, error)
+            }
+        }
+
+        return job
+    }
+
+    /**
+     * 비동기 작업을 제출하고 파일로 저장합니다.
+     * 완료 시 파일 경로를 GenerationResult.filePath로 받습니다.
+     * 블로킹을 피해야 하는 경우 즉시 응답 후 백그라운드 처리에 적합합니다.
+     *
+     * @param template 템플릿 입력 스트림
+     * @param data 바인딩할 데이터 맵
+     * @param outputDir 출력 디렉토리 경로
+     * @param baseFileName 기본 파일명 (확장자 제외)
+     * @param password 파일 열기 암호 (null 또는 빈 문자열이면 암호 없음)
+     * @param listener 작업 진행 상태를 받을 리스너 (선택)
+     * @return 작업 핸들 (취소, 완료 대기 등에 사용)
+     */
+    @JvmOverloads
+    fun submitToFile(
+        template: InputStream,
+        data: Map<String, Any>,
+        outputDir: Path,
+        baseFileName: String,
+        password: String? = null,
+        listener: ExcelGenerationListener? = null
+    ): GenerationJob = submitToFile(template, SimpleDataProvider.of(data), outputDir, baseFileName, password, listener)
+
+    /**
+     * 비동기 작업을 제출하고 파일로 저장합니다.
+     * 완료 시 파일 경로를 GenerationResult.filePath로 받습니다.
+     * 블로킹을 피해야 하는 경우 즉시 응답 후 백그라운드 처리에 적합합니다.
      *
      * @param template 템플릿 입력 스트림
      * @param dataProvider 데이터 제공자
@@ -262,7 +438,7 @@ class ExcelGenerator @JvmOverloads constructor(
      * @return 작업 핸들 (취소, 완료 대기 등에 사용)
      */
     @JvmOverloads
-    fun submit(
+    fun submitToFile(
         template: InputStream,
         dataProvider: ExcelDataProvider,
         outputDir: Path,

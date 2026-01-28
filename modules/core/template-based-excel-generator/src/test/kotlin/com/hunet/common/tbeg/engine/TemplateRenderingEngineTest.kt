@@ -25,11 +25,11 @@ class TemplateRenderingEngineTest {
             "title" to "PoC 테스트",
             "date" to "2026-01-19",
             "linkText" to "테스트 링크",
-            "url" to "https://example.com",
+            "url" to "https://www.hunet.co.kr",
             "employees" to listOf(
-                mapOf("name" to "홍길동", "position" to "부장", "salary" to 8000),
-                mapOf("name" to "김철수", "position" to "과장", "salary" to 6500),
-                mapOf("name" to "이영희", "position" to "대리", "salary" to 4500)
+                mapOf("name" to "황용호", "position" to "부장", "salary" to 8000),
+                mapOf("name" to "홍용호", "position" to "과장", "salary" to 6500),
+                mapOf("name" to "한용호", "position" to "대리", "salary" to 4500)
             )
         )
 
@@ -55,11 +55,11 @@ class TemplateRenderingEngineTest {
             "title" to "스트리밍 PoC 테스트",
             "date" to "2026-01-19",
             "linkText" to "테스트 링크",
-            "url" to "https://example.com",
+            "url" to "https://www.hunet.co.kr",
             "employees" to listOf(
-                mapOf("name" to "홍길동", "position" to "부장", "salary" to 8000),
-                mapOf("name" to "김철수", "position" to "과장", "salary" to 6500),
-                mapOf("name" to "이영희", "position" to "대리", "salary" to 4500)
+                mapOf("name" to "황용호", "position" to "부장", "salary" to 8000),
+                mapOf("name" to "홍용호", "position" to "과장", "salary" to 6500),
+                mapOf("name" to "한용호", "position" to "대리", "salary" to 4500)
             )
         )
 
@@ -159,9 +159,9 @@ class TemplateRenderingEngineTest {
             "linkText" to "휴넷 홈페이지",
             "url" to "https://www.hunet.co.kr",
             "employees" to listOf(
-                mapOf("name" to "홍길동", "position" to "부장", "salary" to 8000),
-                mapOf("name" to "김철수", "position" to "과장", "salary" to 6500),
-                mapOf("name" to "이영희", "position" to "대리", "salary" to 4500)
+                mapOf("name" to "황용호", "position" to "부장", "salary" to 8000),
+                mapOf("name" to "홍용호", "position" to "과장", "salary" to 6500),
+                mapOf("name" to "한용호", "position" to "대리", "salary" to 4500)
             )
         )
 
@@ -194,11 +194,11 @@ class TemplateRenderingEngineTest {
             "title" to "스타일 복사 테스트",
             "date" to "2026-01-20",
             "linkText" to "테스트 링크",
-            "url" to "https://example.com",
+            "url" to "https://www.hunet.co.kr",
             "employees" to listOf(
-                mapOf("name" to "홍길동", "position" to "부장", "salary" to 8000),
-                mapOf("name" to "김철수", "position" to "과장", "salary" to 6500),
-                mapOf("name" to "이영희", "position" to "대리", "salary" to 4500)
+                mapOf("name" to "황용호", "position" to "부장", "salary" to 8000),
+                mapOf("name" to "홍용호", "position" to "과장", "salary" to 6500),
+                mapOf("name" to "한용호", "position" to "대리", "salary" to 4500)
             )
         )
 
@@ -280,11 +280,11 @@ class TemplateRenderingEngineTest {
             "title" to "조건부 서식 테스트",
             "date" to "2026-01-20",
             "linkText" to "테스트 링크",
-            "url" to "https://example.com",
+            "url" to "https://www.hunet.co.kr",
             "employees" to listOf(
-                mapOf("name" to "홍길동", "position" to "부장", "salary" to 8000),
-                mapOf("name" to "김철수", "position" to "과장", "salary" to 6500),
-                mapOf("name" to "이영희", "position" to "대리", "salary" to 4500)
+                mapOf("name" to "황용호", "position" to "부장", "salary" to 8000),
+                mapOf("name" to "홍용호", "position" to "과장", "salary" to 6500),
+                mapOf("name" to "한용호", "position" to "대리", "salary" to 4500)
             )
         )
 
@@ -321,11 +321,11 @@ class TemplateRenderingEngineTest {
             "title" to "조건부 서식 테스트 (XSSF)",
             "date" to "2026-01-20",
             "linkText" to "테스트 링크",
-            "url" to "https://example.com",
+            "url" to "https://www.hunet.co.kr",
             "employees" to listOf(
-                mapOf("name" to "홍길동", "position" to "부장", "salary" to 8000),
-                mapOf("name" to "김철수", "position" to "과장", "salary" to 6500),
-                mapOf("name" to "이영희", "position" to "대리", "salary" to 4500)
+                mapOf("name" to "황용호", "position" to "부장", "salary" to 8000),
+                mapOf("name" to "홍용호", "position" to "과장", "salary" to 6500),
+                mapOf("name" to "한용호", "position" to "대리", "salary" to 4500)
             )
         )
 
@@ -357,11 +357,11 @@ class TemplateRenderingEngineTest {
             "title" to "수식 확장 테스트",
             "date" to "2026-01-21",
             "linkText" to "테스트 링크",
-            "url" to "https://example.com",
+            "url" to "https://www.hunet.co.kr",
             "employees" to listOf(
-                mapOf("name" to "홍길동", "position" to "부장", "salary" to 8000),
-                mapOf("name" to "김철수", "position" to "과장", "salary" to 6500),
-                mapOf("name" to "이영희", "position" to "대리", "salary" to 4500)
+                mapOf("name" to "황용호", "position" to "부장", "salary" to 8000),
+                mapOf("name" to "홍용호", "position" to "과장", "salary" to 6500),
+                mapOf("name" to "한용호", "position" to "대리", "salary" to 4500)
             )
         )
 
@@ -412,11 +412,11 @@ class TemplateRenderingEngineTest {
             "title" to "수식 확장 테스트 (SXSSF)",
             "date" to "2026-01-21",
             "linkText" to "테스트 링크",
-            "url" to "https://example.com",
+            "url" to "https://www.hunet.co.kr",
             "employees" to listOf(
-                mapOf("name" to "홍길동", "position" to "부장", "salary" to 8000),
-                mapOf("name" to "김철수", "position" to "과장", "salary" to 6500),
-                mapOf("name" to "이영희", "position" to "대리", "salary" to 4500)
+                mapOf("name" to "황용호", "position" to "부장", "salary" to 8000),
+                mapOf("name" to "홍용호", "position" to "과장", "salary" to 6500),
+                mapOf("name" to "한용호", "position" to "대리", "salary" to 4500)
             )
         )
 

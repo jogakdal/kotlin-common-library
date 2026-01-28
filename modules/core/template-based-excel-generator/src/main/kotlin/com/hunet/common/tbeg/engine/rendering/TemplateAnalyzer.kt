@@ -41,27 +41,30 @@ class TemplateAnalyzer {
         private val ITEM_FIELD_PATTERN = Regex("""\$\{(\w+)\.(\w+(?:\.\w+)*)}""")
 
         // ${image.name} - 레거시 문법 (하위 호환성)
-        private val IMAGE_LEGACY_PATTERN = Regex("""\$\{image\.(\w+)}""")
+        private val IMAGE_LEGACY_PATTERN = Regex("""\$\{image\.(\w+)}""", RegexOption.IGNORE_CASE)
 
         // ${image(name)} or ${image(name, position)} or ${image(name, position, size)}
         // Arguments can be quoted (", ', `) or unquoted: image(ci, B5, 0:-1) == image(ci, "B5", "0:-1")
         private val IMAGE_PATTERN = Regex(
-            """\$\{image\((\w+)(?:\s*,\s*["'`]?([A-Za-z]*\d*)["'`]?)?(?:\s*,\s*["'`]?(-?\d+:-?\d+)["'`]?)?\)}"""
+            """\$\{image\((\w+)(?:\s*,\s*["'`]?([A-Za-z]*\d*)["'`]?)?(?:\s*,\s*["'`]?(-?\d+:-?\d+)["'`]?)?\)}""",
+            RegexOption.IGNORE_CASE
         )
 
         // =TBEG_REPEAT(collection, range) or =TBEG_REPEAT(collection, range, var) or =TBEG_REPEAT(collection, range, var, direction)
         // Excel formula: TBEG_REPEAT(items, A2:D5, item, DOWN)
         // Range can be cell range (A2:D5) or Named Range (DataRange)
+        // Arguments can be quoted (", ', `) or unquoted (same as text format)
         private val FORMULA_REPEAT_PATTERN = Regex(
-            """TBEG_REPEAT\s*\(\s*(\w+)\s*,\s*([A-Za-z]+\d+:[A-Za-z]+\d+|\w+)\s*(?:,\s*(\w+))?(?:\s*,\s*(DOWN|RIGHT))?\s*\)""",
+            """TBEG_REPEAT\s*\(\s*["'`]?(\w+)["'`]?\s*,\s*["'`]?([A-Za-z]+\d+:[A-Za-z]+\d+|\w+)["'`]?\s*(?:,\s*["'`]?(\w+)["'`]?)?(?:\s*,\s*["'`]?(DOWN|RIGHT)["'`]?)?\s*\)""",
             RegexOption.IGNORE_CASE
         )
 
         // =TBEG_IMAGE(name) or =TBEG_IMAGE(name, position) or =TBEG_IMAGE(name, range) or =TBEG_IMAGE(name, position, size)
         // position: single cell (B5) or range (B5:D10)
         // size: "width:height" format (100:50, 0:-1, -1:-1)
+        // Arguments can be quoted (", ', `) or unquoted (same as text format)
         private val FORMULA_IMAGE_PATTERN = Regex(
-            """TBEG_IMAGE\s*\(\s*(\w+)(?:\s*,\s*([A-Za-z]+\d+(?::[A-Za-z]+\d+)?))?(?:\s*,\s*"?(-?\d+:-?\d+)"?)?\s*\)""",
+            """TBEG_IMAGE\s*\(\s*["'`]?(\w+)["'`]?(?:\s*,\s*["'`]?([A-Za-z]+\d+(?::[A-Za-z]+\d+)?)["'`]?)?(?:\s*,\s*["'`]?(-?\d+:-?\d+)["'`]?)?\s*\)""",
             RegexOption.IGNORE_CASE
         )
     }

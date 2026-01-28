@@ -1,9 +1,9 @@
-# Excel Generator 사용자 가이드
+# TBEG 사용자 가이드
 
 ## 최신 버전 정보
 <!-- version-info:start -->
 ```
-Last updated: 2026-01-15
+Last updated: 2026-01-27
 tbeg: 1.0.0-SNAPSHOT
 ```
 <!-- version-info:end -->
@@ -31,21 +31,21 @@ tbeg: 1.0.0-SNAPSHOT
 
 ## 1. 소개
 
-Excel Generator는 Excel 템플릿에 데이터를 바인딩하여 보고서를 생성하는 라이브러리입니다.
+TBEG(Template Based Excel Generator)는 Excel 템플릿에 데이터를 바인딩하여 보고서를 생성하는 라이브러리입니다.
 
 ### 주요 기능
 
-| 기능 | 설명 |
-|------|------|
-| **템플릿 기반 생성** | Excel 템플릿에 데이터를 바인딩하여 보고서 생성 |
-| **반복 데이터 처리** | `${repeat(...)}` 문법으로 리스트 데이터를 행/열로 확장 |
-| **변수 치환** | `${변수명}` 문법으로 셀, 차트, 도형, 머리글/바닥글, 수식 인자 등에 값 바인딩 |
-| **이미지 삽입** | 템플릿 셀에 동적 이미지 삽입 |
-| **피벗 테이블** | 템플릿의 피벗 테이블을 데이터에 맞게 자동 재생성 |
-| **파일 암호화** | 생성된 Excel 파일에 열기 암호 설정 |
-| **문서 메타데이터** | 제목, 작성자, 키워드 등 문서 속성 설정 |
-| **비동기 처리** | 대용량 데이터를 백그라운드에서 처리 |
-| **지연 로딩** | DataProvider를 통한 메모리 효율적 데이터 처리 |
+| 기능            | 설명                                               |
+|---------------|--------------------------------------------------|
+| **템플릿 기반 생성** | Excel 템플릿에 데이터를 바인딩하여 보고서 생성                     |
+| **반복 데이터 처리** | `${repeat(...)}` 문법으로 리스트 데이터를 행/열로 확장           |
+| **변수 치환**     | `${변수명}` 문법으로 셀, 차트, 도형, 머리글/바닥글, 수식 인자 등에 값 바인딩 |
+| **이미지 삽입**    | 템플릿 셀에 동적 이미지 삽입                                 |
+| **피벗 테이블**    | 템플릿의 피벗 테이블을 데이터에 맞게 자동 재생성                      |
+| **파일 암호화**    | 생성된 Excel 파일에 열기 암호 설정                           |
+| **문서 메타데이터**  | 제목, 작성자, 키워드 등 문서 속성 설정                          |
+| **비동기 처리**    | 대용량 데이터를 백그라운드에서 처리                              |
+| **지연 로딩**     | DataProvider를 통한 메모리 효율적 데이터 처리                  |
 
 ### 지원 환경
 
@@ -86,18 +86,17 @@ Excel 파일(`.xlsx`)을 템플릿으로 사용합니다. 템플릿에 변수를
 
 **예시 템플릿 (template.xlsx)**
 
-| A | B | C |
-|---|---|---|
-| ${title} | | |
-| 이름 | 직급 | 급여 |
-| ${repeat(employees, A3:C3)} | | |
-| ${emp.name} | ${emp.position} | ${emp.salary} |
+|   | A           | B                                | C             |
+|---|-------------|----------------------------------|---------------|
+| 1 | ${title}    | ${repeat(employees, A3:C3, emp)} |               |
+| 2 | 이름          | 직급                               | 급여            |
+| 3 | ${emp.name} | ${emp.position}                  | ${emp.salary} |
 
 #### Kotlin 예제
 
 ```kotlin
 import com.hunet.common.tbeg.ExcelGenerator
-import com.hunet.common.tbeg.SimpleDataProvider
+import java.io.File
 
 // 데이터 클래스
 data class Employee(val name: String, val position: String, val salary: Int)
@@ -128,7 +127,6 @@ fun main() {
 
 ```java
 import com.hunet.common.tbeg.ExcelGenerator;
-import com.hunet.common.tbeg.SimpleDataProvider;
 import java.io.*;
 import java.util.*;
 
@@ -177,10 +175,10 @@ implementation("com.hunet.common:tbeg:1.0.0-SNAPSHOT")
 
 ```yaml
 hunet:
-  excel:
-    streaming-mode: auto           # auto, enabled, disabled
-    streaming-row-threshold: 1000  # AUTO 모드에서 스트리밍으로 전환되는 행 수
-    timestamp-format: yyyyMMdd_HHmmss  # 파일명 타임스탬프 형식
+  tbeg:
+    streaming-mode: enabled           # enabled, disabled
+    file-naming-mode: timestamp       # none, timestamp
+    timestamp-format: yyyyMMdd_HHmmss
 ```
 
 #### Service 클래스 예제
@@ -266,8 +264,8 @@ class AsyncReportController(
             }
         }
 
-        // 비동기 작업 제출
-        val job = excelGenerator.submit(
+        // 비동기 작업 제출 (파일로 저장)
+        val job = excelGenerator.submitToFile(
             template = template.inputStream,
             dataProvider = provider,
             outputDir = Path.of("/var/reports"),
@@ -295,6 +293,8 @@ class AsyncReportController(
 
 ### 3.1 템플릿 문법
 
+> **텍스트 형식 vs 수식 형식**: `repeat`와 `image` 마커는 텍스트 형식(`${...}`)과 수식 형식(`=TBEG_...`) 두 가지로 작성할 수 있습니다. 기능은 동일하며, 수식 형식은 Excel에서 범위나 셀을 지정할 때 마우스 드래그 등 Excel의 셀 참조 기능을 활용할 수 있다는 장점이 있습니다.
+
 #### 변수 치환
 ```
 ${변수명}
@@ -304,31 +304,56 @@ ${변수명}
 - 치환자가 반드시 문자열 전체를 차지할 필요는 없습니다. 예: `보고서 제목: ${title}`
 
 #### 반복 (repeat)
+> 리스트 데이터의 각 항목에 대해 지정된 셀 범위를 복제하여 행(또는 열) 방향으로 확장합니다.
+
+**텍스트 형식:**
 ```
 ${repeat(컬렉션명, 범위, 변수명, 방향)}
 ```
 
-| 파라미터 | 필수 | 설명 | 기본값 |
-|----------|------|------|--------|
-| 컬렉션명 | O | 데이터에서 전달한 리스트의 키 이름 | - |
-| 범위 | O | 반복할 셀 범위 (예: A3:C3) | - |
-| 변수명 | X | 각 항목을 참조할 때 사용할 별칭 | 컬렉션명 |
-| 방향 | X | 확장 방향 (DOWN 또는 RIGHT) | DOWN |
+**수식 형식:**
+```
+=TBEG_REPEAT(컬렉션명, 범위, 변수명, 방향)
+```
 
-- 이 마커는 워크북 내 어디에 있어도 됩니다 (다른 시트도 가능). `범위`로 지정된 영역이 반복됩니다.
-- 변수명을 생략하면 컬렉션명으로 각 항목을 참조합니다.
+| 파라미터 | 필수 | 설명                                 | 기본값  |
+|------|----|------------------------------------|------|
+| 컬렉션명 | O  | 데이터에서 전달한 리스트의 키 이름                | -    |
+| 범위   | O  | 반복할 셀 범위 (예: A3:C3) 또는 Named Range | -    |
+| 변수명  | X  | 각 항목을 참조할 때 사용할 별칭                 | 컬렉션명 |
+| 방향   | X  | 확장 방향 (DOWN 또는 RIGHT)              | DOWN |
+
+- 마커는 워크북 내 어디에 있어도 됩니다 (다른 시트도 가능). `범위`로 지정된 영역이 반복됩니다.
+- Named Range 지원: `${repeat(employees, DataRange, emp)}`
 
 **예시:**
 ```
 ${repeat(employees, A3:C3, emp)}
 ```
-데이터의 `employees` 리스트를 A3:C3 범위에서 아래로 반복하며, 각 항목은 `${emp.name}` 형식으로 참조합니다.
+또는
+```
+=TBEG_REPEAT(employees, A3:C3, emp, DOWN)
+```
 
 #### 이미지
+> 마커가 위치한 셀(또는 지정된 위치)에 이미지를 삽입합니다.
+
+**텍스트 형식:**
 ```
 ${image.이미지명}
+${image(이미지명, 위치, 크기)}
 ```
+
+**수식 형식:**
+```
+=TBEG_IMAGE(이미지명)
+=TBEG_IMAGE(이미지명, 범위)
+=TBEG_IMAGE(이미지명, 위치, 크기)
+```
+
 해당 셀 위치에 이미지가 삽입됩니다.
+
+> 상세 파라미터 설명은 [템플릿 문법 레퍼런스 - 이미지 삽입](./reference/template-syntax.md#4-이미지-삽입)을 참조하세요.
 
 ### 3.2 DataProvider
 
@@ -362,49 +387,162 @@ generator.generate(template, provider)
 
 ### 3.3 비동기 처리
 
-| 메서드 | 반환 타입 | 설명 |
-|--------|-----------|------|
-| `generate()` | `ByteArray` | 동기 생성, 바이트 배열 반환 |
-| `generateToFile()` | `Path` | 동기 생성, 파일로 저장 |
-| `generateAsync()` | `ByteArray` (suspend) | Kotlin Coroutine 비동기 |
-| `generateFuture()` | `CompletableFuture<ByteArray>` | Java CompletableFuture |
-| `submit()` | `GenerationJob` | 백그라운드 작업 + 리스너 콜백 |
+대량의 데이터로 Excel을 생성하면 블로킹 시간이 길어질 수 있으므로, 상황에 맞게 필요하면 비동기 처리 방식을 선택하세요.
+
+모든 생성 메서드는 **바이트 배열 반환**과 **파일 저장** 두 가지 형태를 제공합니다.
+
+| 처리 방식      | 바이트 배열 반환                                           | 파일 저장                                                |
+|------------|-----------------------------------------------------|------------------------------------------------------|
+| **동기**     | `generate()` → `ByteArray`                          | `generateToFile()` → `Path`                          |
+| **코루틴**    | `generateAsync()` → `ByteArray` (suspend)           | `generateToFileAsync()` → `Path` (suspend)           |
+| **Future** | `generateFuture()` → `CompletableFuture<ByteArray>` | `generateToFileFuture()` → `CompletableFuture<Path>` |
+| **백그라운드**  | `submit()` → `GenerationJob`                        | `submitToFile()` → `GenerationJob`                   |
+
+#### 권장 사용 패턴
+
+**일반적인 경우** - 동기 처리:
+```kotlin
+val bytes = generator.generate(template, data)
+```
+
+**블로킹을 피해야 하는 경우** - 백그라운드 작업:
+```kotlin
+// 즉시 반환, 백그라운드에서 파일로 생성
+val job = generator.submitToFile(
+    template = template,
+    dataProvider = provider,
+    outputDir = Path.of("/var/reports"),
+    baseFileName = "large_report",
+    listener = object : ExcelGenerationListener {
+        override fun onCompleted(jobId: String, result: GenerationResult) {
+            // 완료 시 후속 처리 (알림, UI 갱신 등)
+            val filePath = result.filePath!!
+        }
+    }
+)
+// API 서버: 즉시 응답 반환
+// GUI 애플리케이션: UI 블로킹 없이 진행
+// 배치 작업: 다른 작업과 병렬 처리
+```
+
+#### 비동기 메서드 비교
+
+비동기 메서드는 세 가지 방식을 제공합니다. 각 방식마다 바이트 배열/파일 저장 버전이 있습니다.
+
+| 구분         | 코루틴                     | Future                   | 백그라운드            |
+|------------|-------------------------|--------------------------|------------------|
+| **바이트 배열** | `generateAsync()`       | `generateFuture()`       | `submit()`       |
+| **파일 저장**  | `generateToFileAsync()` | `generateToFileFuture()` | `submitToFile()` |
+| **반환 타입**  | suspend 함수              | `CompletableFuture<T>`   | `GenerationJob`  |
+| **Kotlin** | ✅ 권장                    | ✅ 사용 가능                  | ✅ 사용 가능          |
+| **Java**   | ❌ 어려움                   | ✅ 권장                     | ✅ 사용 가능          |
+| **리스너/취소** | ❌                       | ❌                        | ✅                |
+
+**코루틴 (generateAsync / generateToFileAsync)** - Kotlin 전용:
+```kotlin
+// suspend 함수이므로 코루틴 내에서만 호출 가능
+// Spring WebFlux, Ktor 등 코루틴 기반 프레임워크에서 사용
+suspend fun createReport(): ByteArray {
+    return generator.generateAsync(template, provider)
+}
+
+suspend fun createReportFile(): Path {
+    return generator.generateToFileAsync(template, provider, outputDir, "report")
+}
+```
+
+**Future (generateFuture / generateToFileFuture)** - Java/Kotlin 공용:
+```kotlin
+// 어디서든 호출 가능, 완료 시 콜백으로 결과 처리
+generator.generateFuture(template, provider)
+    .thenAccept { bytes -> saveToStorage(bytes) }
+    .exceptionally { error -> handleError(error) }
+
+generator.generateToFileFuture(template, provider, outputDir, "report")
+    .thenAccept { path -> notifyUser(path) }
+    .exceptionally { error -> handleError(error) }
+```
+
+**백그라운드 (submit / submitToFile)** - 리스너 지원:
+```kotlin
+// 즉시 반환, 진행률/완료 콜백 지원, 취소 가능
+// submit: 바이트 배열로 결과 반환 (result.bytes)
+val job = generator.submit(template, provider,
+    listener = object : ExcelGenerationListener {
+        override fun onCompleted(jobId: String, result: GenerationResult) {
+            val bytes = result.bytes!!
+        }
+    }
+)
+
+// submitToFile: 파일로 저장 (result.filePath)
+val job = generator.submitToFile(template, provider, outputDir, "report",
+    listener = object : ExcelGenerationListener {
+        override fun onCompleted(jobId: String, result: GenerationResult) {
+            val filePath = result.filePath!!
+        }
+    }
+)
+job.cancel()  // 필요 시 취소 가능
+```
+
+**선택 기준:**
+- **Kotlin + 코루틴 환경**: `generateAsync` / `generateToFileAsync`
+- **Java 또는 코루틴 없는 Kotlin**: `generateFuture` / `generateToFileFuture`
+- **진행률 모니터링, 작업 취소 필요**: `submit` / `submitToFile`
+
+#### 지연 로딩과 비동기 처리 비교
+
+이 두 개념은 목적이 다르며, 상황에 따라 개별 또는 조합하여 사용합니다.
+
+| 구분      | 지연 로딩 (DataProvider) | 비동기 처리           |
+|---------|----------------------|------------------|
+| **목적**  | 메모리 효율성              | 즉시 응답 후 백그라운드 작업 |
+| **동작**  | 데이터를 필요할 때 로드        | 작업을 백그라운드에서 실행   |
+| **효과**  | 전체 데이터를 메모리에 올리지 않음  | 호출자가 즉시 반환받음     |
+| **블로킹** | 동기적 (완료까지 대기)        | 비블로킹 (즉시 반환)     |
+
+**선택 가이드:**
+
+| 상황                     | 권장 방식                               |
+|------------------------|-------------------------------------|
+| 데이터가 커서 메모리 부담이 큼      | 지연 로딩 (`simpleDataProvider`)        |
+| 생성 시간이 길어서 블로킹을 피해야 함  | 비동기 (`submit()` / `submitToFile()`) |
+| 대용량 데이터 + 블로킹 방지 모두 필요 | **지연 로딩 + 비동기 조합**                  |
+
+> 상세 예제는 [고급 예제 - 비동기 처리](./examples/advanced-examples.md#2-비동기-처리)를 참조하세요.
 
 ---
 
 ## 4. 주의 사항
 
-### 4.1 라이브러리 문법만 사용
-
-> ⚠️ **중요**: 템플릿에는 본 라이브러리가 제공하는 문법(`${변수}`, `${repeat(...)}`, `${image.xxx}`)만 사용하세요.
-
-이 라이브러리가 JXLS를 일부 사용하기는 하나, 셀 코멘트에 JXLS 등 다른 템플릿 엔진 명령어를 직접 작성하면 다음과 같은 문제가 발생할 수 있습니다:
-
-- 라이브러리의 전처리 로직과 충돌
-- 피벗 테이블, 레이아웃 보존 등 후처리 기능과 예기치 않은 상호작용
-- 향후 버전에서 동작 변경 가능
-
-### 4.2 템플릿 서식 규칙
+### 4.1 템플릿 서식 규칙
 
 템플릿에 작성된 서식은 생성된 Excel에 그대로 유지됩니다. 다음 규칙을 준수하세요:
 
-1. **반복 영역의 서식**: 첫 번째 행(또는 열)에 원하는 서식을 적용하면 반복 생성되는 모든 행에 동일하게 적용됩니다.
+1. **반복 영역의 서식**: repeat 마커에서 반복 범위로 지정한 셀에 원하는 서식을 적용하면, 반복 생성되는 모든 셀에 동일하게 적용됩니다.
 
-2. **숫자 서식**: 템플릿 셀의 표시 형식이 "일반"인 경우, 숫자 데이터는 자동으로 숫자 서식이 적용됩니다. 특정 형식(통화, 백분율 등)을 원하면 템플릿에서 미리 설정하세요.
+2. **숫자 서식**: 템플릿 셀의 표시 형식이 "일반"인 경우, 숫자 데이터는 자동으로 숫자 서식이 적용됩니다. 특정 형식(통화, 백분율 등)을 원하면 템플릿에 미리 설정하세요.
 
 3. **피벗 테이블**: 템플릿의 피벗 테이블 스타일과 설정이 유지됩니다. 데이터 영역이 확장되어도 서식이 보존됩니다.
 
-### 4.3 대용량 데이터 처리
+### 4.2 대용량 데이터 처리
 
 대용량 데이터(수천 행 이상) 처리 시 권장 사항:
 
 1. **DataProvider 사용**: Map 대신 `simpleDataProvider`를 사용하여 지연 로딩을 활용하세요.
 
-2. **스트리밍 모드**: `ExcelGeneratorConfig`에서 `streamingMode = StreamingMode.ENABLED`를 설정하세요.
+2. **비동기 처리**: 블로킹을 피해야 하는 경우 `submit()` 또는 `submitToFile()` 메서드를 사용하여 백그라운드에서 처리하세요.
 
-3. **비동기 처리**: API 서버에서는 `submit()` 메서드를 사용하여 백그라운드에서 처리하세요.
+### 4.3 템플릿 작성 팁
 
-4. **수식 제한**: 템플릿에 참조 범위가 넓은 수식이 있으면 성능이 저하될 수 있습니다.
+합계 수식(`SUM`, `AVERAGE` 등)은 **데이터 영역 아래**에 배치하면 최적의 성능을 얻을 수 있습니다.
+
+```
+| 이름 |    금액    |  ← 헤더
+| ... |    ...    |  ← 반복 데이터 영역
+| 합계 | =SUM(...) |  ← 수식은 아래에
+```
 
 ### 4.4 리소스 관리
 

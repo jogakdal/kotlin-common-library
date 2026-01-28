@@ -1,4 +1,4 @@
-# Excel Generator 고급 예제
+# TBEG 고급 예제
 
 ## 목차
 1. [지연 로딩 (DataProvider)](#1-지연-로딩-dataprovider)
@@ -215,7 +215,7 @@ fun main() {
     ExcelGenerator().use { generator ->
         val template = File("template.xlsx").inputStream()
 
-        val job = generator.submit(
+        val job = generator.submitToFile(
             template = template,
             dataProvider = provider,
             outputDir = Path.of("./output"),
@@ -270,11 +270,11 @@ fun main() {
 
 **Sheet1 (데이터)**:
 
-| A | B | C |
-|---|---|---|
-| 이름 | 직급 | 급여 |
-| ${repeat(employees, A2:C2, emp)} | | |
-| ${emp.name} | ${emp.position} | ${emp.salary} |
+|   | A                                | B               | C             |
+|---|----------------------------------|-----------------|---------------|
+| 1 | ${repeat(employees, A3:C3, emp)} |                 |               |
+| 2 | 이름                               | 직급              | 급여            |
+| 3 | ${emp.name}                      | ${emp.position} | ${emp.salary} |
 
 **Sheet2 (피벗)**:
 - 피벗 테이블: 소스 범위 = Sheet1!A:C
@@ -326,16 +326,16 @@ fun main() {
 
 ### 템플릿 (formula_template.xlsx)
 
-| A | B | C |
-|---|---|---|
-| 시작 행 | ${startRow} | |
-| 종료 행 | ${endRow} | |
-| | | |
-| 데이터1 | 100 | |
-| 데이터2 | 200 | |
-| 데이터3 | 300 | |
-| | | |
-| 합계 | =SUM(B${startRow}:B${endRow}) | |
+|   | A      | B                           | C |
+|---|--------|-----------------------------|---|
+| 1 | 시작 행   | ${startRow}                 |   |
+| 2 | 종료 행   | ${endRow}                   |   |
+| 3 |        |                             |   |
+| 4 | 데이터1   | 100                         |   |
+| 5 | 데이터2   | 200                         |   |
+| 6 | 데이터3   | 300                         |   |
+| 7 |        |                             |   |
+| 8 | 합계     | =SUM(B${startRow}:B${endRow}) |   |
 
 ### Kotlin 코드
 
@@ -359,16 +359,16 @@ fun main() {
 
 ### 결과
 
-| A | B |
-|---|---|
-| 시작 행 | 4 |
-| 종료 행 | 6 |
-| | |
-| 데이터1 | 100 |
-| 데이터2 | 200 |
-| 데이터3 | 300 |
-| | |
-| 합계 | =SUM(B4:B6) → 600 |
+|   | A      | B                  |
+|---|--------|--------------------|
+| 1 | 시작 행   | 4                  |
+| 2 | 종료 행   | 6                  |
+| 3 |        |                    |
+| 4 | 데이터1   | 100                |
+| 5 | 데이터2   | 200                |
+| 6 | 데이터3   | 300                |
+| 7 |        |                    |
+| 8 | 합계     | =SUM(B4:B6) → 600  |
 
 ---
 
@@ -408,18 +408,18 @@ fun main() {
 
 **Summary 시트**:
 
-| A | B |
-|---|---|
-| 제목 | ${title} |
-| 총 직원 수 | ${totalCount} |
+|   | A       | B              |
+|---|---------|----------------|
+| 1 | 제목      | ${title}       |
+| 2 | 총 직원 수  | ${totalCount}  |
 
 **Employees 시트**:
 
-| A | B | C |
-|---|---|---|
-| 이름 | 직급 | 급여 |
-| ${repeat(employees, A2:C2, emp)} | | |
-| ${emp.name} | ${emp.position} | ${emp.salary} |
+|   | A                                | B               | C             |
+|---|----------------------------------|-----------------|---------------|
+| 1 | ${repeat(employees, A3:C3, emp)} |                 |               |
+| 2 | 이름                               | 직급              | 급여            |
+| 3 | ${emp.name}                      | ${emp.position} | ${emp.salary} |
 
 ### Kotlin 코드
 
@@ -503,7 +503,7 @@ fun main() {
 
 2. **지연 로딩 활용**: `items()` 블록에서 Iterator를 반환하여 필요할 때만 데이터 로드
 
-3. **비동기 처리**: API 서버에서는 `submit()`으로 백그라운드 처리
+3. **비동기 처리**: API 서버에서는 `submit()` 또는 `submitToFile()`로 백그라운드 처리
 
 4. **진행률 모니터링**: `progressReportInterval`을 설정하여 진행률 확인
 

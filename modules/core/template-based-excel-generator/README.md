@@ -128,31 +128,31 @@ hunet:
 
 ```
 src/main/kotlin/com/hunet/common/tbeg/
-├── ExcelGenerator.kt              # 메인 진입점 (Public API)
-├── ExcelDataProvider.kt           # 데이터 제공 인터페이스
-├── SimpleDataProvider.kt          # 간단한 DataProvider 구현
-├── ExcelGeneratorConfig.kt        # 설정 클래스
-├── DocumentMetadata.kt            # 문서 메타데이터
-├── Enums.kt                       # StreamingMode, FileNamingMode 등 열거형
+├── ExcelGenerator.kt                       # 메인 진입점 (Public API)
+├── ExcelDataProvider.kt                    # 데이터 제공 인터페이스
+├── SimpleDataProvider.kt                   # 간단한 DataProvider 구현
+├── ExcelGeneratorConfig.kt                 # 설정 클래스
+├── DocumentMetadata.kt                     # 문서 메타데이터
+├── Enums.kt                                # StreamingMode, FileNamingMode 등 열거형
 │
-├── async/                         # 비동기 처리
-│   ├── ExcelGenerationListener.kt # 생성 이벤트 리스너
-│   ├── GenerationJob.kt           # 비동기 작업 핸들
-│   ├── GenerationResult.kt        # 생성 결과
-│   └── ProgressInfo.kt            # 진행률 정보
+├── async/                                  # 비동기 처리
+│   ├── ExcelGenerationListener.kt          # 생성 이벤트 리스너
+│   ├── GenerationJob.kt                    # 비동기 작업 핸들
+│   ├── GenerationResult.kt                 # 생성 결과
+│   └── ProgressInfo.kt                     # 진행률 정보
 │
-├── engine/                        # 내부 엔진 (internal)
-│   ├── core/                      # 핵심 프로세서
-│   │   ├── ChartProcessor.kt      # 차트 추출/복원
-│   │   ├── PivotTableProcessor.kt # 피벗 테이블 처리
-│   │   ├── XmlVariableProcessor.kt# XML 내 변수 치환
-│   │   └── ExcelUtils.kt          # 유틸리티 함수
+├── engine/                                 # 내부 엔진 (internal)
+│   ├── core/                               # 핵심 프로세서
+│   │   ├── ChartProcessor.kt               # 차트 추출/복원
+│   │   ├── PivotTableProcessor.kt          # 피벗 테이블 처리
+│   │   ├── XmlVariableProcessor.kt         # XML 내 변수 치환
+│   │   └── ExcelUtils.kt                   # 유틸리티 함수
 │   │
-│   ├── pipeline/                  # 처리 파이프라인
-│   │   ├── ExcelPipeline.kt       # 파이프라인 정의
-│   │   ├── ExcelProcessor.kt      # 프로세서 인터페이스
-│   │   ├── ProcessingContext.kt   # 처리 컨텍스트
-│   │   └── processors/            # 개별 프로세서
+│   ├── pipeline/                           # 처리 파이프라인
+│   │   ├── ExcelPipeline.kt                # 파이프라인 정의
+│   │   ├── ExcelProcessor.kt               # 프로세서 인터페이스
+│   │   ├── ProcessingContext.kt            # 처리 컨텍스트
+│   │   └── processors/                     # 개별 프로세서
 │   │       ├── ChartExtractProcessor.kt
 │   │       ├── ChartRestoreProcessor.kt
 │   │       ├── MetadataProcessor.kt
@@ -162,27 +162,27 @@ src/main/kotlin/com/hunet/common/tbeg/
 │   │       ├── TemplateRenderProcessor.kt
 │   │       └── XmlVariableReplaceProcessor.kt
 │   │
-│   └── rendering/                 # 렌더링 전략
-│       ├── RenderingStrategy.kt   # 렌더링 전략 인터페이스
-│       ├── AbstractRenderingStrategy.kt  # 공통 로직
-│       ├── XssfRenderingStrategy.kt      # XSSF (비스트리밍)
-│       ├── SxssfRenderingStrategy.kt     # SXSSF (스트리밍)
-│       ├── TemplateRenderingEngine.kt    # 렌더링 엔진
-│       ├── TemplateAnalyzer.kt    # 템플릿 분석기
-│       ├── WorkbookSpec.kt        # 워크북/시트/셀 명세
-│       ├── ImageInserter.kt       # 이미지 삽입
-│       ├── FormulaAdjuster.kt     # 수식 조정
-│       ├── RepeatExpansionProcessor.kt   # 반복 영역 확장
-│       └── SheetLayoutApplier.kt  # 레이아웃 적용
+│   └── rendering/                          # 렌더링 전략
+│       ├── RenderingStrategy.kt            # 렌더링 전략 인터페이스
+│       ├── AbstractRenderingStrategy.kt    # 공통 로직
+│       ├── XssfRenderingStrategy.kt        # XSSF (비스트리밍)
+│       ├── SxssfRenderingStrategy.kt       # SXSSF (스트리밍)
+│       ├── TemplateRenderingEngine.kt      # 렌더링 엔진
+│       ├── TemplateAnalyzer.kt             # 템플릿 분석기
+│       ├── WorkbookSpec.kt                 # 워크북/시트/셀 명세
+│       ├── ImageInserter.kt                # 이미지 삽입
+│       ├── FormulaAdjuster.kt              # 수식 조정
+│       ├── RepeatExpansionProcessor.kt     # 반복 영역 확장
+│       └── SheetLayoutApplier.kt           # 레이아웃 적용
 │
-├── exception/                     # 예외 클래스
+├── exception/                              # 예외 클래스
 │   ├── TemplateProcessingException.kt
 │   ├── MissingTemplateDataException.kt
 │   └── FormulaExpansionException.kt
 │
-└── spring/                        # Spring Boot 통합
-    ├── TbegAutoConfiguration.kt   # 자동 설정
-    └── TbegProperties.kt          # 설정 속성
+└── spring/                                 # Spring Boot 통합
+    ├── TbegAutoConfiguration.kt            # 자동 설정
+    └── TbegProperties.kt                   # 설정 속성
 ```
 
 ### 아키텍처 개요
@@ -195,18 +195,18 @@ src/main/kotlin/com/hunet/common/tbeg/
                       │
 ┌─────────────────────▼───────────────────────────────────────┐
 │                    ExcelPipeline                            │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐           │
-│  │ Extract │→│ Render  │→│ Restore │→│Metadata │→ ...      │
-│  │  Chart  │ │Template │ │  Chart  │ │         │           │
-│  └─────────┘ └─────────┘ └─────────┘ └─────────┘           │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐            │
+│  │ Extract │→│ Render  │→│ Restore │→│Metadata │→ ...       │
+│  │  Chart  │ │Template │ │  Chart  │ │         │            │
+│  └─────────┘ └─────────┘ └─────────┘ └─────────┘            │
 └─────────────────────┬───────────────────────────────────────┘
                       │
 ┌─────────────────────▼───────────────────────────────────────┐
 │              TemplateRenderingEngine                        │
-│  ┌────────────────┐        ┌────────────────┐              │
-│  │ XSSF Strategy  │   or   │ SXSSF Strategy │              │
-│  │ (비스트리밍)    │        │ (스트리밍)      │              │
-│  └────────────────┘        └────────────────┘              │
+│  ┌────────────────┐        ┌────────────────┐               │
+│  │ XSSF Strategy  │   or   │ SXSSF Strategy │               │
+│  │ (비스트리밍)      │        │ (스트리밍)       │               │
+│  └────────────────┘        └────────────────┘               │
 └─────────────────────────────────────────────────────────────┘
 ```
 

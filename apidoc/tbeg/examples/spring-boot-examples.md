@@ -1,4 +1,4 @@
-# Excel Generator Spring Boot 예제
+# TBEG Spring Boot 예제
 
 ## 목차
 1. [설정](#1-설정)
@@ -26,22 +26,21 @@ dependencies {
 
 ```yaml
 hunet:
-  excel:
-    streaming-mode: auto
-    streaming-row-threshold: 1000
-    formula-processing: true
-    file-naming-mode: timestamp
+  tbeg:
+    streaming-mode: enabled           # enabled, disabled
+    file-naming-mode: timestamp       # none, timestamp
     timestamp-format: yyyyMMdd_HHmmss
-    file-conflict-policy: sequence
+    file-conflict-policy: sequence    # error, sequence
     preserve-template-layout: true
+    missing-data-behavior: warn       # warn, throw
 ```
 
 ### 자동 설정
 
-`tbeg` 의존성을 추가하면 `ExcelGeneratorAutoConfiguration`이 자동으로 활성화됩니다:
+`tbeg` 의존성을 추가하면 `TbegAutoConfiguration`이 자동으로 활성화됩니다:
 
 - `ExcelGenerator` Bean 자동 등록
-- `ExcelGeneratorProperties` 바인딩
+- `TbegProperties` 바인딩
 - 애플리케이션 종료 시 자동 정리
 
 ---
@@ -400,7 +399,7 @@ class AsyncReportController(
             }
         }
 
-        val job = excelGenerator.submit(
+        val job = excelGenerator.submitToFile(
             template = template.inputStream,
             dataProvider = provider,
             outputDir = Path.of("/var/reports"),
@@ -613,7 +612,7 @@ fun generateReportAsync(
     val template = resourceLoader.getResource("classpath:templates/employees.xlsx")
     val provider = /* ... */
 
-    val job = excelGenerator.submit(
+    val job = excelGenerator.submitToFile(
         template = template.inputStream,
         dataProvider = provider,
         outputDir = Path.of("/var/reports"),
@@ -652,8 +651,8 @@ class ReportServiceTest {
     fun `직원 보고서 생성 테스트`() {
         // Given
         every { employeeRepository.findAll() } returns listOf(
-            Employee(1, "홍길동", "개발팀", 5000),
-            Employee(2, "김철수", "기획팀", 4500)
+            Employee(1, "황용호", "공통플랫폼팀", 5000),
+            Employee(2, "홍용호", "기획팀", 4500)
         )
 
         val template = ClassPathResource("templates/employees.xlsx")
@@ -675,8 +674,8 @@ class ReportServiceTest {
         assert(sheet.getRow(0).getCell(0).stringCellValue == "테스트 보고서")
 
         // 데이터 행 확인
-        assert(sheet.getRow(2).getCell(0).stringCellValue == "홍길동")
-        assert(sheet.getRow(3).getCell(0).stringCellValue == "김철수")
+        assert(sheet.getRow(2).getCell(0).stringCellValue == "황용호")
+        assert(sheet.getRow(3).getCell(0).stringCellValue == "홍용호")
 
         workbook.close()
     }

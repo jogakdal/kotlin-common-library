@@ -103,7 +103,7 @@ class ExcelGeneratorTest {
         val templateStream = "".byteInputStream()
         val provider = SimpleDataProvider.empty()
 
-        val job = generator.submit(
+        val job = generator.submitToFile(
             template = templateStream,
             dataProvider = provider,
             outputDir = tempDir,
@@ -150,7 +150,7 @@ class ExcelGeneratorTest {
         val provider = SimpleDataProvider.empty()
         var cancelled = false
 
-        val job = generator.submit(
+        val job = generator.submitToFile(
             template = templateStream,
             dataProvider = provider,
             outputDir = tempDir,
@@ -229,8 +229,144 @@ class ExcelGeneratorTest {
         assertTrue(resultPath.fileName.toString().endsWith(".xlsx"))
     }
 
+    // ==================== submit (바이트 배열 반환) 테스트 ====================
+
     @Test
-    fun `submit should return rowsProcessed in GenerationResult`() {
+    fun `submit should return bytes in GenerationResult`() {
+        val latch = CountDownLatch(1)
+        var result: GenerationResult? = null
+
+        val template = loadTemplate()
+        val data = createTestData()
+
+        generator.submit(
+            template = template,
+            dataProvider = SimpleDataProvider.of(data),
+            listener = object : ExcelGenerationListener {
+                override fun onCompleted(jobId: String, generationResult: GenerationResult) {
+                    result = generationResult
+                    latch.countDown()
+                }
+
+                override fun onFailed(jobId: String, error: Exception) {
+                    error.printStackTrace()
+                    latch.countDown()
+                }
+            }
+        )
+
+        assertTrue(latch.await(10, TimeUnit.SECONDS))
+        assertNotNull(result)
+        assertNotNull(result!!.bytes, "submit()은 bytes를 반환해야 합니다")
+        assertNull(result!!.filePath, "submit()은 filePath가 null이어야 합니다")
+        assertTrue(result!!.bytes!!.isNotEmpty())
+        // XLSX 파일 시그니처 확인 (PK - ZIP 형식)
+        assertEquals(0x50, result!!.bytes!![0].toInt() and 0xFF)
+        assertEquals(0x4B, result!!.bytes!![1].toInt() and 0xFF)
+    }
+
+    @Test
+    fun `submit should call onStarted listener`() {
+        val startedLatch = CountDownLatch(1)
+        val completedLatch = CountDownLatch(1)
+        var startedJobId: String? = null
+
+        val template = loadTemplate()
+        val data = createTestData()
+
+        val job = generator.submit(
+            template = template,
+            dataProvider = SimpleDataProvider.of(data),
+            listener = object : ExcelGenerationListener {
+                override fun onStarted(jobId: String) {
+                    startedJobId = jobId
+                    startedLatch.countDown()
+                }
+
+                override fun onCompleted(jobId: String, result: GenerationResult) {
+                    completedLatch.countDown()
+                }
+
+                override fun onFailed(jobId: String, error: Exception) {
+                    completedLatch.countDown()
+                }
+            }
+        )
+
+        assertTrue(startedLatch.await(5, TimeUnit.SECONDS))
+        assertEquals(job.jobId, startedJobId)
+        completedLatch.await(10, TimeUnit.SECONDS)
+    }
+
+    @Test
+    fun `submit should work with password encryption`() {
+        val latch = CountDownLatch(1)
+        var result: GenerationResult? = null
+
+        val template = loadTemplate()
+        val data = createTestData()
+        val password = "test1234"
+
+        generator.submit(
+            template = template,
+            dataProvider = SimpleDataProvider.of(data),
+            password = password,
+            listener = object : ExcelGenerationListener {
+                override fun onCompleted(jobId: String, generationResult: GenerationResult) {
+                    result = generationResult
+                    latch.countDown()
+                }
+
+                override fun onFailed(jobId: String, error: Exception) {
+                    error.printStackTrace()
+                    latch.countDown()
+                }
+            }
+        )
+
+        assertTrue(latch.await(10, TimeUnit.SECONDS))
+        assertNotNull(result)
+        assertNotNull(result!!.bytes)
+        assertTrue(result!!.bytes!!.isNotEmpty())
+    }
+
+    @Test
+    fun `submit cancel should work`() {
+        var cancelled = false
+        val latch = CountDownLatch(1)
+
+        val template = loadTemplate()
+        val data = createTestData()
+
+        val job = generator.submit(
+            template = template,
+            dataProvider = SimpleDataProvider.of(data),
+            listener = object : ExcelGenerationListener {
+                override fun onCancelled(jobId: String) {
+                    cancelled = true
+                    latch.countDown()
+                }
+
+                override fun onCompleted(jobId: String, result: GenerationResult) {
+                    latch.countDown()
+                }
+
+                override fun onFailed(jobId: String, error: Exception) {
+                    latch.countDown()
+                }
+            }
+        )
+
+        // 즉시 취소
+        val cancelResult = job.cancel()
+        assertTrue(cancelResult)
+        assertTrue(job.isCancelled)
+    }
+
+    // ==================== submitToFile 테스트 ====================
+
+    @Test
+    fun `submitToFile should return rowsProcessed in GenerationResult`() {
         val latch = CountDownLatch(1)
         var result: GenerationResult? = null
         val employeeCount = 5
@@ -238,7 +374,7 @@ class ExcelGeneratorTest {
         val template = loadTemplate()
         val data = createTestData(employeeCount)
 
-        generator.submit(
+        generator.submitToFile(
             template = template,
             dataProvider = SimpleDataProvider.of(data),
             outputDir = tempDir,
@@ -263,7 +399,7 @@ class ExcelGeneratorTest {
     }
 
     @Test
-    fun `submit should call onStarted listener`() {
+    fun `submitToFile should call onStarted listener`() {
         val startedLatch = CountDownLatch(1)
         val completedLatch = CountDownLatch(1)
         var startedJobId: String? = null
@@ -271,7 +407,7 @@ class ExcelGeneratorTest {
         val template = loadTemplate()
         val data = createTestData()
 
-        val job = generator.submit(
+        val job = generator.submitToFile(
             template = template,
             dataProvider = SimpleDataProvider.of(data),
             outputDir = tempDir,
@@ -376,7 +512,7 @@ class ExcelGeneratorTest {
             }
         }
 
-        generator.submit(
+        generator.submitToFile(
             template = template,
             dataProvider = provider,
             outputDir = tempDir,
@@ -690,7 +826,7 @@ class ExcelGeneratorTest {
             val template = loadTemplate()
             // employees만 제공 (title, date 누락)
             val incompleteData = mapOf(
-                "employees" to listOf(Employee("홍길동", "부장", 8000))
+                "employees" to listOf(Employee("황용호", "부장", 8000))
             )
 
             val exception = assertThrows(MissingTemplateDataException::class.java) {
@@ -712,9 +848,9 @@ class ExcelGeneratorTest {
             val provider = simpleDataProvider {
                 value("title", "테스트 보고서")
                 value("date", "2024-01-07")
-                value("linkText", "테스트 링크")
-                value("url", "https://example.com")
-                items("employees", listOf(Employee("홍길동", "부장", 8000)))
+                value("linkText", "(주)휴넷 홈페이지")
+                value("url", "https://www.hunet.co.kr")
+                items("employees", listOf(Employee("황용호", "부장", 8000)))
                 loadImage("hunet_logo.png")?.let { image("logo", it) }
                 loadImage("hunet_ci.png")?.let { image("ci", it) }
             }

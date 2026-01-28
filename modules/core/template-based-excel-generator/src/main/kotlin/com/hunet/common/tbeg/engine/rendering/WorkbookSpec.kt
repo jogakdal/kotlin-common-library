@@ -220,7 +220,74 @@ data class RepeatRegionSpec(
     val startCol: Int,
     val endCol: Int,
     val direction: RepeatDirection = RepeatDirection.DOWN
-)
+) {
+    /**
+     * 다른 repeat 영역과 열 범위가 겹치는지 확인
+     */
+    fun overlapsColumns(other: RepeatRegionSpec): Boolean {
+        return !(endCol < other.startCol || startCol > other.endCol)
+    }
+}
+
+/**
+ * 열 그룹 - 열 범위가 겹치는 repeat 영역들의 모음
+ *
+ * 같은 열 그룹 내의 repeat 영역들은 서로 영향을 주지만,
+ * 다른 열 그룹의 repeat 영역들과는 독립적으로 확장됩니다.
+ */
+data class ColumnGroup(
+    val groupId: Int,
+    val startCol: Int,
+    val endCol: Int,
+    val repeatRegions: List<RepeatRegionSpec>
+) {
+    companion object {
+        /**
+         * repeat 영역들을 열 그룹으로 분류
+         */
+        fun fromRepeatRegions(regions: List<RepeatRegionSpec>): List<ColumnGroup> {
+            if (regions.isEmpty()) return emptyList()
+
+            // DOWN 방향 repeat만 그룹화 대상
+            val downRepeats = regions.filter { it.direction == RepeatDirection.DOWN }
+            if (downRepeats.isEmpty()) return emptyList()
+
+            // Union-Find로 겹치는 영역들을 그룹화
+            val groups = mutableListOf<MutableList<RepeatRegionSpec>>()
+
+            for (region in downRepeats) {
+                // 기존 그룹 중 열 범위가 겹치는 그룹 찾기
+                val overlappingGroups = groups.filter { group ->
+                    group.any { it.overlapsColumns(region) }
+                }
+
+                when (overlappingGroups.size) {
+                    0 -> {
+                        // 새 그룹 생성
+                        groups.add(mutableListOf(region))
+                    }
+                    1 -> {
+                        // 기존 그룹에 추가
+                        overlappingGroups[0].add(region)
+                    }
+                    else -> {
+                        // 여러 그룹 병합
+                        val merged = mutableListOf(region)
+                        overlappingGroups.forEach { merged.addAll(it) }
+                        groups.removeAll(overlappingGroups)
+                        groups.add(merged)
+                    }
+                }
+            }
+
+            return groups.mapIndexed { index, regionsInGroup ->
+                val minCol = regionsInGroup.minOf { it.startCol }
+                val maxCol = regionsInGroup.maxOf { it.endCol }
+                ColumnGroup(index, minCol, maxCol, regionsInGroup.toList())
+            }
+        }
+    }
+}
 
 /**
  * 조건부 서식 정보 (SXSSF 모드용)

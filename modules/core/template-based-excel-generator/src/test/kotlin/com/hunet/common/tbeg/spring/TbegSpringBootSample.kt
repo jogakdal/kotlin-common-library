@@ -261,7 +261,7 @@ class TbegSpringBootSample {
      *     fun generateReportAsync(@RequestBody request: ReportRequest): ResponseEntity<JobResponse> {
      *         val template = resourceLoader.getResource("classpath:templates/template.xlsx")
      *
-     *         val job = excelGenerator.submit(
+     *         val job = excelGenerator.submitToFile(
      *             template = template.inputStream,
      *             dataProvider = SimpleDataProvider.of(request.toDataMap()),
      *             outputDir = Path.of("/output"),
@@ -304,7 +304,7 @@ class TbegSpringBootSample {
         ).filterValues { it != null }.mapValues { it.value!! }
 
         // 비동기 작업 제출
-        val job = excelGenerator.submit(
+        val job = excelGenerator.submitToFile(
             template = templateResource.inputStream,
             dataProvider = SimpleDataProvider.of(data),
             outputDir = outputDir,
@@ -371,7 +371,7 @@ class TbegSpringBootSample {
      *             }
      *         }
      *
-     *         val job = excelGenerator.submit(
+     *         val job = excelGenerator.submitToFile(
      *             template = template.inputStream,
      *             dataProvider = provider,
      *             outputDir = Path.of("/output"),
@@ -417,7 +417,7 @@ class TbegSpringBootSample {
 
         println("\tDataProvider 생성 완료 (${dataCount}건 데이터 지연 로딩 예정)")
 
-        val job = excelGenerator.submit(
+        val job = excelGenerator.submitToFile(
             template = templateResource.inputStream,
             dataProvider = dataProvider,
             outputDir = outputDir,
@@ -487,7 +487,7 @@ class TbegSpringBootSample {
      *             items("employees") { employeeRepository.streamAll().iterator() }
      *         }
      *
-     *         val job = excelGenerator.submit(
+     *         val job = excelGenerator.submitToFile(
      *             template = template.inputStream,
      *             dataProvider = provider,
      *             outputDir = Path.of("/output"),
@@ -531,7 +531,7 @@ class TbegSpringBootSample {
 
         println("\tDataProvider 생성 완료 (${dataCount}건 데이터)")
 
-        val job = excelGenerator.submit(
+        val job = excelGenerator.submitToFile(
             template = templateResource.inputStream,
             dataProvider = dataProvider,
             outputDir = outputDir,

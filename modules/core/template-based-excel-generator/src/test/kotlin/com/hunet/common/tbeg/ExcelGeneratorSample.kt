@@ -309,7 +309,7 @@ object ExcelGeneratorSample {
      *         val template = resourceLoader.getResource("classpath:templates/template.xlsx")
      *         val provider = SimpleDataProvider.of(request.toDataMap())
      *
-     *         val job = excelGenerator.submit(
+     *         val job = excelGenerator.submitToFile(
      *             template = template.inputStream,
      *             dataProvider = provider,
      *             outputDir = Path.of("/output"),
@@ -357,7 +357,7 @@ object ExcelGeneratorSample {
         val template = loadTemplate()
 
         // 비동기 작업 제출
-        val job = generator.submit(
+        val job = generator.submitToFile(
             template = template,
             dataProvider = SimpleDataProvider.of(data),
             outputDir = outputDir,
@@ -433,7 +433,7 @@ object ExcelGeneratorSample {
      *         }
      *
      *         // 비동기로 제출
-     *         val job = excelGenerator.submit(
+     *         val job = excelGenerator.submitToFile(
      *             template = template.inputStream,
      *             dataProvider = provider,
      *             outputDir = Path.of("/output"),
@@ -519,7 +519,7 @@ object ExcelGeneratorSample {
         val template = loadTemplate()
 
         // 비동기 작업 제출
-        val job = generator.submit(
+        val job = generator.submitToFile(
             template = template,
             dataProvider = dataProvider,
             outputDir = outputDir,
@@ -604,7 +604,7 @@ object ExcelGeneratorSample {
      *             items("employees") { employeeRepository.streamAll().iterator() }
      *         }
      *
-     *         val job = excelGenerator.submit(
+     *         val job = excelGenerator.submitToFile(
      *             template = template.inputStream,
      *             dataProvider = provider,
      *             outputDir = Path.of("/output"),
@@ -651,7 +651,7 @@ object ExcelGeneratorSample {
         val template = loadTemplate()
 
         // 비동기 작업 제출 (암호 설정)
-        val job = generator.submit(
+        val job = generator.submitToFile(
             template = template,
             dataProvider = dataProvider,
             outputDir = outputDir,

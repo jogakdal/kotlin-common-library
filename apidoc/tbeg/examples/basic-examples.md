@@ -1,4 +1,4 @@
-# Excel Generator 기본 예제
+# TBEG 기본 예제
 
 ## 목차
 1. [간단한 보고서 생성](#1-간단한-보고서-생성)
@@ -14,11 +14,11 @@
 
 ### 템플릿 (template.xlsx)
 
-| A | B |
-|---|---|
-| 제목 | ${title} |
-| 작성일 | ${date} |
-| 작성자 | ${author} |
+|   | A    | B         |
+|---|------|-----------|
+| 1 | 제목   | ${title}  |
+| 2 | 작성일  | ${date}   |
+| 3 | 작성자  | ${author} |
 
 ### Kotlin 코드
 
@@ -31,7 +31,7 @@ fun main() {
     val data = mapOf(
         "title" to "월간 보고서",
         "date" to LocalDate.now().toString(),
-        "author" to "홍길동"
+        "author" to "황용호"
     )
 
     ExcelGenerator().use { generator ->
@@ -55,7 +55,7 @@ public class SimpleReport {
         Map<String, Object> data = new HashMap<>();
         data.put("title", "월간 보고서");
         data.put("date", LocalDate.now().toString());
-        data.put("author", "홍길동");
+        data.put("author", "황용호");
 
         try (ExcelGenerator generator = new ExcelGenerator();
              InputStream template = new FileInputStream("template.xlsx");
@@ -70,11 +70,11 @@ public class SimpleReport {
 
 ### 결과
 
-| A | B |
-|---|---|
-| 제목 | 월간 보고서 |
-| 작성일 | 2026-01-15 |
-| 작성자 | 홍길동 |
+|   | A    | B          |
+|---|------|------------|
+| 1 | 제목   | 월간 보고서     |
+| 2 | 작성일  | 2026-01-15 |
+| 3 | 작성자  | 황용호        |
 
 ---
 
@@ -82,14 +82,13 @@ public class SimpleReport {
 
 ### 템플릿 (employee_list.xlsx)
 
-| A | B | C |
-|---|---|---|
-| ${title} | | |
-| 이름 | 직급 | 급여 |
-| ${repeat(employees, A3:C3, emp)} | | |
-| ${emp.name} | ${emp.position} | ${emp.salary} |
+|   | A           | B                                | C             |
+|---|-------------|----------------------------------|---------------|
+| 1 | ${title}    | ${repeat(employees, A3:C3, emp)} |               |
+| 2 | 이름          | 직급                               | 급여            |
+| 3 | ${emp.name} | ${emp.position}                  | ${emp.salary} |
 
-> `${repeat(...)}` 마커는 데이터 행 바로 위에 배치합니다. 마커 셀의 내용은 생성 시 자동으로 삭제됩니다.
+> `${repeat(...)}` 마커는 워크북 내 어디에 있어도 됩니다. 범위 파라미터로 지정된 영역이 반복되며, 마커 셀의 내용은 생성 시 자동으로 삭제됩니다.
 
 ### Kotlin 코드
 
@@ -153,14 +152,14 @@ public class EmployeeList {
 
 ### 결과
 
-| A | B | C |
-|---|---|---|
-| 직원 명단 | | |
-| 이름 | 직급 | 급여 |
-| 황용호 | 부장 | 8,000 |
-| 한용호 | 과장 | 6,500 |
-| 홍용호 | 대리 | 4,500 |
-| 김용호 | 사원 | 3,500 |
+|   | A        | B  | C     |
+|---|----------|----|-------|
+| 1 | 직원 명단   |    |       |
+| 2 | 이름       | 직급 | 급여    |
+| 3 | 황용호     | 부장 | 8,000 |
+| 4 | 한용호     | 과장 | 6,500 |
+| 5 | 홍용호     | 대리 | 4,500 |
+| 6 | 김용호     | 사원 | 3,500 |
 
 ---
 
@@ -168,10 +167,10 @@ public class EmployeeList {
 
 ### 템플릿 (with_logo.xlsx)
 
-| A | B |
-|---|---|
-| ${image.logo} | 회사명: ${company} |
-| (병합된 셀) | 주소: ${address} |
+|   | A             | B                |
+|---|---------------|------------------|
+| 1 | ${image.logo} | 회사명: ${company} |
+| 2 | (병합된 셀)       | 주소: ${address}   |
 
 > 이미지를 표시할 셀은 원하는 크기로 병합해두면 해당 영역에 맞게 이미지가 삽입됩니다.
 
@@ -376,18 +375,18 @@ import java.time.LocalDateTime
 fun main() {
     val provider = simpleDataProvider {
         value("title", "보고서 내용")
-        value("author", "홍길동")
+        value("author", "황용호")
 
         // 문서 메타데이터 설정
         metadata {
             title = "2026년 1월 월간 보고서"
-            author = "홍길동"
+            author = "황용호"
             subject = "월간 실적"
             keywords("월간", "보고서", "2026년", "실적")
             description = "2026년 1월 월간 실적 보고서입니다."
             category = "업무 보고"
             company = "(주)휴넷"
-            manager = "김상무"
+            manager = "홍상무"
             created = LocalDateTime.now()
         }
     }
@@ -414,16 +413,16 @@ public class WithMetadata {
     public static void main(String[] args) throws Exception {
         SimpleDataProvider provider = SimpleDataProvider.builder()
             .value("title", "보고서 내용")
-            .value("author", "홍길동")
+            .value("author", "황용호")
             .metadata(meta -> meta
                 .title("2026년 1월 월간 보고서")
-                .author("홍길동")
+                .author("황용호")
                 .subject("월간 실적")
                 .keywords("월간", "보고서", "2026년", "실적")
                 .description("2026년 1월 월간 실적 보고서입니다.")
                 .category("업무 보고")
                 .company("(주)휴넷")
-                .manager("김상무")
+                .manager("홍상무")
                 .created(LocalDateTime.now()))
             .build();
 
