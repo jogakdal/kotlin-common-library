@@ -212,7 +212,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                 is RowSpec.RepeatRow -> {
                     if (rowSpec.templateRowIndex in processedRepeatRows) continue
 
-                    val items = data[rowSpec.collectionName] as? List<*> ?: emptyList<Any>()
+                    val items = data[rowSpec.collectionName] as? Collection<*> ?: emptyList<Any>()
                     val templateRowCount = rowSpec.repeatEndRowIndex - rowSpec.templateRowIndex + 1
                     val expansion = calculator.getExpansionForRegion(
                         rowSpec.collectionName, rowSpec.templateRowIndex, rowSpec.repeatStartCol
@@ -680,7 +680,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
 
             // SUM 등 집계 함수의 범위 확장
             for (repeatRegion in repeatRegions.values) {
-                val items = data[repeatRegion.collectionName] as? List<*> ?: continue
+                val items = data[repeatRegion.collectionName] as? Collection<*> ?: continue
                 val expansion = calculator.getExpansionFor(repeatRegion.collectionName)
 
                 if (expansion != null && items.size > 1) {
@@ -737,7 +737,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
             if (repeatEndRow >= 0 && blueprint.templateRowIndex > repeatEndRow) {
                 // PositionCalculator를 사용하여 수식 확장
                 for (repeatRegion in repeatRegions.values) {
-                    val items = data[repeatRegion.collectionName] as? List<*> ?: continue
+                    val items = data[repeatRegion.collectionName] as? Collection<*> ?: continue
                     val expansion = calculator.getExpansionFor(repeatRegion.collectionName)
 
                     if (expansion != null && items.size > 1) {
@@ -775,7 +775,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         repeatRow: RowSpec.RepeatRow,
         blueprint: SheetSpec,
         data: Map<String, Any>,
-        items: List<*>,
+        items: Collection<*>,
         imageLocations: MutableList<ImageLocation>,
         sheetIndex: Int,
         context: RenderingContext,
@@ -846,7 +846,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
     private fun adjustContentForRightExpansion(
         cellSpec: CellSpec,
         repeatRow: RowSpec.RepeatRow,
-        items: List<*>,
+        items: Collection<*>,
         colShiftAmount: Int,
         sheet: SXSSFSheet,
         currentRowIndex: Int,

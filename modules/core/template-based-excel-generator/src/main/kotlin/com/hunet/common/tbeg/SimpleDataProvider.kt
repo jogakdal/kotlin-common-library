@@ -10,11 +10,14 @@ import java.util.function.Supplier
  *
  * @param values 단일 값 맵 (Iterable이 아닌 값들)
  * @param collections 컬렉션 제공 함수 맵 (지연 로딩)
+ * @param collectionCounts 컬렉션별 아이템 수 맵 (선택적)
  * @param images 이미지 데이터 맵
+ * @param metadata 문서 메타데이터
  */
 class SimpleDataProvider private constructor(
     private val values: Map<String, Any>,
     private val collections: Map<String, () -> Iterator<Any>>,
+    private val collectionCounts: Map<String, Int>,
     private val images: Map<String, ByteArray>,
     private val metadata: DocumentMetadata?
 ) : ExcelDataProvider {
@@ -22,12 +25,14 @@ class SimpleDataProvider private constructor(
     override fun getItems(name: String): Iterator<Any>? = collections[name]?.invoke()
     override fun getImage(name: String): ByteArray? = images[name]
     override fun getMetadata(): DocumentMetadata? = metadata
+    override fun getItemCount(name: String): Int? = collectionCounts[name]
 
     companion object {
         /**
          * Map으로부터 SimpleDataProvider를 생성합니다.
          *
          * Map의 값이 Iterable인 경우 자동으로 컬렉션으로, ByteArray인 경우 이미지로 분류됩니다.
+         * List나 Collection인 경우 자동으로 count가 설정됩니다.
          *
          * ```kotlin
          * val provider = SimpleDataProvider.of(mapOf(
@@ -44,12 +49,21 @@ class SimpleDataProvider private constructor(
         fun of(data: Map<String, Any>): SimpleDataProvider {
             val values = mutableMapOf<String, Any>()
             val collections = mutableMapOf<String, () -> Iterator<Any>>()
+            val collectionCounts = mutableMapOf<String, Int>()
             val images = mutableMapOf<String, ByteArray>()
 
             data.forEach { (key, value) ->
                 @Suppress("UNCHECKED_CAST")
                 when (value) {
                     is ByteArray -> images[key] = value
+                    is List<*> -> {
+                        collections[key] = { (value as List<Any>).iterator() }
+                        collectionCounts[key] = value.size
+                    }
+                    is Collection<*> -> {
+                        collections[key] = { (value as Collection<Any>).iterator() }
+                        collectionCounts[key] = value.size
+                    }
                     is Iterable<*> -> collections[key] = { (value as Iterable<Any>).iterator() }
                     is Iterator<*> -> collections[key] = { value as Iterator<Any> }
                     is Sequence<*> -> collections[key] = { (value as Sequence<Any>).iterator() }
@@ -57,14 +71,14 @@ class SimpleDataProvider private constructor(
                 }
             }
 
-            return SimpleDataProvider(values, collections, images, null)
+            return SimpleDataProvider(values, collections, collectionCounts, images, null)
         }
 
         /**
          * 빈 SimpleDataProvider를 반환합니다.
          */
         @JvmStatic
-        fun empty(): SimpleDataProvider = SimpleDataProvider(emptyMap(), emptyMap(), emptyMap(), null)
+        fun empty(): SimpleDataProvider = SimpleDataProvider(emptyMap(), emptyMap(), emptyMap(), emptyMap(), null)
 
         /**
          * Builder를 반환합니다. (Java에서 사용하기 편리)
@@ -79,15 +93,25 @@ class SimpleDataProvider private constructor(
     class Builder {
         private val values = mutableMapOf<String, Any>()
         private val collections = mutableMapOf<String, () -> Iterator<Any>>()
+        private val collectionCounts = mutableMapOf<String, Int>()
         private val images = mutableMapOf<String, ByteArray>()
         private var metadata: DocumentMetadata? = null
 
         /** 단일 값을 추가합니다. */
         fun value(name: String, value: Any) = apply { values[name] = value }
 
+        /** 컬렉션을 추가합니다. (즉시 로딩, count 자동 설정) */
+        fun items(name: String, items: List<Any>) = apply {
+            collections[name] = { items.iterator() }
+            collectionCounts[name] = items.size
+        }
+
         /** 컬렉션을 추가합니다. (즉시 로딩) */
         fun items(name: String, items: Iterable<Any>) = apply {
             collections[name] = { items.iterator() }
+            if (items is Collection<*>) {
+                collectionCounts[name] = items.size
+            }
         }
 
         /** 컬렉션을 추가합니다. (지연 로딩 - Kotlin) */
@@ -95,9 +119,34 @@ class SimpleDataProvider private constructor(
             collections[name] = itemsSupplier
         }
 
+        /**
+         * 컬렉션과 개수를 함께 추가합니다. (지연 로딩 + count 제공)
+         *
+         * 대용량 데이터 처리 시 메모리 효율성을 위해 count를 제공하세요.
+         * count가 제공되면 임시 파일 버퍼링 없이 스트리밍 처리됩니다.
+         *
+         * ```kotlin
+         * items("employees", employeeCount) {
+         *     employeeRepository.streamAll().iterator()
+         * }
+         * ```
+         */
+        fun items(name: String, count: Int, itemsSupplier: () -> Iterator<Any>) = apply {
+            collections[name] = itemsSupplier
+            collectionCounts[name] = count
+        }
+
         /** 컬렉션을 추가합니다. (지연 로딩 - Java Supplier) */
         fun itemsFromSupplier(name: String, itemsSupplier: Supplier<Iterator<Any>>) = apply {
             collections[name] = { itemsSupplier.get() }
+        }
+
+        /**
+         * 컬렉션과 개수를 함께 추가합니다. (지연 로딩 - Java Supplier + count)
+         */
+        fun itemsFromSupplier(name: String, count: Int, itemsSupplier: Supplier<Iterator<Any>>) = apply {
+            collections[name] = { itemsSupplier.get() }
+            collectionCounts[name] = count
         }
 
         /** 이미지를 추가합니다. */
@@ -117,7 +166,7 @@ class SimpleDataProvider private constructor(
         fun metadata(metadata: DocumentMetadata) = apply { this.metadata = metadata }
 
         /** SimpleDataProvider를 빌드합니다. */
-        fun build() = SimpleDataProvider(values, collections, images, metadata)
+        fun build() = SimpleDataProvider(values, collections, collectionCounts, images, metadata)
     }
 }
 

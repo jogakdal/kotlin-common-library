@@ -140,7 +140,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         val rowOffsets = mutableMapOf<Int, Int>()
 
         for (repeatRow in repeatRows.reversed()) {
-            val items = data[repeatRow.collectionName] as? List<*> ?: continue
+            val items = data[repeatRow.collectionName] as? Collection<*> ?: continue
             val expansion = calculator.getExpansionForRegion(
                 repeatRow.collectionName, repeatRow.templateRowIndex, repeatRow.repeatStartCol
             ) ?: continue
@@ -187,7 +187,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
     private fun expandRowsDownWithCalculator(
         sheet: XSSFSheet,
         repeatRow: RowSpec.RepeatRow,
-        items: List<*>,
+        items: Collection<*>,
         blueprint: SheetSpec,
         context: RenderingContext,
         columnGroup: ColumnGroup?,
@@ -348,7 +348,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
                 }
 
                 is RowSpec.RepeatRow -> {
-                    val items = data[rowSpec.collectionName] as? List<*> ?: continue
+                    val items = data[rowSpec.collectionName] as? Collection<*> ?: continue
                     val templateRowCount = rowSpec.repeatEndRowIndex - rowSpec.templateRowIndex + 1
                     val repeatKey = RepeatKey(rowSpec.collectionName, rowSpec.templateRowIndex, rowSpec.repeatStartCol)
                     val expansion = calculator.getExpansionForRegion(
@@ -439,7 +439,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
     private fun processDownRepeatWithCalculator(
         sheet: XSSFSheet,
         rowSpec: RowSpec.RepeatRow,
-        items: List<*>,
+        items: Collection<*>,
         blueprint: SheetSpec,
         data: Map<String, Any>,
         sheetIndex: Int,
@@ -511,7 +511,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
     private fun processRightRepeat(
         sheet: XSSFSheet,
         rowSpec: RowSpec.RepeatRow,
-        items: List<*>,
+        items: Collection<*>,
         blueprint: SheetSpec,
         data: Map<String, Any>,
         sheetIndex: Int,

@@ -26,6 +26,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.8.1")
 
+    // Kryo (객체 직렬화 - Serializable 없이도 동작)
+    implementation("com.esotericsoftware:kryo:5.6.0")
+
     // Logback
     implementation("ch.qos.logback:logback-classic")
 

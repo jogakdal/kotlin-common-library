@@ -3,6 +3,7 @@ package com.hunet.common.tbeg.engine.rendering
 import com.hunet.common.tbeg.ExcelDataProvider
 import com.hunet.common.tbeg.StreamingMode
 import com.hunet.common.lib.VariableProcessor
+import org.slf4j.LoggerFactory
 import java.io.InputStream
 import java.lang.reflect.Field
 import java.lang.reflect.Method
@@ -28,7 +29,7 @@ import java.lang.reflect.Method
  * - [SxssfRenderingStrategy]: 스트리밍 모드
  */
 class TemplateRenderingEngine(
-    streamingMode: StreamingMode = StreamingMode.ENABLED
+    private val streamingMode: StreamingMode = StreamingMode.ENABLED
 ) {
     private val analyzer = TemplateAnalyzer()
     private val variableProcessor = VariableProcessor(emptyList())
@@ -42,6 +43,10 @@ class TemplateRenderingEngine(
     private val strategy: RenderingStrategy = when (streamingMode) {
         StreamingMode.DISABLED -> XssfRenderingStrategy()
         StreamingMode.ENABLED -> SxssfRenderingStrategy()
+    }
+
+    companion object {
+        private val logger = LoggerFactory.getLogger(TemplateRenderingEngine::class.java)
     }
 
     /**
@@ -68,6 +73,10 @@ class TemplateRenderingEngine(
     /**
      * 템플릿에 DataProvider 데이터를 바인딩하여 Excel 생성
      *
+     * **메모리 효율성:**
+     * - DataProvider.getItemCount()가 구현되면 최적의 성능
+     * - 구현되지 않으면 임시 파일에 버퍼링하여 OOM 방지
+     *
      * @param template 템플릿 입력 스트림
      * @param dataProvider 데이터 제공자
      * @param requiredNames 템플릿에서 필요로 하는 데이터 이름 (선택적)
@@ -77,21 +86,69 @@ class TemplateRenderingEngine(
         dataProvider: ExcelDataProvider,
         requiredNames: RequiredNames? = null
     ): ByteArray {
-        val data = buildDataMap(dataProvider, requiredNames)
-        return process(template, data)
+        val bufferManager = CollectionBufferManager()
+        try {
+            val data = buildDataMap(dataProvider, requiredNames, bufferManager)
+            return process(template, data)
+        } finally {
+            // 임시 파일 정리
+            bufferManager.close()
+        }
     }
 
+    /**
+     * DataProvider에서 데이터 맵을 빌드합니다.
+     *
+     * 컬렉션 처리 전략 (모드별):
+     *
+     * **SXSSF (스트리밍) 모드:**
+     * - count 제공: LazyCollection 사용 (Iterator 직접 소비, 메모리 효율적)
+     * - count 미제공: CollectionBuffer로 임시 파일에 버퍼링
+     *
+     * **XSSF (비스트리밍) 모드:**
+     * - 어차피 전체 워크북이 메모리에 있으므로 List로 변환
+     * - 여러 번 순회가 필요할 수 있으므로 LazyCollection 사용 불가
+     */
     private fun buildDataMap(
         dataProvider: ExcelDataProvider,
-        requiredNames: RequiredNames?
+        requiredNames: RequiredNames?,
+        bufferManager: CollectionBufferManager
     ): Map<String, Any> = buildMap {
         requiredNames?.let { names ->
+            // 단순 변수
             names.variables.forEach { name ->
                 dataProvider.getValue(name)?.let { put(name, it) }
             }
+
+            // 컬렉션
             names.collections.forEach { name ->
-                dataProvider.getItems(name)?.let { put(name, it.asSequence().toList()) }
+                val iterator = dataProvider.getItems(name) ?: return@forEach
+                val count = dataProvider.getItemCount(name)
+
+                when {
+                    // SXSSF + count 제공: AutoCachingCollection (첫 순회 시 캐싱)
+                    streamingMode == StreamingMode.ENABLED && count != null -> {
+                        logger.debug("컬렉션 '{}': SXSSF + count 제공 ({}건), AutoCachingCollection 사용", name, count)
+                        put(name, AutoCachingCollection(name, count, iterator))
+                    }
+
+                    // SXSSF + count 미제공: CollectionBuffer (임시 파일에 버퍼링)
+                    streamingMode == StreamingMode.ENABLED && count == null -> {
+                        logger.info("컬렉션 '{}': SXSSF + count 미제공, 임시 파일로 버퍼링", name)
+                        val buffer = bufferManager.buffer(name, iterator)
+                        logger.info("컬렉션 '{}': 버퍼링 완료 ({}건)", name, buffer.size)
+                        put(name, buffer)
+                    }
+
+                    // XSSF: List로 변환 (전체 워크북이 메모리에 있으므로)
+                    else -> {
+                        logger.debug("컬렉션 '{}': XSSF 모드, List로 변환", name)
+                        put(name, iterator.asSequence().toList())
+                    }
+                }
             }
+
+            // 이미지
             names.images.forEach { name ->
                 dataProvider.getImage(name)?.let { put("image.$name", it) }
             }

@@ -18,6 +18,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.util.WeakHashMap
+import java.util.regex.Matcher
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -990,7 +991,7 @@ internal class PivotTableProcessor(
                 """<cacheField[^>]*name="${field.name}"[^>]*>.*?</cacheField>""",
                 RegexOption.DOT_MATCHES_ALL
             )
-            pattern.replace(xml) { it.value.replace(SHARED_ITEMS_REGEX, sharedItemsXml) }
+            pattern.replace(xml) { SHARED_ITEMS_REGEX.replace(it.value, Matcher.quoteReplacement(sharedItemsXml)) }
         }
     }
 

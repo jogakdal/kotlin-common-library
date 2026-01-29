@@ -43,11 +43,11 @@ internal class SheetLayoutApplier {
             }
 
             if (overlappingRepeat != null) {
-                val items = data[overlappingRepeat.collectionName] as? List<*> ?: continue
+                val items = data[overlappingRepeat.collectionName] as? Collection<*> ?: continue
                 val relativeStartRow = region.firstRow - overlappingRepeat.templateRowIndex
                 val rowSpan = region.lastRow - region.firstRow
 
-                items.indices.forEach { index ->
+                (0 until items.size).forEach { index ->
                     val newFirstRow = overlappingRepeat.templateRowIndex + index + relativeStartRow
                     val newLastRow = newFirstRow + rowSpan
                     val key = "$newFirstRow:$newLastRow:${region.firstColumn}:${region.lastColumn}"
@@ -111,12 +111,12 @@ internal class SheetLayoutApplier {
 
                 if (overlappingRepeat != null) {
                     // 반복 영역 내 조건부 서식: 각 반복 아이템마다 복제
-                    val items = data[overlappingRepeat.collectionName] as? List<*> ?: continue
+                    val items = data[overlappingRepeat.collectionName] as? Collection<*> ?: continue
                     val templateRowCount = overlappingRepeat.repeatEndRowIndex - overlappingRepeat.templateRowIndex + 1
                     val relativeStartRow = range.firstRow - overlappingRepeat.templateRowIndex
                     val rowSpan = range.lastRow - range.firstRow
 
-                    for (itemIdx in items.indices) {
+                    for (itemIdx in 0 until items.size) {
                         val rowOffset = itemIdx * templateRowCount
                         val newFirstRow = overlappingRepeat.templateRowIndex + rowOffset + relativeStartRow
                         val newLastRow = newFirstRow + rowSpan

@@ -50,4 +50,19 @@ interface ExcelDataProvider {
      * @return 문서 메타데이터, 설정하지 않으면 null
      */
     fun getMetadata(): DocumentMetadata? = null
+
+    /**
+     * 컬렉션의 아이템 수를 반환합니다. (선택적)
+     *
+     * 이 메서드가 구현되면 메모리 효율적인 스트리밍 처리가 가능합니다.
+     * 구현되지 않으면 내부적으로 임시 파일에 버퍼링하여 처리합니다.
+     *
+     * **성능 권장사항:**
+     * - 대용량 데이터 처리 시 이 메서드를 구현하면 최적의 성능을 얻을 수 있습니다.
+     * - DB 조회 시 COUNT 쿼리로 미리 개수를 파악하여 제공하세요.
+     *
+     * @param name 컬렉션 이름
+     * @return 아이템 수, 알 수 없으면 null
+     */
+    fun getItemCount(name: String): Int? = null
 }
