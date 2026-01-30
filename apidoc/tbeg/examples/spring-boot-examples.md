@@ -652,7 +652,7 @@ class ReportServiceTest {
         // Given
         every { employeeRepository.findAll() } returns listOf(
             Employee(1, "황용호", "공통플랫폼팀", 5000),
-            Employee(2, "홍용호", "기획팀", 4500)
+            Employee(2, "홍용호", "IT전략기획팀", 4500)
         )
 
         val template = ClassPathResource("templates/employees.xlsx")

@@ -173,10 +173,16 @@ object ExcelGeneratorSample {
                 Employee("한용호", "과장", 6500),
                 Employee("홍용호", "대리", 4500)
             ),
-            "department" to listOf(
-                Department("개발팀", 15, "본관 3층"),
-                Department("기획팀", 8, "본관 2층"),
-                Department("인사팀", 5, "별관 1층")
+            // 셀병합 시트용 (비연속적 셀 참조 수식 테스트)
+            "mergedEmployees" to listOf(
+                Employee("황용호", "부장", 8000),
+                Employee("한용호", "과장", 6500),
+                Employee("홍용호", "대리", 4500)
+            ),
+            "departments" to listOf(
+                Department("공통플랫폼팀", 15, "814호"),
+                Department("IT전략기획팀", 8, "801호"),
+                Department("인재경영실", 5, "813호")
             ),
             "logo" to loadImage("hunet_logo.png"),
             "ci" to loadImage("hunet_ci.png")
@@ -262,12 +268,17 @@ object ExcelGeneratorSample {
                 generateLargeDataSet().iterator()
             }
 
+            // 셀병합 시트용 (비연속적 셀 참조 수식 테스트, 255개 이하)
+            items("mergedEmployees") {
+                generateLargeDataSet(100).iterator()
+            }
+
             // 부서 컬렉션
-            items("department") {
+            items("departments") {
                 listOf(
-                    Department("개발팀", 15, "본관 3층"),
-                    Department("기획팀", 8, "본관 2층"),
-                    Department("인사팀", 5, "별관 1층")
+                    Department("공통플랫폼팀", 15, "814호"),
+                    Department("IT전략기획팀", 8, "801호"),
+                    Department("인재경영실", 5, "813호")
                 ).iterator()
             }
         }
@@ -368,9 +379,14 @@ object ExcelGeneratorSample {
                 Employee("황용호", "부장", 8000),
                 Employee("한용호", "과장", 6500)
             ),
-            "department" to listOf(
-                Department("개발팀", 15, "본관 3층"),
-                Department("기획팀", 8, "본관 2층")
+            // 셀병합 시트용 (비연속적 셀 참조 수식 테스트)
+            "mergedEmployees" to listOf(
+                Employee("황용호", "부장", 8000),
+                Employee("한용호", "과장", 6500)
+            ),
+            "departments" to listOf(
+                Department("공통플랫폼팀", 15, "814호"),
+                Department("IT전략기획팀", 8, "801호")
             ),
             "logo" to loadImage("hunet_logo.png"),
             "ci" to loadImage("hunet_ci.png")
@@ -536,12 +552,17 @@ object ExcelGeneratorSample {
                 generateLargeDataSet(dataCount).iterator()
             }
 
+            // 셀병합 시트용 (비연속적 셀 참조 수식 테스트, 255개 이하)
+            items("mergedEmployees") {
+                generateLargeDataSet(100).iterator()
+            }
+
             // 부서 컬렉션
-            items("department") {
+            items("departments") {
                 listOf(
-                    Department("개발팀", 15, "본관 3층"),
-                    Department("기획팀", 8, "본관 2층"),
-                    Department("인사팀", 5, "별관 1층")
+                    Department("공통플랫폼팀", 15, "814호"),
+                    Department("IT전략기획팀", 8, "801호"),
+                    Department("인재경영실", 5, "813호")
                 ).iterator()
             }
         }
@@ -678,12 +699,17 @@ object ExcelGeneratorSample {
                 generateLargeDataSet(dataCount).iterator()
             }
 
+            // 셀병합 시트용 (비연속적 셀 참조 수식 테스트, 255개 이하)
+            items("mergedEmployees") {
+                generateLargeDataSet(100).iterator()
+            }
+
             // 부서 컬렉션
-            items("department") {
+            items("departments") {
                 listOf(
-                    Department("개발팀", 15, "본관 3층"),
-                    Department("기획팀", 8, "본관 2층"),
-                    Department("인사팀", 5, "별관 1층")
+                    Department("공통플랫폼팀", 15, "814호"),
+                    Department("IT전략기획팀", 8, "801호"),
+                    Department("인재경영실", 5, "813호")
                 ).iterator()
             }
         }
@@ -819,12 +845,21 @@ object ExcelGeneratorSample {
                 ).iterator()
             }
 
-            // 부서 컬렉션
-            items("department") {
+            // 셀병합 시트용 (비연속적 셀 참조 수식 테스트)
+            items("mergedEmployees") {
                 listOf(
-                    Department("개발팀", 15, "본관 3층"),
-                    Department("기획팀", 8, "본관 2층"),
-                    Department("인사팀", 5, "별관 1층")
+                    Employee("황용호", "부장", 8000),
+                    Employee("한용호", "과장", 6500),
+                    Employee("홍용호", "대리", 4500)
+                ).iterator()
+            }
+
+            // 부서 컬렉션
+            items("departments") {
+                listOf(
+                    Department("공통플랫폼팀", 15, "814호"),
+                    Department("IT전략기획팀", 8, "801호"),
+                    Department("인재경영실", 5, "813호")
                 ).iterator()
             }
 

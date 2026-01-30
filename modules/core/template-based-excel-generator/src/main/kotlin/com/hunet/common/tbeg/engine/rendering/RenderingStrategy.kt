@@ -42,6 +42,8 @@ internal interface RenderingStrategy {
  * @property sheetLayoutApplier 시트 레이아웃 적용기
  * @property evaluateText 텍스트 내 변수 평가 함수
  * @property resolveFieldPath 객체 필드 경로 해석 함수
+ * @property streamingDataSource SXSSF 스트리밍용 데이터 소스 (SXSSF 모드에서만 설정)
+ * @property collectionSizes 컬렉션 크기 맵 (위치 계산용, SXSSF 모드에서만 설정)
  */
 internal data class RenderingContext(
     val analyzer: TemplateAnalyzer,
@@ -49,5 +51,7 @@ internal data class RenderingContext(
     val repeatExpansionProcessor: RepeatExpansionProcessor,
     val sheetLayoutApplier: SheetLayoutApplier,
     val evaluateText: (String, Map<String, Any>) -> String,
-    val resolveFieldPath: (Any?, String) -> Any?
+    val resolveFieldPath: (Any?, String) -> Any?,
+    val streamingDataSource: StreamingDataSource? = null,
+    val collectionSizes: Map<String, Int> = emptyMap()
 )

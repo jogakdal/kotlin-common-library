@@ -4,6 +4,33 @@ import com.hunet.common.tbeg.exception.TemplateProcessingException
 import org.apache.poi.ss.util.CellRangeAddress
 
 /**
+ * 실제 출력 행의 정보
+ *
+ * 스트리밍 모드에서 각 행이 어떤 유형인지 식별하는 데 사용합니다.
+ */
+sealed class RowInfo {
+    /**
+     * 정적 행 (repeat에 속하지 않은 행)
+     *
+     * @property templateRowIndex 템플릿에서의 행 인덱스
+     */
+    data class Static(val templateRowIndex: Int) : RowInfo()
+
+    /**
+     * 반복 행 (repeat 영역에 속한 행)
+     *
+     * @property repeatRegion repeat 영역 명세
+     * @property itemIndex 아이템 인덱스 (0-based)
+     * @property templateRowOffset 템플릿 행 내 오프셋 (multi-row repeat의 경우)
+     */
+    data class Repeat(
+        val repeatRegion: RepeatRegionSpec,
+        val itemIndex: Int,
+        val templateRowOffset: Int
+    ) : RowInfo()
+}
+
+/**
  * 템플릿 요소의 최종 위치를 계산합니다.
  *
  * repeat 확장에 따른 모든 요소의 위치 변화를 추적하고,
@@ -20,7 +47,8 @@ import org.apache.poi.ss.util.CellRangeAddress
  */
 class PositionCalculator(
     private val repeatRegions: List<RepeatRegionSpec>,
-    private val collectionSizes: Map<String, Int>
+    private val collectionSizes: Map<String, Int>,
+    private val templateLastRow: Int = -1  // 템플릿의 마지막 행 인덱스 (-1이면 repeatRegions에서 계산)
 ) {
     /**
      * repeat 확장 정보
@@ -30,13 +58,15 @@ class PositionCalculator(
      * @property finalStartCol 확장 시작 열
      * @property rowExpansion 행 확장량 (DOWN 방향)
      * @property colExpansion 열 확장량 (RIGHT 방향)
+     * @property itemCount 반복 아이템 수
      */
     data class RepeatExpansion(
         val region: RepeatRegionSpec,
         val finalStartRow: Int,
         val finalStartCol: Int,
         val rowExpansion: Int,
-        val colExpansion: Int
+        val colExpansion: Int,
+        val itemCount: Int
     ) {
         /** 이 repeat의 확장된 최종 끝 행 */
         val finalEndRow: Int get() = finalStartRow + (region.endRow - region.startRow) + rowExpansion
@@ -82,9 +112,11 @@ class PositionCalculator(
 
             // 확장량 계산 (size만 사용 - 데이터 접근 불필요)
             val itemCount = collectionSizes[region.collection] ?: 0
+            // 데이터가 0개여도 최소 1개 반복 단위를 출력
+            val effectiveItemCount = maxOf(1, itemCount)
             val (rowExp, colExp) = calculateExpansionAmount(region, itemCount)
 
-            val expansion = RepeatExpansion(region, finalStartRow, finalStartCol, rowExp, colExp)
+            val expansion = RepeatExpansion(region, finalStartRow, finalStartCol, rowExp, colExp, effectiveItemCount)
             expansions.add(expansion)
         }
 
@@ -246,23 +278,193 @@ class PositionCalculator(
         return expansions.toList()
     }
 
+    /**
+     * 전체 출력 행 수를 계산합니다.
+     *
+     * 템플릿의 마지막 행 + 모든 DOWN 방향 repeat의 확장량
+     */
+    fun getTotalRows(): Int {
+        if (!calculated) calculate()
+
+        // 템플릿의 마지막 행 찾기
+        // templateLastRow가 설정되어 있으면 사용, 아니면 repeatRegions에서 계산
+        val maxTemplateRow = if (templateLastRow >= 0) {
+            templateLastRow
+        } else {
+            repeatRegions.maxOfOrNull { it.endRow } ?: 0
+        }
+
+        // 전체 행 확장량 계산
+        val totalRowExpansion = expansions
+            .filter { it.region.direction == RepeatDirection.DOWN }
+            .sumOf { it.rowExpansion }
+
+        return maxTemplateRow + totalRowExpansion + 1
+    }
+
+    /**
+     * 실제 출력 행에 대한 정보를 반환합니다.
+     *
+     * @param actualRow 실제 출력 행 인덱스 (0-based)
+     * @return 해당 행이 정적 행인지, 어느 repeat의 몇 번째 아이템인지 정보
+     */
+    fun getRowInfo(actualRow: Int): RowInfo {
+        if (!calculated) calculate()
+
+        // DOWN 방향 repeat 확장을 역순으로 탐색 (가장 최근 확장이 현재 행에 영향)
+        for (expansion in expansions.reversed()) {
+            if (expansion.region.direction != RepeatDirection.DOWN) continue
+
+            val templateRowCount = expansion.region.endRow - expansion.region.startRow + 1
+            val itemCount = collectionSizes[expansion.region.collection] ?: 0
+            // 데이터가 0개여도 최소 1개 행(빈 행)을 출력
+            val effectiveItemCount = maxOf(1, itemCount)
+
+            // 이 repeat가 차지하는 실제 행 범위
+            val repeatStartRow = expansion.finalStartRow
+            val repeatEndRow = expansion.finalStartRow + (templateRowCount * effectiveItemCount) - 1
+
+            if (actualRow in repeatStartRow..repeatEndRow) {
+                // 이 행은 repeat 내부에 있음
+                val rowWithinRepeat = actualRow - repeatStartRow
+                val itemIndex = rowWithinRepeat / templateRowCount
+                val templateRowOffset = rowWithinRepeat % templateRowCount
+
+                return RowInfo.Repeat(
+                    repeatRegion = expansion.region,
+                    itemIndex = itemIndex,
+                    templateRowOffset = templateRowOffset
+                )
+            }
+        }
+
+        // repeat에 해당하지 않으면 정적 행
+        // 실제 행을 템플릿 행으로 역변환
+        val templateRow = reverseCalculateTemplateRow(actualRow)
+        return RowInfo.Static(templateRow)
+    }
+
+    /**
+     * 특정 열에서 실제 출력 행에 대한 정보를 반환합니다.
+     *
+     * 같은 actualRow에서 열 그룹에 따라 다른 정보를 반환할 수 있습니다.
+     * 예: A-C열은 repeat 아이템, F-H열은 정적 행
+     *
+     * @param actualRow 실제 출력 행 인덱스 (0-based)
+     * @param column 열 인덱스 (0-based)
+     * @return 해당 열에서의 행 정보
+     */
+    fun getRowInfoForColumn(actualRow: Int, column: Int): RowInfo {
+        if (!calculated) calculate()
+
+        // DOWN 방향 repeat 확장을 역순으로 탐색
+        for (expansion in expansions.reversed()) {
+            if (expansion.region.direction != RepeatDirection.DOWN) continue
+
+            // 이 열이 해당 repeat의 열 범위에 있는지 확인
+            if (column !in expansion.region.startCol..expansion.region.endCol) continue
+
+            val templateRowCount = expansion.region.endRow - expansion.region.startRow + 1
+            val itemCount = collectionSizes[expansion.region.collection] ?: 0
+            // 데이터가 0개여도 최소 1개 행(빈 행)을 출력
+            val effectiveItemCount = maxOf(1, itemCount)
+
+            // 이 repeat가 차지하는 실제 행 범위
+            val repeatStartRow = expansion.finalStartRow
+            val repeatEndRow = expansion.finalStartRow + (templateRowCount * effectiveItemCount) - 1
+
+            if (actualRow in repeatStartRow..repeatEndRow) {
+                val rowWithinRepeat = actualRow - repeatStartRow
+                val itemIndex = rowWithinRepeat / templateRowCount
+                val templateRowOffset = rowWithinRepeat % templateRowCount
+
+                return RowInfo.Repeat(
+                    repeatRegion = expansion.region,
+                    itemIndex = itemIndex,
+                    templateRowOffset = templateRowOffset
+                )
+            }
+        }
+
+        // 해당 열에서 repeat에 해당하지 않으면 정적 행
+        val templateRow = reverseCalculateTemplateRowForColumn(actualRow, column)
+        return RowInfo.Static(templateRow)
+    }
+
+    /**
+     * 특정 열에서 실제 출력 행을 템플릿 행으로 역변환합니다.
+     *
+     * 열 그룹에 따라 다른 오프셋이 적용될 수 있습니다.
+     */
+    private fun reverseCalculateTemplateRowForColumn(actualRow: Int, column: Int): Int {
+        var templateRow = actualRow
+
+        for (expansion in expansions) {
+            if (expansion.region.direction != RepeatDirection.DOWN) continue
+
+            // 이 열이 해당 repeat의 열 범위에 있는지 확인
+            if (column !in expansion.region.startCol..expansion.region.endCol) continue
+
+            val itemCount = collectionSizes[expansion.region.collection] ?: 0
+            // 데이터가 0개여도 최소 1개 행(빈 행)을 출력
+            val effectiveItemCount = maxOf(1, itemCount)
+
+            val templateRowCount = expansion.region.endRow - expansion.region.startRow + 1
+            val repeatEndRow = expansion.finalStartRow + (templateRowCount * effectiveItemCount) - 1
+
+            // 이 repeat 영역 이후의 행이면 확장량만큼 빼기
+            if (actualRow > repeatEndRow) {
+                templateRow -= expansion.rowExpansion
+            }
+        }
+
+        return templateRow
+    }
+
+    /**
+     * 실제 출력 행을 템플릿 행으로 역변환합니다.
+     */
+    private fun reverseCalculateTemplateRow(actualRow: Int): Int {
+        var templateRow = actualRow
+
+        // 위에서 아래로 처리하면서 오프셋 제거
+        for (expansion in expansions) {
+            if (expansion.region.direction != RepeatDirection.DOWN) continue
+
+            val itemCount = collectionSizes[expansion.region.collection] ?: 0
+            // 데이터가 0개여도 최소 1개 반복 단위(빈 행들)를 출력
+            val effectiveItemCount = maxOf(1, itemCount)
+
+            val templateRowCount = expansion.region.endRow - expansion.region.startRow + 1
+            val repeatEndRow = expansion.finalStartRow + (templateRowCount * effectiveItemCount) - 1
+
+            // 이 repeat 영역 이후의 행이면 확장량만큼 빼기
+            if (actualRow > repeatEndRow) {
+                templateRow -= expansion.rowExpansion
+            }
+        }
+
+        return templateRow
+    }
+
     // ========== Private Helper Methods ==========
 
     /**
      * repeat 영역의 확장량을 계산합니다.
      */
     private fun calculateExpansionAmount(region: RepeatRegionSpec, itemCount: Int): Pair<Int, Int> {
-        if (itemCount <= 0) return 0 to 0
+        // 데이터가 0개여도 최소 1개 반복 단위(빈 행들)를 출력
+        val effectiveItemCount = maxOf(1, itemCount)
 
         return when (region.direction) {
             RepeatDirection.DOWN -> {
                 val templateRowCount = region.endRow - region.startRow + 1
-                val rowExpansion = maxOf(0, (itemCount - 1) * templateRowCount)
+                val rowExpansion = maxOf(0, (effectiveItemCount - 1) * templateRowCount)
                 rowExpansion to 0
             }
             RepeatDirection.RIGHT -> {
                 val templateColCount = region.endCol - region.startCol + 1
-                val colExpansion = maxOf(0, (itemCount - 1) * templateColCount)
+                val colExpansion = maxOf(0, (effectiveItemCount - 1) * templateColCount)
                 0 to colExpansion
             }
         }

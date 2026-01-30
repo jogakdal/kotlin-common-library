@@ -27,6 +27,7 @@ data class WorkbookSpec(
                     is CellContent.RepeatMarker -> collections += content.collection
                     is CellContent.ImageMarker -> images += content.imageName
                     is CellContent.FormulaWithVariables -> variables += content.variableNames
+                    is CellContent.SizeMarker -> collections += content.collectionName
                     else -> {}
                 }
             }
@@ -198,6 +199,16 @@ sealed class CellContent {
         val range: String,
         val variable: String,
         val direction: RepeatDirection = RepeatDirection.DOWN
+    ) : CellContent()
+
+    /**
+     * 컬렉션 크기 마커 - ${size(collection)} 또는 =TBEG_SIZE(collection)
+     * @param collectionName 컬렉션 이름
+     * @param originalText 원본 텍스트 (예: "${size(employees)}명")
+     */
+    data class SizeMarker(
+        val collectionName: String,
+        val originalText: String
     ) : CellContent()
 }
 

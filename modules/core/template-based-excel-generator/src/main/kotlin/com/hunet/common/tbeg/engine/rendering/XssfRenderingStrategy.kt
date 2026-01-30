@@ -3,6 +3,7 @@ package com.hunet.common.tbeg.engine.rendering
 import com.hunet.common.tbeg.engine.core.parseCellRef
 import com.hunet.common.tbeg.engine.core.setInitialView
 import com.hunet.common.tbeg.engine.core.toByteArray
+import org.apache.poi.ss.formula.FormulaParseException
 import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.CellType
 import org.apache.poi.ss.usermodel.Row
@@ -31,7 +32,7 @@ import java.io.ByteArrayInputStream
 internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
     companion object {
         private val REPEAT_MARKER_PATTERN = Regex("""\$\{repeat\s*\(""", RegexOption.IGNORE_CASE)
-        private val FORMULA_MARKER_PATTERN = Regex("""TBEG_(REPEAT|IMAGE)\s*\(""", RegexOption.IGNORE_CASE)
+        private val FORMULA_MARKER_PATTERN = Regex("""TBEG_(REPEAT|IMAGE|SIZE)\s*\(""", RegexOption.IGNORE_CASE)
     }
 
     /** repeat 영역을 고유하게 식별하기 위한 키 (같은 collection이 여러 위치에서 사용될 때) */
@@ -140,7 +141,9 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         val rowOffsets = mutableMapOf<Int, Int>()
 
         for (repeatRow in repeatRows.reversed()) {
-            val items = data[repeatRow.collectionName] as? Collection<*> ?: continue
+            val rawItems = data[repeatRow.collectionName] as? Collection<*> ?: continue
+            // 빈 컬렉션이면 최소 1개 반복 단위(빈 행/열)를 위해 null 아이템 추가
+            val items: Collection<Any?> = if (rawItems.isEmpty()) listOf(null) else rawItems
             val expansion = calculator.getExpansionForRegion(
                 repeatRow.collectionName, repeatRow.templateRowIndex, repeatRow.repeatStartCol
             ) ?: continue
@@ -283,7 +286,16 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
             CellType.STRING -> target.setCellValue(source.stringCellValue)
             CellType.NUMERIC -> target.setCellValue(source.numericCellValue)
             CellType.BOOLEAN -> target.setCellValue(source.booleanCellValue)
-            CellType.FORMULA -> target.cellFormula = source.cellFormula
+            CellType.FORMULA -> {
+                val formula = source.cellFormula
+                try {
+                    target.cellFormula = formula
+                } catch (e: FormulaParseException) {
+                    // TBEG 마커 수식(예: TBEG_SIZE(collection))은 Named Range 검증 실패 가능
+                    // 문자열로 임시 저장 (나중에 템플릿 처리 시 실제 값으로 치환됨)
+                    target.setCellValue("=$formula")
+                }
+            }
             CellType.BLANK -> target.setBlank()
             else -> {}
         }
@@ -348,7 +360,9 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
                 }
 
                 is RowSpec.RepeatRow -> {
-                    val items = data[rowSpec.collectionName] as? Collection<*> ?: continue
+                    val rawItems = data[rowSpec.collectionName] as? Collection<*> ?: continue
+                    // 빈 컬렉션이면 최소 1개 반복 단위(빈 행/열)를 위해 null 아이템 추가
+                    val items: Collection<Any?> = if (rawItems.isEmpty()) listOf(null) else rawItems
                     val templateRowCount = rowSpec.repeatEndRowIndex - rowSpec.templateRowIndex + 1
                     val repeatKey = RepeatKey(rowSpec.collectionName, rowSpec.templateRowIndex, rowSpec.repeatStartCol)
                     val expansion = calculator.getExpansionForRegion(

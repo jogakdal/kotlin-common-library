@@ -1,341 +1,233 @@
 package com.hunet.common.tbeg.engine.rendering
 
-import com.esotericsoftware.kryo.Kryo
-import com.esotericsoftware.kryo.io.Input
-import com.esotericsoftware.kryo.io.Output
-import com.esotericsoftware.kryo.util.DefaultInstantiatorStrategy
-import org.objenesis.strategy.StdInstantiatorStrategy
-import org.slf4j.LoggerFactory
+import com.hunet.common.logging.commonLogger
+import com.hunet.common.tbeg.ExcelDataProvider
 import java.io.Closeable
-import java.nio.file.Files
-import java.nio.file.Path
 
 /**
- * 자동 캐싱 컬렉션.
+ * SXSSF 모드에서 Iterator를 순차적으로 소비하는 데이터 소스.
  *
- * count를 미리 알고 있고, 첫 번째 순회 시 데이터를 캐싱합니다.
- * 이후 순회는 캐시에서 읽으므로 여러 번 순회해도 안전합니다.
+ * **목적:**
+ * - Iterator를 한 번만 순회하면서 데이터를 제공
+ * - 전체 컬렉션을 메모리에 올리지 않음
+ * - 각 repeat 영역별로 독립적인 Iterator 관리
  *
  * **동작 방식:**
- * 1. 첫 번째 iterator() 호출: 원본 Iterator에서 읽으면서 내부 캐시에 저장
- * 2. 이후 iterator() 호출: 캐시에서 읽음
+ * - 각 repeat 영역은 RepeatKey로 식별됨 (collectionName, startRow, startCol)
+ * - 같은 컬렉션이 다른 repeat 영역에서 사용되면 DataProvider를 재호출하여 새 Iterator 획득
+ * - DataProvider.getItems()가 같은 데이터를 다시 제공할 수 있어야 함
  *
- * **메모리 특성:**
- * - 순회 전: 메모리 사용 없음 (Iterator만 보유)
- * - 첫 번째 순회 완료 후: 전체 데이터가 메모리에 캐싱됨
- * - 순회 중 중단 시: 그때까지 읽은 데이터만 캐싱됨
- *
- * **사용 조건:**
- * - DataProvider.getItemCount()가 구현되어 있어야 함
- * - SXSSF 모드에서 사용 (XSSF는 List 직접 사용)
+ * @param dataProvider 데이터 제공자
+ * @param expectedSizes 각 컬렉션의 예상 크기 (DataProvider.getItemCount에서 제공된 값)
  */
-internal class AutoCachingCollection(
-    private val name: String,
-    override val size: Int,
-    private val source: Iterator<Any>
-) : Collection<Any> {
+internal class StreamingDataSource(
+    private val dataProvider: ExcelDataProvider,
+    private val expectedSizes: Map<String, Int> = emptyMap()
+) : Closeable {
 
-    private var cache: MutableList<Any>? = null
-    private var fullyConsumed = false
-    private var currentlyIterating = false
-
-    override fun isEmpty(): Boolean = size == 0
-
-    override fun iterator(): Iterator<Any> {
-        // 이미 완전히 순회되었으면 캐시에서 반환
-        if (fullyConsumed) {
-            return cache!!.iterator()
-        }
-
-        // 동시 순회 방지
-        if (currentlyIterating) {
-            throw IllegalStateException(
-                "컬렉션 '$name'이 이미 순회 중입니다. " +
-                    "동시 순회는 지원하지 않습니다."
-            )
-        }
-
-        currentlyIterating = true
-        cache = mutableListOf()
-
-        return CachingIterator(source, cache!!) {
-            fullyConsumed = true
-            currentlyIterating = false
-        }
-    }
-
-    override fun contains(element: Any): Boolean {
-        // 캐시가 있으면 캐시에서 검색
-        if (fullyConsumed) {
-            return cache!!.contains(element)
-        }
-        // 없으면 전체 순회하여 검색
-        return iterator().asSequence().any { it == element }
-    }
-
-    override fun containsAll(elements: Collection<Any>): Boolean {
-        if (fullyConsumed) {
-            return cache!!.containsAll(elements)
-        }
-        val set = iterator().asSequence().toSet()
-        return set.containsAll(elements)
-    }
-
-    /**
-     * 원본 Iterator를 순회하면서 캐시에 저장하는 Iterator
-     */
-    private class CachingIterator(
-        private val source: Iterator<Any>,
-        private val cache: MutableList<Any>,
-        private val onComplete: () -> Unit
-    ) : Iterator<Any> {
-
-        override fun hasNext(): Boolean {
-            val hasMore = source.hasNext()
-            if (!hasMore) {
-                onComplete()
-            }
-            return hasMore
-        }
-
-        override fun next(): Any {
-            val item = source.next()
-            cache.add(item)
-            return item
-        }
-    }
-}
-
-/**
- * Iterator를 임시 파일에 버퍼링하여 메모리 효율적으로 처리합니다.
- *
- * DataProvider에서 getItemCount()가 제공되지 않을 때 사용됩니다.
- * Iterator를 한 번 순회하면서 임시 파일에 저장하고, count를 파악합니다.
- * 이후 Collection처럼 사용할 수 있으며, iterator()를 여러 번 호출해도 안전합니다.
- *
- * **메모리 효율성:**
- * - 전체 데이터를 메모리에 유지하지 않음
- * - iterator() 호출 시 임시 파일에서 스트리밍 방식으로 읽음
- * - 대용량 데이터 처리에 적합
- *
- * **직렬화:**
- * - Kryo 라이브러리 사용 (Serializable 구현 불필요)
- * - 대부분의 Java/Kotlin 객체를 직렬화할 수 있음
- *
- * 사용 후 반드시 close()를 호출하여 임시 파일을 삭제해야 합니다.
- */
-internal class CollectionBuffer(
-    private val name: String
-) : Collection<Any>, Closeable {
-
-    private var tempFile: Path? = null
-    private var itemCount: Int = 0
-    private var buffered: Boolean = false
+    private val iteratorsByRepeat = mutableMapOf<RepeatKey, Iterator<Any>>()
+    private val currentItemByRepeat = mutableMapOf<RepeatKey, Any?>()
+    private val exhaustedRepeats = mutableSetOf<RepeatKey>()
+    private val warnedCollections = mutableSetOf<String>()
+    private val consumedCountByRepeat = mutableMapOf<RepeatKey, Int>()
+    private val mismatchWarnedRepeats = mutableSetOf<RepeatKey>()
 
     companion object {
-        private val logger = LoggerFactory.getLogger(CollectionBuffer::class.java)
+        private val LOG by commonLogger()
+    }
 
-        // ThreadLocal로 Kryo 인스턴스 관리 (thread-safe)
-        private val kryoThreadLocal = ThreadLocal.withInitial {
-            Kryo().apply {
-                isRegistrationRequired = false
-                // 알려지지 않은 클래스도 직렬화 가능
-                setReferences(true)
-                // 기본 생성자가 없는 클래스도 직렬화 가능 (local class, data class 등)
-                instantiatorStrategy = DefaultInstantiatorStrategy(StdInstantiatorStrategy())
-            }
+    /**
+     * Repeat 영역을 고유하게 식별하는 키
+     *
+     * @param sheetIndex 시트 인덱스 (다른 시트의 같은 위치 repeat 구분)
+     * @param collectionName 컬렉션 이름
+     * @param startRow 시작 행
+     * @param startCol 시작 열
+     */
+    data class RepeatKey(
+        val sheetIndex: Int,
+        val collectionName: String,
+        val startRow: Int,
+        val startCol: Int
+    )
+
+    /**
+     * 현재 아이템을 반환합니다.
+     *
+     * advanceToNextItem()으로 이동한 현재 아이템을 반환합니다.
+     * 아직 advanceToNextItem()을 호출하지 않았거나, Iterator가 소진되었으면 null을 반환합니다.
+     */
+    fun getCurrentItem(repeatKey: RepeatKey): Any? {
+        return currentItemByRepeat[repeatKey]
+    }
+
+    /**
+     * 다음 아이템으로 이동합니다.
+     *
+     * Iterator에서 다음 아이템을 가져와 현재 아이템으로 설정합니다.
+     * Iterator가 소진되면 null을 반환합니다.
+     *
+     * @return 다음 아이템, 또는 소진 시 null
+     */
+    fun advanceToNextItem(repeatKey: RepeatKey): Any? {
+        // 이미 소진된 repeat은 null 반환
+        if (repeatKey in exhaustedRepeats) {
+            return null
         }
 
-        /**
-         * 여러 컬렉션을 버퍼링합니다.
-         */
-        fun bufferAll(collections: Map<String, Iterator<Any>>): Map<String, CollectionBuffer> {
-            return collections.mapValues { (name, iterator) ->
-                CollectionBuffer(name).also { it.buffer(iterator) }
+        val iterator = iteratorsByRepeat.getOrPut(repeatKey) {
+            // 같은 컬렉션에 대해 다른 repeat 영역이 이미 존재하면 경고
+            val existingIteratorForCollection = iteratorsByRepeat.keys.any {
+                it.collectionName == repeatKey.collectionName && it != repeatKey
             }
+
+            if (existingIteratorForCollection && repeatKey.collectionName !in warnedCollections) {
+                LOG.warn(
+                    "컬렉션 '{}'이 여러 repeat 영역에서 사용됩니다. " +
+                        "DataProvider를 재호출하여 새 Iterator를 생성합니다. " +
+                        "(repeat 영역: row={}, col={})",
+                    repeatKey.collectionName,
+                    repeatKey.startRow,
+                    repeatKey.startCol
+                )
+                warnedCollections.add(repeatKey.collectionName)
+            }
+
+            consumedCountByRepeat[repeatKey] = 0
+            dataProvider.getItems(repeatKey.collectionName) ?: emptyList<Any>().iterator()
         }
 
-        /**
-         * 모든 버퍼를 닫습니다.
-         */
-        fun closeAll(buffers: Collection<CollectionBuffer>) {
-            buffers.forEach { buffer ->
-                runCatching { buffer.close() }
-            }
+        val item = if (iterator.hasNext()) {
+            val nextItem = iterator.next()
+            consumedCountByRepeat[repeatKey] = (consumedCountByRepeat[repeatKey] ?: 0) + 1
+            nextItem
+        } else {
+            // Iterator 소진 시 count 불일치 검증
+            checkCountMismatchOnExhaustion(repeatKey)
+            exhaustedRepeats.add(repeatKey)
+            iteratorsByRepeat.remove(repeatKey)
+            null
+        }
+
+        currentItemByRepeat[repeatKey] = item
+        return item
+    }
+
+    /**
+     * Iterator 소진 시 count 불일치를 검증합니다.
+     */
+    private fun checkCountMismatchOnExhaustion(repeatKey: RepeatKey) {
+        if (repeatKey in mismatchWarnedRepeats) return
+
+        val expectedCount = expectedSizes[repeatKey.collectionName] ?: return
+        val actualCount = consumedCountByRepeat[repeatKey] ?: 0
+
+        if (actualCount < expectedCount) {
+            LOG.warn(
+                "컬렉션 '{}' count 불일치: 제공된 count={}개, 실제 아이템={}개. " +
+                    "Iterator가 예상보다 일찍 소진되어 {}개의 빈 행이 생성됩니다. " +
+                    "(repeat 영역: sheet={}, row={}, col={})",
+                repeatKey.collectionName,
+                expectedCount,
+                actualCount,
+                expectedCount - actualCount,
+                repeatKey.sheetIndex,
+                repeatKey.startRow,
+                repeatKey.startCol
+            )
+            mismatchWarnedRepeats.add(repeatKey)
         }
     }
 
     /**
-     * Iterator를 버퍼링하고 count를 반환합니다.
-     *
-     * Iterator를 한 번만 순회하면서 임시 파일에 저장합니다.
-     * 메모리에 전체 데이터를 올리지 않으며, 순회 완료 후 count를 알 수 있습니다.
-     *
-     * @param iterator 버퍼링할 Iterator
-     * @return 아이템 수
+     * 예상 count에 도달했는지 확인하고, 초과 아이템이 있으면 경고합니다.
+     * repeat 처리 완료 후 호출해야 합니다.
      */
-    fun buffer(iterator: Iterator<Any>): Int {
-        if (buffered) {
-            throw IllegalStateException("이미 버퍼링되었습니다: $name")
-        }
+    fun checkRemainingItems(repeatKey: RepeatKey) {
+        if (repeatKey in mismatchWarnedRepeats) return
 
-        tempFile = Files.createTempFile("tbeg_collection_${name}_", ".tmp")
-        var count = 0
-        val kryo = kryoThreadLocal.get()
+        val expectedCount = expectedSizes[repeatKey.collectionName] ?: return
+        val consumedCount = consumedCountByRepeat[repeatKey] ?: 0
 
-        try {
-            Output(Files.newOutputStream(tempFile!!).buffered()).use { output ->
-                while (iterator.hasNext()) {
-                    val item = iterator.next()
-                    kryo.writeClassAndObject(output, item)
-                    count++
-                }
+        // 이미 소진되었으면 skip (checkCountMismatchOnExhaustion에서 처리됨)
+        if (repeatKey in exhaustedRepeats) return
+
+        val iterator = iteratorsByRepeat[repeatKey] ?: return
+
+        // 예상 count만큼 소비했는데 Iterator에 아이템이 남아있으면 경고
+        if (consumedCount >= expectedCount && iterator.hasNext()) {
+            // 남은 아이템 수 계산 (최대 100개까지만 확인)
+            var remainingCount = 0
+            while (iterator.hasNext() && remainingCount < 100) {
+                iterator.next()
+                remainingCount++
             }
-        } catch (e: Exception) {
-            // 버퍼링 실패 시 임시 파일 삭제
-            runCatching { Files.deleteIfExists(tempFile!!) }
-            tempFile = null
-            throw e
-        }
+            val hasMore = iterator.hasNext()
 
-        itemCount = count
-        buffered = true
-        logger.debug("컬렉션 '{}' 버퍼링 완료: {}건 -> {}", name, count, tempFile)
-        return count
+            LOG.warn(
+                "컬렉션 '{}' count 불일치: 제공된 count={}개, 실제 아이템={}개 이상. " +
+                    "제공된 count만큼만 처리되고 나머지 아이템은 무시됩니다. " +
+                    "(repeat 영역: sheet={}, row={}, col={})",
+                repeatKey.collectionName,
+                expectedCount,
+                consumedCount + remainingCount + (if (hasMore) 1 else 0),
+                repeatKey.sheetIndex,
+                repeatKey.startRow,
+                repeatKey.startCol
+            )
+            mismatchWarnedRepeats.add(repeatKey)
+        }
     }
 
-    // ========== Collection 인터페이스 구현 ==========
-
-    override val size: Int
-        get() {
-            if (!buffered) {
-                throw IllegalStateException("아직 버퍼링되지 않았습니다: $name")
-            }
-            return itemCount
-        }
-
-    override fun isEmpty(): Boolean = size == 0
-
-    override fun iterator(): Iterator<Any> {
-        if (!buffered) {
-            throw IllegalStateException("아직 버퍼링되지 않았습니다: $name")
-        }
-        if (itemCount == 0) {
-            return emptyList<Any>().iterator()
-        }
-        return KryoBufferedIterator(tempFile!!, itemCount)
+    /**
+     * 특정 repeat 영역이 소진되었는지 확인합니다.
+     */
+    fun isExhausted(repeatKey: RepeatKey): Boolean {
+        return repeatKey in exhaustedRepeats
     }
 
-    override fun contains(element: Any): Boolean {
-        return iterator().asSequence().any { it == element }
+    /**
+     * 특정 repeat 영역의 Iterator를 초기화합니다.
+     *
+     * RIGHT 방향 확장에서 각 행마다 처음부터 다시 순회해야 할 때 사용합니다.
+     */
+    fun resetRepeat(repeatKey: RepeatKey) {
+        iteratorsByRepeat.remove(repeatKey)
+        currentItemByRepeat.remove(repeatKey)
+        exhaustedRepeats.remove(repeatKey)
     }
-
-    override fun containsAll(elements: Collection<Any>): Boolean {
-        val set = iterator().asSequence().toSet()
-        return set.containsAll(elements)
-    }
-
-    // ========== Closeable 구현 ==========
 
     override fun close() {
-        tempFile?.let { file ->
-            runCatching {
-                Files.deleteIfExists(file)
-                logger.debug("컬렉션 '{}' 임시 파일 삭제: {}", name, file)
-            }
-        }
-        tempFile = null
-    }
-
-    /**
-     * 임시 파일에서 Kryo로 데이터를 읽는 Iterator
-     */
-    private class KryoBufferedIterator(
-        private val tempFile: Path,
-        private val totalCount: Int
-    ) : Iterator<Any> {
-        private var input: Input? = null
-        private var kryo: Kryo? = null
-        private var readCount = 0
-        private var closed = false
-
-        override fun hasNext(): Boolean {
-            if (closed) return false
-            val hasMore = readCount < totalCount
-            if (!hasMore) {
-                closeStream()
-            }
-            return hasMore
-        }
-
-        override fun next(): Any {
-            if (closed || readCount >= totalCount) {
-                throw NoSuchElementException()
-            }
-
-            if (input == null) {
-                kryo = kryoThreadLocal.get()
-                input = Input(Files.newInputStream(tempFile).buffered())
-            }
-
-            val item = kryo!!.readClassAndObject(input!!)
-            readCount++
-
-            if (readCount >= totalCount) {
-                closeStream()
-            }
-
-            return item
-        }
-
-        private fun closeStream() {
-            if (!closed) {
-                input?.close()
-                input = null
-                kryo = null
-                closed = true
-            }
-        }
+        iteratorsByRepeat.clear()
+        currentItemByRepeat.clear()
+        exhaustedRepeats.clear()
+        warnedCollections.clear()
+        consumedCountByRepeat.clear()
+        mismatchWarnedRepeats.clear()
     }
 }
 
 /**
- * CollectionBuffer 관리자
+ * 컬렉션 크기를 계산합니다.
  *
- * 여러 컬렉션의 버퍼를 관리하고, 모든 버퍼를 한 번에 닫을 수 있습니다.
+ * DataProvider.getItemCount()가 제공되면 그 값을 사용하고,
+ * 제공되지 않으면 Iterator를 전체 순회하여 count를 파악합니다.
+ *
+ * count 미제공 시 Iterator가 소비되므로, 이후 렌더링 시 DataProvider.getItems()를 재호출해야 합니다.
  */
-internal class CollectionBufferManager : Closeable {
-    private val buffers = mutableMapOf<String, CollectionBuffer>()
+internal fun getCollectionSize(dataProvider: ExcelDataProvider, collectionName: String): Int {
+    val count = dataProvider.getItemCount(collectionName)
+    if (count != null) return count
 
-    /**
-     * 컬렉션을 버퍼링합니다.
-     *
-     * @param name 컬렉션 이름
-     * @param iterator 버퍼링할 Iterator
-     * @return 버퍼 (Collection으로 사용 가능)
-     */
-    fun buffer(name: String, iterator: Iterator<Any>): CollectionBuffer {
-        val buffer = CollectionBuffer(name)
-        buffer.buffer(iterator)
-        buffers[name] = buffer
-        return buffer
+    // count 미제공: Iterator 전체 순회하여 count 파악
+    // Note: top-level function이므로 logging 생략
+    // 실제 count가 필요한 경우에만 Iterator 순회
+
+    var size = 0
+    val iterator = dataProvider.getItems(collectionName) ?: return 0
+    while (iterator.hasNext()) {
+        iterator.next()
+        size++
     }
-
-    /**
-     * 버퍼를 가져옵니다.
-     */
-    fun get(name: String): CollectionBuffer? = buffers[name]
-
-    /**
-     * 버퍼링된 컬렉션의 count를 반환합니다.
-     */
-    fun getCount(name: String): Int? = buffers[name]?.size
-
-    /**
-     * 모든 버퍼를 닫고 임시 파일을 삭제합니다.
-     */
-    override fun close() {
-        CollectionBuffer.closeAll(buffers.values)
-        buffers.clear()
-    }
+    return size
 }

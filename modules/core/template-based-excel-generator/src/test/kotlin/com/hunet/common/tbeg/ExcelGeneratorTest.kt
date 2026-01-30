@@ -192,7 +192,9 @@ class ExcelGeneratorTest {
         return mutableMapOf(
             "title" to "테스트 보고서",
             "date" to "2024-01-07",
-            "employees" to employees
+            "employees" to employees,
+            // 셀병합 시트용 (비연속적 셀 참조 수식 테스트)
+            "mergedEmployees" to employees
         ).also { data ->
             loadImage("hunet_logo.png")?.let { data["logo"] = it }
             loadImage("hunet_ci.png")?.let { data["ci"] = it }
@@ -394,7 +396,8 @@ class ExcelGeneratorTest {
 
         assertTrue(latch.await(10, TimeUnit.SECONDS))
         assertNotNull(result)
-        assertEquals(employeeCount, result!!.rowsProcessed)
+        // employees(5) + mergedEmployees(5) = 10 rows processed
+        assertEquals(employeeCount * 2, result!!.rowsProcessed)
         assertNotNull(result!!.filePath)
         assertTrue(result!!.durationMs > 0)
     }
@@ -853,7 +856,8 @@ class ExcelGeneratorTest {
                 value("linkText", "(주)휴넷 홈페이지")
                 value("url", "https://www.hunet.co.kr")
                 items("employees", listOf(Employee("황용호", "부장", 8000)))
-                items("department", listOf(Department("개발팀", 15, "본관 3층")))
+                items("mergedEmployees", listOf(Employee("황용호", "부장", 8000)))
+                items("departments", listOf(Department("공통플랫폼팀", 15, "814호")))
                 loadImage("hunet_logo.png")?.let { image("logo", it) }
                 loadImage("hunet_ci.png")?.let { image("ci", it) }
             }

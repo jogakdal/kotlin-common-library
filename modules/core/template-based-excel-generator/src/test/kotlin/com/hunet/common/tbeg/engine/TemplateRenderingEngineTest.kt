@@ -276,16 +276,18 @@ class TemplateRenderingEngineTest {
     fun `SXSSF mode should expand conditional formatting for repeat regions`() {
         // Given
         val template = javaClass.getResourceAsStream("/templates/template.xlsx")!!
+        val employees = listOf(
+            mapOf("name" to "황용호", "position" to "부장", "salary" to 8000),
+            mapOf("name" to "홍용호", "position" to "과장", "salary" to 6500),
+            mapOf("name" to "한용호", "position" to "대리", "salary" to 4500)
+        )
         val data = mapOf(
             "title" to "조건부 서식 테스트",
             "date" to "2026-01-20",
             "linkText" to "테스트 링크",
             "url" to "https://www.hunet.co.kr",
-            "employees" to listOf(
-                mapOf("name" to "황용호", "position" to "부장", "salary" to 8000),
-                mapOf("name" to "홍용호", "position" to "과장", "salary" to 6500),
-                mapOf("name" to "한용호", "position" to "대리", "salary" to 4500)
-            )
+            "employees" to employees,
+            "mergedEmployees" to employees
         )
 
         // When
@@ -317,16 +319,18 @@ class TemplateRenderingEngineTest {
     fun `XSSF mode should expand conditional formatting for repeat regions`() {
         // Given
         val template = javaClass.getResourceAsStream("/templates/template.xlsx")!!
+        val employees = listOf(
+            mapOf("name" to "황용호", "position" to "부장", "salary" to 8000),
+            mapOf("name" to "홍용호", "position" to "과장", "salary" to 6500),
+            mapOf("name" to "한용호", "position" to "대리", "salary" to 4500)
+        )
         val data = mapOf(
             "title" to "조건부 서식 테스트 (XSSF)",
             "date" to "2026-01-20",
             "linkText" to "테스트 링크",
             "url" to "https://www.hunet.co.kr",
-            "employees" to listOf(
-                mapOf("name" to "황용호", "position" to "부장", "salary" to 8000),
-                mapOf("name" to "홍용호", "position" to "과장", "salary" to 6500),
-                mapOf("name" to "한용호", "position" to "대리", "salary" to 4500)
-            )
+            "employees" to employees,
+            "mergedEmployees" to employees
         )
 
         // When
@@ -351,18 +355,21 @@ class TemplateRenderingEngineTest {
 
     @Test
     fun `XSSF mode should expand formula references for repeat regions`() {
-        // Given: 3번째 시트에 =SUM(B8) 수식이 있고, 반복 영역이 A7:B8
+        // Given: 3번째 시트(셀병합)에 =SUM(B8) 수식이 있고, 반복 영역이 A7:B8
         val template = javaClass.getResourceAsStream("/templates/template.xlsx")!!
+        val employees = listOf(
+            mapOf("name" to "황용호", "position" to "부장", "salary" to 8000),
+            mapOf("name" to "홍용호", "position" to "과장", "salary" to 6500),
+            mapOf("name" to "한용호", "position" to "대리", "salary" to 4500)
+        )
         val data = mapOf(
             "title" to "수식 확장 테스트",
             "date" to "2026-01-21",
             "linkText" to "테스트 링크",
             "url" to "https://www.hunet.co.kr",
-            "employees" to listOf(
-                mapOf("name" to "황용호", "position" to "부장", "salary" to 8000),
-                mapOf("name" to "홍용호", "position" to "과장", "salary" to 6500),
-                mapOf("name" to "한용호", "position" to "대리", "salary" to 4500)
-            )
+            "employees" to employees,
+            // 셀병합 시트는 mergedEmployees 컬렉션 사용
+            "mergedEmployees" to employees
         )
 
         // When
@@ -408,16 +415,19 @@ class TemplateRenderingEngineTest {
     fun `SXSSF mode should expand formula references for repeat regions`() {
         // Given
         val template = javaClass.getResourceAsStream("/templates/template.xlsx")!!
+        val employees = listOf(
+            mapOf("name" to "황용호", "position" to "부장", "salary" to 8000),
+            mapOf("name" to "홍용호", "position" to "과장", "salary" to 6500),
+            mapOf("name" to "한용호", "position" to "대리", "salary" to 4500)
+        )
         val data = mapOf(
             "title" to "수식 확장 테스트 (SXSSF)",
             "date" to "2026-01-21",
             "linkText" to "테스트 링크",
             "url" to "https://www.hunet.co.kr",
-            "employees" to listOf(
-                mapOf("name" to "황용호", "position" to "부장", "salary" to 8000),
-                mapOf("name" to "홍용호", "position" to "과장", "salary" to 6500),
-                mapOf("name" to "한용호", "position" to "대리", "salary" to 4500)
-            )
+            "employees" to employees,
+            // 셀병합 시트는 mergedEmployees 컬렉션 사용
+            "mergedEmployees" to employees
         )
 
         // When
@@ -453,5 +463,96 @@ class TemplateRenderingEngineTest {
         val samplesDir = Path.of("build/samples/formula-expansion")
         java.nio.file.Files.createDirectories(samplesDir)
         samplesDir.resolve("sxssf_formula_test.xlsx").toFile().writeBytes(resultBytes)
+    }
+
+    @Test
+    fun `TemplateAnalyzer - parse size marker`() {
+        // Given: 임시 템플릿 생성 (size 마커 포함)
+        val templateBytes = createTemplateWithSizeMarker()
+
+        // When
+        val analyzer = TemplateAnalyzer()
+        val blueprint = analyzer.analyze(ByteArrayInputStream(templateBytes))
+
+        // Then
+        assertNotNull(blueprint)
+        val firstSheet = blueprint.sheets[0]
+
+        // SizeMarker가 분석되었는지 확인
+        val sizeMarkerCells = firstSheet.rows.flatMap { it.cells }
+            .filter { it.content is com.hunet.common.tbeg.engine.rendering.CellContent.SizeMarker }
+        assertTrue(sizeMarkerCells.isNotEmpty(), "SizeMarker 셀이 있어야 함")
+
+        val sizeMarker = sizeMarkerCells[0].content as com.hunet.common.tbeg.engine.rendering.CellContent.SizeMarker
+        assertEquals("employees", sizeMarker.collectionName, "컬렉션 이름이 employees여야 함")
+    }
+
+    @Test
+    fun `XSSF mode - size marker substitution`() {
+        // Given: size 마커가 포함된 템플릿 생성
+        val templateBytes = createTemplateWithSizeMarker()
+        val data = mapOf(
+            "employees" to listOf(
+                mapOf("name" to "황용호"),
+                mapOf("name" to "홍용호"),
+                mapOf("name" to "한용호")
+            )
+        )
+
+        // When
+        val engine = TemplateRenderingEngine(StreamingMode.DISABLED)
+        val resultBytes = engine.process(ByteArrayInputStream(templateBytes), data)
+
+        // Then
+        XSSFWorkbook(ByteArrayInputStream(resultBytes)).use { workbook ->
+            val sheet = workbook.getSheetAt(0)
+            val cell = sheet.getRow(0).getCell(0)
+
+            // ${size(employees)}명 → 3명
+            assertEquals("3명", cell.stringCellValue, "size 마커가 컬렉션 크기로 치환되어야 함")
+        }
+    }
+
+    @Test
+    fun `SXSSF mode - size marker substitution`() {
+        // Given
+        val templateBytes = createTemplateWithSizeMarker()
+        val data = mapOf(
+            "employees" to listOf(
+                mapOf("name" to "황용호"),
+                mapOf("name" to "홍용호"),
+                mapOf("name" to "한용호"),
+                mapOf("name" to "하용호"),
+                mapOf("name" to "화용호")
+            )
+        )
+
+        // When
+        val engine = TemplateRenderingEngine(StreamingMode.ENABLED)
+        val resultBytes = engine.process(ByteArrayInputStream(templateBytes), data)
+
+        // Then
+        XSSFWorkbook(ByteArrayInputStream(resultBytes)).use { workbook ->
+            val sheet = workbook.getSheetAt(0)
+            val cell = sheet.getRow(0).getCell(0)
+
+            // ${size(employees)}명 → 5명
+            assertEquals("5명", cell.stringCellValue, "size 마커가 컬렉션 크기로 치환되어야 함")
+        }
+    }
+
+    /**
+     * size 마커가 포함된 템플릿 생성
+     */
+    private fun createTemplateWithSizeMarker(): ByteArray {
+        return XSSFWorkbook().use { workbook ->
+            val sheet = workbook.createSheet("테스트")
+            val row = sheet.createRow(0)
+            row.createCell(0).setCellValue("\${size(employees)}명")
+
+            java.io.ByteArrayOutputStream().also { out ->
+                workbook.write(out)
+            }.toByteArray()
+        }
     }
 }

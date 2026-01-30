@@ -67,6 +67,19 @@ class TemplateAnalyzer {
             """TBEG_IMAGE\s*\(\s*["'`]?(\w+)["'`]?(?:\s*,\s*["'`]?([A-Za-z]+\d+(?::[A-Za-z]+\d+)?)["'`]?)?(?:\s*,\s*["'`]?(-?\d+:-?\d+)["'`]?)?\s*\)""",
             RegexOption.IGNORE_CASE
         )
+
+        // ${size(collection)} - 컬렉션 크기 마커
+        // Arguments can be quoted (", ', `) or unquoted
+        private val SIZE_PATTERN = Regex(
+            """\$\{size\s*\(\s*["'`]?(\w+)["'`]?\s*\)}""",
+            RegexOption.IGNORE_CASE
+        )
+
+        // =TBEG_SIZE(collection) - 컬렉션 크기 마커 (수식 형태)
+        private val FORMULA_SIZE_PATTERN = Regex(
+            """TBEG_SIZE\s*\(\s*["'`]?(\w+)["'`]?\s*\)""",
+            RegexOption.IGNORE_CASE
+        )
     }
 
     /**
@@ -492,6 +505,12 @@ class TemplateAnalyzer {
             return CellContent.ImageMarker(name, positionOrRange, sizeSpec)
         }
 
+        // TBEG_SIZE 수식 마커
+        FORMULA_SIZE_PATTERN.find(formula)?.let { match ->
+            val collectionName = match.groupValues[1]
+            return CellContent.SizeMarker(collectionName, "=$formula")
+        }
+
         // 일반 수식 - 변수 포함 여부 확인
         return VARIABLE_PATTERN.findAll(formula).map { it.groupValues[1] }.toList().let { variables ->
             if (variables.isNotEmpty()) CellContent.FormulaWithVariables(formula, variables)
@@ -525,6 +544,21 @@ class TemplateAnalyzer {
         // 이미지 마커 (레거시) - ${image.name}
         IMAGE_LEGACY_PATTERN.find(text)?.let { match ->
             return CellContent.ImageMarker(match.groupValues[1])
+        }
+
+        // 컬렉션 크기 마커 - ${size(collection)}
+        SIZE_PATTERN.find(text)?.let { match ->
+            val collectionName = match.groupValues[1]
+            return CellContent.SizeMarker(collectionName, text)
+        }
+
+        // 수식 마커가 문자열로 저장된 경우 - =TBEG_SIZE(collection)
+        // (수식 복사 시 Named Range 검증 실패로 문자열로 변환된 경우)
+        if (text.startsWith("=")) {
+            FORMULA_SIZE_PATTERN.find(text)?.let { match ->
+                val collectionName = match.groupValues[1]
+                return CellContent.SizeMarker(collectionName, text)
+            }
         }
 
         // 아이템 필드 (반복 영역 내 변수와 일치하는지 확인)

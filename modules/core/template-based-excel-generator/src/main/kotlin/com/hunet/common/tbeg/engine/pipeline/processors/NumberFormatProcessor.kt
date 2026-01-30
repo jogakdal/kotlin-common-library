@@ -5,6 +5,7 @@ import com.hunet.common.tbeg.engine.pipeline.ExcelProcessor
 import com.hunet.common.tbeg.engine.pipeline.ProcessingContext
 import com.hunet.common.tbeg.engine.core.toByteArray
 import org.apache.poi.ss.usermodel.CellType
+import org.apache.poi.ss.usermodel.HorizontalAlignment
 import org.apache.poi.xssf.usermodel.XSSFCellStyle
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.ByteArrayInputStream
@@ -13,7 +14,8 @@ import java.io.ByteArrayInputStream
  * 숫자 서식 자동 적용 프로세서.
  *
  * 숫자 값이 있는 셀 중 표시 형식이 "일반"인 경우 자동으로 숫자 서식을 적용합니다.
- * 나머지 서식(정렬, 글꼴, 색상 등)은 보존됩니다.
+ * 또한 정렬이 "일반"인 경우 오른쪽 정렬을 적용합니다.
+ * 나머지 서식(글꼴, 색상 등)은 보존됩니다.
  */
 internal class NumberFormatProcessor : ExcelProcessor {
 
@@ -34,12 +36,16 @@ internal class NumberFormatProcessor : ExcelProcessor {
                     row.forEach { cell ->
                         if (cell.cellType == CellType.NUMERIC) {
                             val currentStyle = cell.cellStyle
-                            // 표시 형식이 "일반"(0)인 경우에만 숫자 서식 적용
-                            if (currentStyle.dataFormat.toInt() == 0) {
+                            val needsNumberFormat = currentStyle.dataFormat.toInt() == 0
+                            val needsAlignment = currentStyle.alignment == HorizontalAlignment.GENERAL
+
+                            // 표시 형식이 "일반"이거나 정렬이 "일반"인 경우 서식 적용
+                            if (needsNumberFormat || needsAlignment) {
                                 val value = cell.numericCellValue
                                 val isInteger = value == value.toLong().toDouble()
                                 cell.cellStyle = getOrCreateNumberStyle(
-                                    workbook, currentStyle.index, isInteger, config
+                                    workbook, currentStyle.index, isInteger,
+                                    needsNumberFormat, needsAlignment, config
                                 )
                             }
                         }
@@ -54,9 +60,16 @@ internal class NumberFormatProcessor : ExcelProcessor {
         workbook: XSSFWorkbook,
         templateStyleIdx: Short?,
         isInteger: Boolean,
+        applyNumberFormat: Boolean,
+        applyAlignment: Boolean,
         config: ExcelGeneratorConfig
     ): XSSFCellStyle {
-        val cacheKey = "${templateStyleIdx ?: "none"}_${if (isInteger) "int" else "dec"}"
+        val formatSuffix = when {
+            applyNumberFormat -> if (isInteger) "int" else "dec"
+            else -> "noFmt"
+        }
+        val alignSuffix = if (applyAlignment) "right" else "noAlign"
+        val cacheKey = "${templateStyleIdx ?: "none"}_${formatSuffix}_$alignSuffix"
         val workbookCache = styleCache.getOrPut(workbook) { mutableMapOf() }
 
         return workbookCache.getOrPut(cacheKey) {
@@ -64,10 +77,15 @@ internal class NumberFormatProcessor : ExcelProcessor {
                 if (templateStyleIdx != null) {
                     cloneStyleFrom(workbook.getCellStyleAt(templateStyleIdx.toInt()))
                 }
-                dataFormat = if (isInteger) {
-                    config.pivotIntegerFormatIndex
-                } else {
-                    config.pivotDecimalFormatIndex
+                if (applyNumberFormat) {
+                    dataFormat = if (isInteger) {
+                        config.pivotIntegerFormatIndex
+                    } else {
+                        config.pivotDecimalFormatIndex
+                    }
+                }
+                if (applyAlignment) {
+                    setAlignment(HorizontalAlignment.RIGHT)
                 }
             }
         }

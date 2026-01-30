@@ -34,15 +34,15 @@ class DataProviderCountTest {
 
     // 테스트용 데이터 - Map 기반 (Kryo 직렬화 호환)
     private fun createEmployees() = listOf(
-        mapOf("name" to "홍길동", "position" to "개발자", "salary" to 5000),
-        mapOf("name" to "김철수", "position" to "디자이너", "salary" to 4500),
-        mapOf("name" to "이영희", "position" to "기획자", "salary" to 4800)
+        mapOf("name" to "황용호", "position" to "개발자", "salary" to 5000),
+        mapOf("name" to "홍용호", "position" to "디자이너", "salary" to 4500),
+        mapOf("name" to "한용호", "position" to "기획자", "salary" to 4800)
     )
 
     private fun createDepartments() = listOf(
-        mapOf("name" to "개발팀", "members" to 10, "office" to "본관 3층"),
-        mapOf("name" to "디자인팀", "members" to 5, "office" to "본관 2층"),
-        mapOf("name" to "기획팀", "members" to 7, "office" to "별관 1층")
+        mapOf("name" to "공통플랫폼팀", "members" to 10, "office" to "814호"),
+        mapOf("name" to "IT전략기획팀", "members" to 5, "office" to "801호"),
+        mapOf("name" to "인재경영실", "members" to 7, "office" to "813호")
     )
 
     @Nested
@@ -68,13 +68,13 @@ class DataProviderCountTest {
 
                 override fun getItems(name: String): Iterator<Any>? = when (name) {
                     "employees" -> employees.iterator()
-                    "department" -> departments.iterator()
+                    "departments" -> departments.iterator()
                     else -> null
                 }
 
                 override fun getItemCount(name: String): Int? = when (name) {
                     "employees" -> employees.size
-                    "department" -> departments.size
+                    "departments" -> departments.size
                     else -> null
                 }
             }
@@ -92,7 +92,7 @@ class DataProviderCountTest {
 
                 override fun getItems(name: String): Iterator<Any>? = when (name) {
                     "employees" -> employees.iterator()
-                    "department" -> departments.iterator()
+                    "departments" -> departments.iterator()
                     else -> null
                 }
                 // getItemCount는 기본 구현 (null 반환)
@@ -100,7 +100,7 @@ class DataProviderCountTest {
 
             val requiredNames = RequiredNames(
                 variables = setOf("title", "date", "secondTitle", "linkText", "url"),
-                collections = setOf("employees", "department"),
+                collections = setOf("employees", "departments"),
                 images = emptySet()
             )
 
@@ -196,20 +196,20 @@ class DataProviderCountTest {
 
                 override fun getItems(name: String): Iterator<Any>? = when (name) {
                     "employees" -> trackingIterator
-                    "department" -> listOf(mapOf("name" to "팀", "members" to 1, "office" to "A")).iterator()
+                    "departments" -> listOf(mapOf("name" to "팀", "members" to 1, "office" to "A")).iterator()
                     else -> null
                 }
 
                 override fun getItemCount(name: String): Int? = when (name) {
                     "employees" -> items.size
-                    "department" -> 1
+                    "departments" -> 1
                     else -> null
                 }
             }
 
             val requiredNames = RequiredNames(
                 variables = setOf("title", "date", "secondTitle", "linkText", "url"),
-                collections = setOf("employees", "department"),
+                collections = setOf("employees", "departments"),
                 images = emptySet()
             )
 
@@ -253,7 +253,7 @@ class DataProviderCountTest {
 
                 override fun getItems(name: String): Iterator<Any>? = when (name) {
                     "employees" -> trackingIterator
-                    "department" -> listOf(mapOf("name" to "팀", "members" to 1, "office" to "A")).iterator()
+                    "departments" -> listOf(mapOf("name" to "팀", "members" to 1, "office" to "A")).iterator()
                     else -> null
                 }
 
@@ -262,7 +262,7 @@ class DataProviderCountTest {
 
             val requiredNames = RequiredNames(
                 variables = setOf("title", "date", "secondTitle", "linkText", "url"),
-                collections = setOf("employees", "department"),
+                collections = setOf("employees", "departments"),
                 images = emptySet()
             )
 
@@ -282,20 +282,20 @@ class DataProviderCountTest {
         @DisplayName("List로 추가 시 count가 자동 설정된다")
         fun listAutoSetsCount() {
             val employees = listOf(
-                mapOf("name" to "홍길동"),
-                mapOf("name" to "김철수")
+                mapOf("name" to "황용호"),
+                mapOf("name" to "홍용호")
             )
 
             val provider = SimpleDataProvider.builder()
                 .value("title", "테스트")
                 .value("date", "2026-01-29")
                 .items("employees", employees)
-                .items("department", listOf(mapOf("name" to "팀", "members" to 1)))
+                .items("departments", listOf(mapOf("name" to "팀", "members" to 1)))
                 .build()
 
             assertEquals(2, provider.getItemCount("employees"),
                 "List로 추가 시 count가 자동 설정되어야 합니다")
-            assertEquals(1, provider.getItemCount("department"))
+            assertEquals(1, provider.getItemCount("departments"))
         }
 
         @Test
@@ -314,7 +314,7 @@ class DataProviderCountTest {
                         mapOf("name" to "C")
                     ).iterator()
                 }
-                .items("department", listOf(mapOf("name" to "팀", "members" to 1)))
+                .items("departments", listOf(mapOf("name" to "팀", "members" to 1)))
                 .build()
 
             // count는 즉시 사용 가능
@@ -372,17 +372,232 @@ class DataProviderCountTest {
     inner class SxssfModeTest {
 
         @Test
+        @DisplayName("SXSSF 모드에서 count 제공 시 Iterator 순회 횟수가 줄어든다 (count 파악 순회 없음)")
+        fun sxssfIteratorTraversalReducedWithCount() {
+            val sxssfEngine = TemplateRenderingEngine(StreamingMode.ENABLED)
+            val traversalWithCount = AtomicInteger(0)
+            val traversalWithoutCount = AtomicInteger(0)
+
+            val items = listOf(
+                mapOf("name" to "A", "position" to "P1", "salary" to 1000),
+                mapOf("name" to "B", "position" to "P2", "salary" to 2000),
+                mapOf("name" to "C", "position" to "P3", "salary" to 3000)
+            )
+
+            // count 제공 provider
+            val providerWithCount = object : ExcelDataProvider {
+                override fun getValue(name: String): Any? = when (name) {
+                    "title" -> "SXSSF 순회 테스트"
+                    "date" -> "2026-01-29"
+                    "secondTitle" -> "부서"
+                    "linkText" -> "링크"
+                    "url" -> "https://example.com"
+                    else -> null
+                }
+
+                override fun getItems(name: String): Iterator<Any>? = when (name) {
+                    "employees" -> object : Iterator<Any> {
+                        private val inner = items.iterator()
+                        override fun hasNext(): Boolean = inner.hasNext()
+                        override fun next(): Any {
+                            traversalWithCount.incrementAndGet()
+                            return inner.next()
+                        }
+                    }
+                    "departments" -> listOf(mapOf("name" to "팀", "members" to 1, "office" to "A")).iterator()
+                    else -> null
+                }
+
+                override fun getItemCount(name: String): Int? = when (name) {
+                    "employees" -> items.size
+                    "departments" -> 1
+                    else -> null
+                }
+            }
+
+            // count 미제공 provider
+            val providerWithoutCount = object : ExcelDataProvider {
+                override fun getValue(name: String): Any? = when (name) {
+                    "title" -> "SXSSF 순회 테스트"
+                    "date" -> "2026-01-29"
+                    "secondTitle" -> "부서"
+                    "linkText" -> "링크"
+                    "url" -> "https://example.com"
+                    else -> null
+                }
+
+                override fun getItems(name: String): Iterator<Any>? = when (name) {
+                    "employees" -> object : Iterator<Any> {
+                        private val inner = items.iterator()
+                        override fun hasNext(): Boolean = inner.hasNext()
+                        override fun next(): Any {
+                            traversalWithoutCount.incrementAndGet()
+                            return inner.next()
+                        }
+                    }
+                    "departments" -> listOf(mapOf("name" to "팀", "members" to 1, "office" to "A")).iterator()
+                    else -> null
+                }
+                // getItemCount 미구현
+            }
+
+            val requiredNames = RequiredNames(
+                variables = setOf("title", "date", "secondTitle", "linkText", "url"),
+                collections = setOf("employees", "departments"),
+                images = emptySet()
+            )
+
+            sxssfEngine.process(ByteArrayInputStream(templateBytes), providerWithCount, requiredNames)
+            sxssfEngine.process(ByteArrayInputStream(templateBytes), providerWithoutCount, requiredNames)
+
+            // count 제공 시: count 파악을 위한 순회가 없으므로 순회 횟수가 적음
+            // count 미제공 시: count 파악을 위해 추가로 items.size만큼 순회
+            assertTrue(traversalWithCount.get() < traversalWithoutCount.get(),
+                "count 제공 시 Iterator 순회 횟수가 더 적어야 합니다 " +
+                    "(count 제공: ${traversalWithCount.get()}, 미제공: ${traversalWithoutCount.get()})")
+
+            // 정확히 items.size만큼 차이가 나야 함 (count 파악 순회분)
+            assertEquals(items.size, traversalWithoutCount.get() - traversalWithCount.get(),
+                "count 미제공 시 추가 순회 횟수는 items.size와 같아야 합니다")
+        }
+
+        @Test
+        @DisplayName("SXSSF 모드에서 count 미제공 시 getItems()가 최소 2번 호출된다 (count 파악 + 렌더링)")
+        fun sxssfGetItemsCalledAtLeastTwiceWithoutCount() {
+            val sxssfEngine = TemplateRenderingEngine(StreamingMode.ENABLED)
+            val getItemsCallCount = AtomicInteger(0)
+
+            val items = listOf(
+                mapOf("name" to "A", "position" to "P1", "salary" to 1000),
+                mapOf("name" to "B", "position" to "P2", "salary" to 2000),
+                mapOf("name" to "C", "position" to "P3", "salary" to 3000)
+            )
+
+            val provider = object : ExcelDataProvider {
+                override fun getValue(name: String): Any? = when (name) {
+                    "title" -> "SXSSF 재호출 테스트"
+                    "date" -> "2026-01-29"
+                    "secondTitle" -> "부서"
+                    "linkText" -> "링크"
+                    "url" -> "https://example.com"
+                    else -> null
+                }
+
+                override fun getItems(name: String): Iterator<Any>? = when (name) {
+                    "employees" -> {
+                        getItemsCallCount.incrementAndGet()
+                        items.iterator()
+                    }
+                    "departments" -> listOf(mapOf("name" to "팀", "members" to 1, "office" to "A")).iterator()
+                    else -> null
+                }
+                // getItemCount 미구현 - null 반환
+            }
+
+            val requiredNames = RequiredNames(
+                variables = setOf("title", "date", "secondTitle", "linkText", "url"),
+                collections = setOf("employees", "departments"),
+                images = emptySet()
+            )
+
+            sxssfEngine.process(ByteArrayInputStream(templateBytes), provider, requiredNames)
+
+            // count 미제공 시: getItems()는 최소 2번 호출됨
+            // - count 파악을 위해 1회
+            // - 렌더링 시 각 repeat 영역마다 1회씩 (같은 컬렉션이 여러 repeat에서 사용되면 재호출)
+            assertTrue(getItemsCallCount.get() >= 2,
+                "SXSSF 모드에서 count 미제공 시 getItems()는 최소 2번 호출되어야 합니다 (호출 횟수: ${getItemsCallCount.get()})")
+        }
+
+        @Test
+        @DisplayName("SXSSF 모드에서 count 제공 시 getItems() 호출이 줄어든다 (count 파악 순회 없음)")
+        fun sxssfGetItemsCallCountReducedWithCount() {
+            val sxssfEngine = TemplateRenderingEngine(StreamingMode.ENABLED)
+            val getItemsWithCountCallCount = AtomicInteger(0)
+            val getItemsWithoutCountCallCount = AtomicInteger(0)
+
+            val items = listOf(
+                mapOf("name" to "A", "position" to "P1", "salary" to 1000),
+                mapOf("name" to "B", "position" to "P2", "salary" to 2000),
+                mapOf("name" to "C", "position" to "P3", "salary" to 3000)
+            )
+
+            // count 제공하는 provider
+            val providerWithCount = object : ExcelDataProvider {
+                override fun getValue(name: String): Any? = when (name) {
+                    "title" -> "SXSSF 호출 횟수 테스트"
+                    "date" -> "2026-01-29"
+                    "secondTitle" -> "부서"
+                    "linkText" -> "링크"
+                    "url" -> "https://example.com"
+                    else -> null
+                }
+
+                override fun getItems(name: String): Iterator<Any>? = when (name) {
+                    "employees" -> {
+                        getItemsWithCountCallCount.incrementAndGet()
+                        items.iterator()
+                    }
+                    "departments" -> listOf(mapOf("name" to "팀", "members" to 1, "office" to "A")).iterator()
+                    else -> null
+                }
+
+                override fun getItemCount(name: String): Int? = when (name) {
+                    "employees" -> items.size
+                    "departments" -> 1
+                    else -> null
+                }
+            }
+
+            // count 미제공 provider
+            val providerWithoutCount = object : ExcelDataProvider {
+                override fun getValue(name: String): Any? = when (name) {
+                    "title" -> "SXSSF 호출 횟수 테스트"
+                    "date" -> "2026-01-29"
+                    "secondTitle" -> "부서"
+                    "linkText" -> "링크"
+                    "url" -> "https://example.com"
+                    else -> null
+                }
+
+                override fun getItems(name: String): Iterator<Any>? = when (name) {
+                    "employees" -> {
+                        getItemsWithoutCountCallCount.incrementAndGet()
+                        items.iterator()
+                    }
+                    "departments" -> listOf(mapOf("name" to "팀", "members" to 1, "office" to "A")).iterator()
+                    else -> null
+                }
+                // getItemCount 미구현
+            }
+
+            val requiredNames = RequiredNames(
+                variables = setOf("title", "date", "secondTitle", "linkText", "url"),
+                collections = setOf("employees", "departments"),
+                images = emptySet()
+            )
+
+            sxssfEngine.process(ByteArrayInputStream(templateBytes), providerWithCount, requiredNames)
+            sxssfEngine.process(ByteArrayInputStream(templateBytes), providerWithoutCount, requiredNames)
+
+            // count 제공 시 호출 횟수가 더 적어야 함 (count 파악을 위한 순회가 없음)
+            assertTrue(getItemsWithCountCallCount.get() < getItemsWithoutCountCallCount.get(),
+                "count 제공 시 getItems() 호출 횟수가 더 적어야 합니다 " +
+                    "(count 제공: ${getItemsWithCountCallCount.get()}, 미제공: ${getItemsWithoutCountCallCount.get()})")
+        }
+
+        @Test
         @DisplayName("SXSSF 모드에서도 count 제공/미제공 시 동일한 결과를 생성한다")
         fun sxssfProducesSameResult() {
             val sxssfEngine = TemplateRenderingEngine(StreamingMode.ENABLED)
 
             val employees = listOf(
-                mapOf("name" to "홍길동", "position" to "개발자", "salary" to 5000),
-                mapOf("name" to "김철수", "position" to "디자이너", "salary" to 4500)
+                mapOf("name" to "황용호", "position" to "개발자", "salary" to 5000),
+                mapOf("name" to "홍용호", "position" to "디자이너", "salary" to 4500)
             )
 
             val departments = listOf(
-                mapOf("name" to "개발팀", "members" to 10, "office" to "본관")
+                mapOf("name" to "공통플랫폼팀", "members" to 10, "office" to "814호")
             )
 
             // count 제공하는 DataProvider
@@ -393,7 +608,7 @@ class DataProviderCountTest {
                 .value("linkText", "링크")
                 .value("url", "https://example.com")
                 .items("employees", employees)
-                .items("department", departments)
+                .items("departments", departments)
                 .build()
 
             // count 제공하지 않는 DataProvider
@@ -409,14 +624,14 @@ class DataProviderCountTest {
 
                 override fun getItems(name: String): Iterator<Any>? = when (name) {
                     "employees" -> employees.iterator()
-                    "department" -> departments.iterator()
+                    "departments" -> departments.iterator()
                     else -> null
                 }
             }
 
             val requiredNames = RequiredNames(
                 variables = setOf("title", "date", "secondTitle", "linkText", "url"),
-                collections = setOf("employees", "department"),
+                collections = setOf("employees", "departments"),
                 images = emptySet()
             )
 

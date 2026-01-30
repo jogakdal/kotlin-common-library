@@ -161,10 +161,16 @@ public class ExcelGeneratorJavaSample {
             new Employee("한용호", "과장", 6500),
             new Employee("홍용호", "대리", 4500)
         ));
-        data.put("department", Arrays.asList(
-            new Department("개발팀", 15, "본관 3층"),
-            new Department("기획팀", 8, "본관 2층"),
-            new Department("인사팀", 5, "별관 1층")
+        // 셀병합 시트용 (비연속적 셀 참조 수식 테스트)
+        data.put("mergedEmployees", Arrays.asList(
+            new Employee("황용호", "부장", 8000),
+            new Employee("한용호", "과장", 6500),
+            new Employee("홍용호", "대리", 4500)
+        ));
+        data.put("departments", Arrays.asList(
+            new Department("공통플랫폼팀", 15, "814호"),
+            new Department("IT전략기획팀", 8, "801호"),
+            new Department("인재경영실", 5, "813호")
         ));
 
         // 이미지 추가 (있는 경우)
@@ -218,11 +224,13 @@ public class ExcelGeneratorJavaSample {
             .image("ci", ci != null ? ci : new byte[0])
             // 컬렉션 - 지연 로딩 (Java Supplier 사용)
             .itemsFromSupplier("employees", () -> generateLargeDataSet(100))
+            // 셀병합 시트용 (비연속적 셀 참조 수식 테스트, 255개 이하)
+            .itemsFromSupplier("mergedEmployees", () -> generateLargeDataSet(100))
             // 부서 컬렉션
-            .items("department", Arrays.asList(
-                new Department("개발팀", 15, "본관 3층"),
-                new Department("기획팀", 8, "본관 2층"),
-                new Department("인사팀", 5, "별관 1층")
+            .items("departments", Arrays.asList(
+                new Department("공통플랫폼팀", 15, "814호"),
+                new Department("IT전략기획팀", 8, "801호"),
+                new Department("인재경영실", 5, "813호")
             ))
             .build();
 
@@ -288,9 +296,14 @@ public class ExcelGeneratorJavaSample {
             new Employee("황용호", "부장", 8000),
             new Employee("한용호", "과장", 6500)
         ));
-        data.put("department", Arrays.asList(
-            new Department("개발팀", 15, "본관 3층"),
-            new Department("기획팀", 8, "본관 2층")
+        // 셀병합 시트용 (비연속적 셀 참조 수식 테스트)
+        data.put("mergedEmployees", Arrays.asList(
+            new Employee("황용호", "부장", 8000),
+            new Employee("한용호", "과장", 6500)
+        ));
+        data.put("departments", Arrays.asList(
+            new Department("공통플랫폼팀", 15, "814호"),
+            new Department("IT전략기획팀", 8, "801호")
         ));
 
         byte[] logo = loadImage("hunet_logo.png");
@@ -414,11 +427,13 @@ public class ExcelGeneratorJavaSample {
             .image("ci", ci != null ? ci : new byte[0])
             // 대용량 데이터 - 실제로는 DB 스트리밍 쿼리 사용
             .itemsFromSupplier("employees", () -> generateLargeDataSet(dataCount))
+            // 셀병합 시트용 (비연속적 셀 참조 수식 테스트, 255개 이하)
+            .itemsFromSupplier("mergedEmployees", () -> generateLargeDataSet(100))
             // 부서 컬렉션
-            .items("department", Arrays.asList(
-                new Department("개발팀", 15, "본관 3층"),
-                new Department("기획팀", 8, "본관 2층"),
-                new Department("인사팀", 5, "별관 1층")
+            .items("departments", Arrays.asList(
+                new Department("공통플랫폼팀", 15, "814호"),
+                new Department("IT전략기획팀", 8, "801호"),
+                new Department("인재경영실", 5, "813호")
             ))
             .build();
 
@@ -526,11 +541,13 @@ public class ExcelGeneratorJavaSample {
             .image("logo", logo != null ? logo : new byte[0])
             .image("ci", ci != null ? ci : new byte[0])
             .itemsFromSupplier("employees", () -> generateLargeDataSet(dataCount))
+            // 셀병합 시트용 (비연속적 셀 참조 수식 테스트, 255개 이하)
+            .itemsFromSupplier("mergedEmployees", () -> generateLargeDataSet(100))
             // 부서 컬렉션
-            .items("department", Arrays.asList(
-                new Department("개발팀", 15, "본관 3층"),
-                new Department("기획팀", 8, "본관 2층"),
-                new Department("인사팀", 5, "별관 1층")
+            .items("departments", Arrays.asList(
+                new Department("공통플랫폼팀", 15, "814호"),
+                new Department("IT전략기획팀", 8, "801호"),
+                new Department("인재경영실", 5, "813호")
             ))
             .build();
 
@@ -655,11 +672,17 @@ public class ExcelGeneratorJavaSample {
                 new Employee("한용호", "과장", 6500),
                 new Employee("홍용호", "대리", 4500)
             ))
+            // 셀병합 시트용 (비연속적 셀 참조 수식 테스트)
+            .items("mergedEmployees", Arrays.asList(
+                new Employee("황용호", "부장", 8000),
+                new Employee("한용호", "과장", 6500),
+                new Employee("홍용호", "대리", 4500)
+            ))
             // 부서 컬렉션
-            .items("department", Arrays.asList(
-                new Department("개발팀", 15, "본관 3층"),
-                new Department("기획팀", 8, "본관 2층"),
-                new Department("인사팀", 5, "별관 1층")
+            .items("departments", Arrays.asList(
+                new Department("공통플랫폼팀", 15, "814호"),
+                new Department("IT전략기획팀", 8, "801호"),
+                new Department("인재경영실", 5, "813호")
             ))
             // 문서 메타데이터 설정
             .metadata((java.util.function.Consumer<DocumentMetadata.Builder>) meta -> meta

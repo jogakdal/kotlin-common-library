@@ -176,8 +176,47 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
             is CellContent.RepeatMarker -> {
                 cell.setBlank()
             }
+
+            is CellContent.SizeMarker -> {
+                processSizeMarker(cell, content, data, context)
+            }
         }
         return true
+    }
+
+    /**
+     * 컬렉션 크기 마커를 처리합니다.
+     * ${size(collection)} 또는 =TBEG_SIZE(collection) 패턴을 컬렉션 크기로 치환합니다.
+     */
+    protected fun processSizeMarker(
+        cell: Cell,
+        content: CellContent.SizeMarker,
+        data: Map<String, Any>,
+        context: RenderingContext
+    ) {
+        // 1. 스트리밍 모드: context.collectionSizes에서 가져오기
+        // 2. 비스트리밍 모드: data에서 컬렉션 가져와서 크기 계산
+        val size = context.collectionSizes[content.collectionName]
+            ?: (data[content.collectionName] as? Collection<*>)?.size
+            ?: 0
+
+        val originalText = content.originalText
+
+        // ${size(collection)} 패턴 치환
+        val dollarSizePattern = Regex("""\$\{size\s*\(\s*["'`]?${Regex.escape(content.collectionName)}["'`]?\s*\)}""", RegexOption.IGNORE_CASE)
+        var result = dollarSizePattern.replace(originalText, size.toString())
+
+        // =TBEG_SIZE(collection) 패턴 치환 (수식 또는 문자열로 저장된 경우)
+        val tbegSizePattern = Regex("""=?TBEG_SIZE\s*\(\s*["'`]?${Regex.escape(content.collectionName)}["'`]?\s*\)""", RegexOption.IGNORE_CASE)
+        result = tbegSizePattern.replace(result, size.toString())
+
+        // 결과가 순수 숫자인 경우 숫자로 저장 (NumberFormatProcessor 적용을 위해)
+        val numericValue = result.toLongOrNull() ?: result.toDoubleOrNull()
+        if (numericValue != null) {
+            setCellValue(cell, numericValue)
+        } else {
+            setCellValue(cell, result)
+        }
     }
 
     /**

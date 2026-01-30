@@ -86,13 +86,16 @@ internal class SheetLayoutApplier {
      *
      * 템플릿의 조건부 서식을 SXSSF 시트에 적용합니다.
      * 반복 영역에 있는 조건부 서식은 각 반복 아이템에 대해 복제됩니다.
+     *
+     * @param collectionSizes 컬렉션 크기 맵 (스트리밍 모드에서 data에 컬렉션이 없을 때 사용)
      */
     fun applyConditionalFormattings(
         sheet: SXSSFSheet,
         conditionalFormattings: List<ConditionalFormattingSpec>,
         repeatRegions: Map<Int, RowSpec.RepeatRow>,
         data: Map<String, Any>,
-        totalRowOffset: Int
+        totalRowOffset: Int,
+        collectionSizes: Map<String, Int> = emptyMap()
     ) {
         if (conditionalFormattings.isEmpty()) return
 
@@ -111,12 +114,15 @@ internal class SheetLayoutApplier {
 
                 if (overlappingRepeat != null) {
                     // 반복 영역 내 조건부 서식: 각 반복 아이템마다 복제
-                    val items = data[overlappingRepeat.collectionName] as? Collection<*> ?: continue
+                    // 컬렉션 크기: data에서 가져오거나, 없으면 collectionSizes에서 가져옴
+                    val itemCount = (data[overlappingRepeat.collectionName] as? Collection<*>)?.size
+                        ?: collectionSizes[overlappingRepeat.collectionName]
+                        ?: continue
                     val templateRowCount = overlappingRepeat.repeatEndRowIndex - overlappingRepeat.templateRowIndex + 1
                     val relativeStartRow = range.firstRow - overlappingRepeat.templateRowIndex
                     val rowSpan = range.lastRow - range.firstRow
 
-                    for (itemIdx in 0 until items.size) {
+                    for (itemIdx in 0 until itemCount) {
                         val rowOffset = itemIdx * templateRowCount
                         val newFirstRow = overlappingRepeat.templateRowIndex + rowOffset + relativeStartRow
                         val newLastRow = newFirstRow + rowSpan
@@ -299,6 +305,7 @@ internal class SheetLayoutApplier {
      * 병합 영역 적용 (PositionCalculator 사용)
      *
      * PositionCalculator를 사용하여 각 병합 영역의 최종 위치를 계산합니다.
+     * 반복 영역 내의 병합은 각 아이템마다 복제됩니다.
      *
      * @param sheet 대상 시트
      * @param mergedRegions 템플릿의 병합 영역 목록
@@ -310,17 +317,72 @@ internal class SheetLayoutApplier {
         calculator: PositionCalculator
     ) {
         val addedRegions = mutableSetOf<String>()
+        val expansions = calculator.getExpansions()
 
         for (region in mergedRegions) {
-            val finalRange = calculator.getFinalRange(
-                region.firstRow, region.lastRow,
-                region.firstColumn, region.lastColumn
-            )
+            // 이 병합 영역이 속한 반복 영역 찾기
+            val containingExpansion = expansions.find { expansion ->
+                region.firstRow >= expansion.region.startRow &&
+                    region.lastRow <= expansion.region.endRow &&
+                    region.firstColumn >= expansion.region.startCol &&
+                    region.lastColumn <= expansion.region.endCol
+            }
 
-            val key = "${finalRange.firstRow}:${finalRange.lastRow}:${finalRange.firstColumn}:${finalRange.lastColumn}"
-            if (key !in addedRegions) {
-                runCatching { sheet.addMergedRegion(finalRange) }
-                addedRegions.add(key)
+            if (containingExpansion != null) {
+                // 반복 영역 내 병합: 각 아이템마다 복제
+                val repeatRegion = containingExpansion.region
+                val templateRowCount = repeatRegion.endRow - repeatRegion.startRow + 1
+                val templateColCount = repeatRegion.endCol - repeatRegion.startCol + 1
+                val itemCount = containingExpansion.itemCount
+
+                val relativeFirstRow = region.firstRow - repeatRegion.startRow
+                val relativeLastRow = region.lastRow - repeatRegion.startRow
+                val relativeFirstCol = region.firstColumn - repeatRegion.startCol
+                val relativeLastCol = region.lastColumn - repeatRegion.startCol
+
+                for (itemIdx in 0 until itemCount) {
+                    val (newFirstRow, newFirstCol) = when (repeatRegion.direction) {
+                        RepeatDirection.DOWN -> {
+                            (containingExpansion.finalStartRow + (itemIdx * templateRowCount) + relativeFirstRow) to
+                                (containingExpansion.finalStartCol + relativeFirstCol)
+                        }
+                        RepeatDirection.RIGHT -> {
+                            (containingExpansion.finalStartRow + relativeFirstRow) to
+                                (containingExpansion.finalStartCol + (itemIdx * templateColCount) + relativeFirstCol)
+                        }
+                    }
+
+                    val (newLastRow, newLastCol) = when (repeatRegion.direction) {
+                        RepeatDirection.DOWN -> {
+                            (containingExpansion.finalStartRow + (itemIdx * templateRowCount) + relativeLastRow) to
+                                (containingExpansion.finalStartCol + relativeLastCol)
+                        }
+                        RepeatDirection.RIGHT -> {
+                            (containingExpansion.finalStartRow + relativeLastRow) to
+                                (containingExpansion.finalStartCol + (itemIdx * templateColCount) + relativeLastCol)
+                        }
+                    }
+
+                    val key = "$newFirstRow:$newLastRow:$newFirstCol:$newLastCol"
+                    if (key !in addedRegions) {
+                        runCatching {
+                            sheet.addMergedRegion(CellRangeAddress(newFirstRow, newLastRow, newFirstCol, newLastCol))
+                        }
+                        addedRegions.add(key)
+                    }
+                }
+            } else {
+                // 반복 영역 외부: 최종 위치만 계산
+                val finalRange = calculator.getFinalRange(
+                    region.firstRow, region.lastRow,
+                    region.firstColumn, region.lastColumn
+                )
+
+                val key = "${finalRange.firstRow}:${finalRange.lastRow}:${finalRange.firstColumn}:${finalRange.lastColumn}"
+                if (key !in addedRegions) {
+                    runCatching { sheet.addMergedRegion(finalRange) }
+                    addedRegions.add(key)
+                }
             }
         }
     }
@@ -339,7 +401,8 @@ internal class SheetLayoutApplier {
         expansion: PositionCalculator.RepeatExpansion,
         itemCount: Int
     ) {
-        if (itemCount <= 0) return
+        // 데이터가 0개여도 최소 1개 반복 단위(빈 행/열)를 출력
+        val effectiveItemCount = maxOf(1, itemCount)
 
         val region = expansion.region
         val templateRowCount = region.endRow - region.startRow + 1
@@ -354,7 +417,7 @@ internal class SheetLayoutApplier {
                 merged.lastColumn <= region.endCol
         }
 
-        for (itemIdx in 0 until itemCount) {
+        for (itemIdx in 0 until effectiveItemCount) {
             for (templateMerged in repeatMergedRegions) {
                 val relativeFirstRow = templateMerged.firstRow - region.startRow
                 val relativeLastRow = templateMerged.lastRow - region.startRow

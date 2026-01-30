@@ -1,5 +1,6 @@
 package com.hunet.common.tbeg.engine.rendering
 
+import com.hunet.common.tbeg.ExcelDataProvider
 import com.hunet.common.tbeg.exception.FormulaExpansionException
 import com.hunet.common.tbeg.engine.core.parseCellRef
 import com.hunet.common.tbeg.engine.core.removeAbsPath
@@ -181,12 +182,73 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         PositionCalculator.validateNoOverlap(repeatRegions)
 
         // collection 크기 추출 및 PositionCalculator 생성
-        val collectionSizes = PositionCalculator.extractCollectionSizes(data, repeatRegions)
-        val calculator = PositionCalculator(repeatRegions, collectionSizes)
+        // 스트리밍 모드에서는 context.collectionSizes 사용, 아니면 data에서 추출
+        val collectionSizes = if (context.streamingDataSource != null) {
+            context.collectionSizes
+        } else {
+            PositionCalculator.extractCollectionSizes(data, repeatRegions)
+        }
+        // 템플릿의 마지막 행 인덱스 계산 (blueprint.rows에서)
+        val templateLastRow = blueprint.rows.maxOfOrNull { it.templateRowIndex } ?: 0
+        val calculator = PositionCalculator(repeatRegions, collectionSizes, templateLastRow)
         calculator.calculate()
 
         val repeatRegionsMap = repeatRows.associateBy { it.templateRowIndex }
 
+        // 스트리밍 모드 분기
+        // - StreamingDataSource가 있고 RIGHT 방향 repeat이 없으면 스트리밍 방식
+        // - RIGHT 방향 repeat이 있으면 기존 pendingRows 방식 (가로 확장은 복잡한 처리 필요)
+        val hasRightRepeat = repeatRegions.any { it.direction == RepeatDirection.RIGHT }
+        if (context.streamingDataSource != null && !hasRightRepeat) {
+            processSheetWithStreaming(
+                sheet, sheetIndex, blueprint, data, repeatRegionsMap,
+                imageLocations, context, calculator
+            )
+        } else {
+            // RIGHT 방향 repeat이 있거나 스트리밍이 아닌 경우
+            // 스트리밍 모드에서 RIGHT repeat이 있으면 해당 컬렉션을 List로 변환하여 data에 추가
+            val effectiveData = if (context.streamingDataSource != null && hasRightRepeat) {
+                buildRightRepeatData(data, repeatRegions, context)
+            } else {
+                data
+            }
+            processSheetWithPendingRows(
+                sheet, sheetIndex, blueprint, effectiveData, repeatRegionsMap,
+                imageLocations, context, calculator
+            )
+        }
+
+        // 전체 행 오프셋 계산 (병합 영역, 조건부 서식용)
+        val maxRowOffset = calculator.getExpansions()
+            .filter { it.region.direction == RepeatDirection.DOWN }
+            .sumOf { it.rowExpansion }
+
+        // 병합 영역 설정 - PositionCalculator 사용
+        context.sheetLayoutApplier.applyMergedRegionsWithCalculator(
+            sheet, blueprint.mergedRegions, calculator
+        )
+
+        // 조건부 서식 적용
+        context.sheetLayoutApplier.applyConditionalFormattings(
+            sheet, blueprint.conditionalFormattings, repeatRegionsMap, data, maxRowOffset, collectionSizes
+        )
+    }
+
+    /**
+     * 기존 방식: pendingRows에 모든 셀 정보를 수집한 후 행 순서로 출력
+     *
+     * data에 컬렉션이 포함되어 있는 경우 사용 (하위 호환성)
+     */
+    private fun processSheetWithPendingRows(
+        sheet: SXSSFSheet,
+        sheetIndex: Int,
+        blueprint: SheetSpec,
+        data: Map<String, Any>,
+        repeatRegionsMap: Map<Int, RowSpec.RepeatRow>,
+        imageLocations: MutableList<ImageLocation>,
+        context: RenderingContext,
+        calculator: PositionCalculator
+    ) {
         val ctx = RowWriteContext(
             sheet = sheet,
             sheetIndex = sheetIndex,
@@ -312,21 +374,313 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                 )
             }
         }
+    }
 
-        // 전체 행 오프셋 계산 (병합 영역, 조건부 서식용)
-        val maxRowOffset = calculator.getExpansions()
-            .filter { it.region.direction == RepeatDirection.DOWN }
-            .sumOf { it.rowExpansion }
+    /**
+     * 스트리밍 방식: 행 순서대로 즉시 출력하면서 Iterator 순차 소비
+     *
+     * - 현재 아이템만 메모리에 유지
+     * - 전체 컬렉션을 메모리에 올리지 않음
+     * - 같은 행에 repeat 셀과 static 셀이 혼재할 수 있음 (열 그룹별 처리)
+     */
+    private fun processSheetWithStreaming(
+        sheet: SXSSFSheet,
+        sheetIndex: Int,
+        blueprint: SheetSpec,
+        data: Map<String, Any>,
+        repeatRegionsMap: Map<Int, RowSpec.RepeatRow>,
+        imageLocations: MutableList<ImageLocation>,
+        context: RenderingContext,
+        calculator: PositionCalculator
+    ) {
+        val streamingDataSource = context.streamingDataSource!!
+        val totalRows = calculator.getTotalRows()
 
-        // 병합 영역 설정 - PositionCalculator 사용
-        context.sheetLayoutApplier.applyMergedRegionsWithCalculator(
-            sheet, blueprint.mergedRegions, calculator
+        // repeat 영역별 현재 아이템 캐시 (같은 행에서 여러 셀이 같은 아이템 참조)
+        val currentItemsByRepeat = mutableMapOf<StreamingDataSource.RepeatKey, Any?>()
+        // 마지막으로 advance한 아이템 인덱스 추적
+        val lastAdvancedIndex = mutableMapOf<StreamingDataSource.RepeatKey, Int>()
+
+        // 행 순서대로 처리
+        for (actualRow in 0 until totalRows) {
+            val row = sheet.createRow(actualRow)
+            var rowHeight: Short? = null
+
+            // 이 행에 작성할 모든 셀을 수집 (열 그룹별로 다른 소스)
+            // 1. 모든 repeat 영역에서 이 행에 해당하는 셀 수집
+            // 2. 정적 행에서 이 행에 해당하는 셀 수집
+
+            // repeat 영역별 처리
+            for ((templateRowIdx, repeatRow) in repeatRegionsMap) {
+                val expansion = calculator.getExpansionForRegion(
+                    repeatRow.collectionName, repeatRow.templateRowIndex, repeatRow.repeatStartCol
+                ) ?: continue
+
+                val templateRowCount = repeatRow.repeatEndRowIndex - repeatRow.templateRowIndex + 1
+                val itemCount = expansion.itemCount
+                // 참고: expansion.itemCount는 이미 effectiveItemCount (최소 1)가 저장됨
+
+                // 이 repeat가 차지하는 실제 행 범위
+                val repeatStartRow = expansion.finalStartRow
+                val repeatEndRow = repeatStartRow + (templateRowCount * itemCount) - 1
+
+                if (actualRow !in repeatStartRow..repeatEndRow) continue
+
+                // 이 행은 이 repeat 영역에 속함
+                val rowWithinRepeat = actualRow - repeatStartRow
+                val itemIndex = rowWithinRepeat / templateRowCount
+                val templateRowOffset = rowWithinRepeat % templateRowCount
+
+                val repeatKey = StreamingDataSource.RepeatKey(
+                    sheetIndex, repeatRow.collectionName, repeatRow.templateRowIndex, repeatRow.repeatStartCol
+                )
+
+                // 아이템 가져오기: templateRowOffset이 0이고 아직 이 인덱스로 advance하지 않았으면 다음 아이템으로 이동
+                val lastIdx = lastAdvancedIndex[repeatKey] ?: -1
+                val item = if (templateRowOffset == 0 && itemIndex > lastIdx) {
+                    val newItem = streamingDataSource.advanceToNextItem(repeatKey)
+                    currentItemsByRepeat[repeatKey] = newItem
+                    lastAdvancedIndex[repeatKey] = itemIndex
+                    newItem
+                } else {
+                    currentItemsByRepeat[repeatKey] ?: streamingDataSource.getCurrentItem(repeatKey)
+                }
+
+                val itemData = if (item != null) {
+                    data + (repeatRow.itemVariable to item)
+                } else {
+                    data
+                }
+
+                // 해당 템플릿 행의 셀 스펙 가져오기
+                val templateRowForCells = repeatRow.templateRowIndex + templateRowOffset
+                val rowSpec = blueprint.rows.find { it.templateRowIndex == templateRowForCells } ?: continue
+
+                rowSpec.height?.let { h -> rowHeight = maxOf(rowHeight ?: 0, h) }
+
+                val repeatColRange = repeatRow.repeatStartCol..repeatRow.repeatEndCol
+                val formulaRepeatIndex = itemIndex * templateRowCount + templateRowOffset
+                val totalRepeatOffset = expansion.rowExpansion
+
+                for (cellSpec in rowSpec.cells) {
+                    // repeat 열 범위 내의 셀만 처리
+                    // 범위 외 셀은 정적 행 처리에서 담당 (열 그룹 간 충돌 방지)
+                    if (cellSpec.columnIndex !in repeatColRange) continue
+
+                    val cell = row.createCell(cellSpec.columnIndex)
+                    styleMap[cellSpec.styleIndex]?.let { cell.cellStyle = it }
+
+                    processCellContentSxssfWithCalculator(
+                        cell, cellSpec.content, itemData, sheetIndex,
+                        imageLocations, context,
+                        repeatIndex = formulaRepeatIndex,
+                        totalRowOffset = totalRepeatOffset,
+                        repeatItemIndex = itemIndex,
+                        repeatRegionsMap, rowSpec, cellSpec.columnIndex, actualRow, calculator
+                    )
+                }
+            }
+
+            // 정적 행에서 이 actualRow에 해당하는 셀 수집 (repeat 범위 밖)
+            for (rowSpec in blueprint.rows) {
+                if (rowSpec is RowSpec.RepeatRow || rowSpec is RowSpec.RepeatContinuation) continue
+
+                // 이 정적 행의 각 셀에 대해, 열별로 최종 위치 계산
+                for (cellSpec in rowSpec.cells) {
+                    // 이 셀이 어느 repeat 범위에도 속하지 않는지 확인
+                    val belongsToRepeat = repeatRegionsMap.values.any { repeatRow ->
+                        cellSpec.columnIndex in repeatRow.repeatStartCol..repeatRow.repeatEndCol &&
+                            rowSpec.templateRowIndex in repeatRow.templateRowIndex..repeatRow.repeatEndRowIndex
+                    }
+
+                    if (belongsToRepeat) continue
+
+                    // 이 셀의 최종 행 위치 계산 (열 그룹별 오프셋 적용)
+                    val rowInfo = calculator.getRowInfoForColumn(actualRow, cellSpec.columnIndex)
+
+                    if (rowInfo is RowInfo.Static && rowInfo.templateRowIndex == rowSpec.templateRowIndex) {
+                        // 이 정적 셀이 현재 actualRow에 출력되어야 함
+                        // 이미 생성된 셀이 있는지 확인
+                        if (row.getCell(cellSpec.columnIndex) == null) {
+                            rowSpec.height?.let { h -> rowHeight = maxOf(rowHeight ?: 0, h) }
+
+                            val cell = row.createCell(cellSpec.columnIndex)
+                            styleMap[cellSpec.styleIndex]?.let { cell.cellStyle = it }
+
+                            processCellContentSxssfWithCalculator(
+                                cell, cellSpec.content, data, sheetIndex,
+                                imageLocations, context,
+                                repeatIndex = 0,
+                                totalRowOffset = 0,
+                                repeatItemIndex = 0,
+                                repeatRegionsMap, rowSpec, cellSpec.columnIndex, actualRow, calculator
+                            )
+                        }
+                    }
+                }
+            }
+
+            rowHeight?.let { row.height = it }
+        }
+
+        // repeat 처리 완료 후 count 불일치 검증 (count < actual 케이스)
+        for (repeatKey in currentItemsByRepeat.keys) {
+            streamingDataSource.checkRemainingItems(repeatKey)
+        }
+    }
+
+    /**
+     * 스트리밍 방식: 정적 행 출력
+     */
+    private fun writeStaticRowStreaming(
+        sheet: SXSSFSheet,
+        actualRow: Int,
+        rowSpec: RowSpec,
+        data: Map<String, Any>,
+        sheetIndex: Int,
+        imageLocations: MutableList<ImageLocation>,
+        context: RenderingContext,
+        calculator: PositionCalculator,
+        repeatRegionsMap: Map<Int, RowSpec.RepeatRow>
+    ) {
+        val row = sheet.createRow(actualRow)
+        rowSpec.height?.let { row.height = it }
+
+        for (cellSpec in rowSpec.cells) {
+            val (_, actualCol) = calculator.getFinalPosition(rowSpec.templateRowIndex, cellSpec.columnIndex)
+            val cell = row.createCell(actualCol)
+            styleMap[cellSpec.styleIndex]?.let { cell.cellStyle = it }
+
+            processCellContentSxssfWithCalculator(
+                cell, cellSpec.content, data, sheetIndex,
+                imageLocations, context,
+                repeatIndex = 0,
+                totalRowOffset = 0,
+                repeatItemIndex = 0,
+                repeatRegionsMap, rowSpec, cellSpec.columnIndex, actualRow, calculator
+            )
+        }
+    }
+
+    /**
+     * 스트리밍 방식: 반복 행 출력
+     */
+    private fun writeRepeatRowStreaming(
+        sheet: SXSSFSheet,
+        actualRow: Int,
+        rowInfo: RowInfo.Repeat,
+        repeatRow: RowSpec.RepeatRow,
+        blueprint: SheetSpec,
+        data: Map<String, Any>,
+        sheetIndex: Int,
+        imageLocations: MutableList<ImageLocation>,
+        context: RenderingContext,
+        calculator: PositionCalculator,
+        repeatRegionsMap: Map<Int, RowSpec.RepeatRow>,
+        streamingDataSource: StreamingDataSource
+    ) {
+        val repeatKey = StreamingDataSource.RepeatKey(
+            sheetIndex,
+            repeatRow.collectionName,
+            repeatRow.templateRowIndex,
+            repeatRow.repeatStartCol
         )
 
-        // 조건부 서식 적용
-        context.sheetLayoutApplier.applyConditionalFormattings(
-            sheet, blueprint.conditionalFormattings, repeatRegionsMap, data, maxRowOffset
+        // 템플릿 행 내 오프셋이 0일 때만 다음 아이템으로 이동
+        val item = if (rowInfo.templateRowOffset == 0) {
+            streamingDataSource.advanceToNextItem(repeatKey)
+        } else {
+            streamingDataSource.getCurrentItem(repeatKey)
+        }
+
+        val itemData = if (item != null) {
+            data + (repeatRow.itemVariable to item)
+        } else {
+            data
+        }
+
+        // 템플릿 행의 셀 스펙 가져오기
+        val templateRowIdx = repeatRow.templateRowIndex + rowInfo.templateRowOffset
+        val rowSpec = blueprint.rows.find { it.templateRowIndex == templateRowIdx } ?: return
+
+        val row = sheet.createRow(actualRow)
+        rowSpec.height?.let { row.height = it }
+
+        val repeatColRange = repeatRow.repeatStartCol..repeatRow.repeatEndCol
+        val templateRowCount = repeatRow.repeatEndRowIndex - repeatRow.templateRowIndex + 1
+        val formulaRepeatIndex = rowInfo.itemIndex * templateRowCount + rowInfo.templateRowOffset
+
+        val expansion = calculator.getExpansionForRegion(
+            repeatRow.collectionName, repeatRow.templateRowIndex, repeatRow.repeatStartCol
         )
+        val totalRepeatOffset = expansion?.rowExpansion ?: 0
+
+        for (cellSpec in rowSpec.cells) {
+            // 첫 번째 아이템에서만 열 범위 외 셀 포함, 이후는 열 범위 내만
+            if (rowInfo.itemIndex > 0 && cellSpec.columnIndex !in repeatColRange) continue
+
+            val cell = row.createCell(cellSpec.columnIndex)
+            styleMap[cellSpec.styleIndex]?.let { cell.cellStyle = it }
+
+            processCellContentSxssfWithCalculator(
+                cell, cellSpec.content, itemData, sheetIndex,
+                imageLocations, context,
+                repeatIndex = formulaRepeatIndex,
+                totalRowOffset = totalRepeatOffset,
+                repeatItemIndex = rowInfo.itemIndex,
+                repeatRegionsMap, rowSpec, cellSpec.columnIndex, actualRow, calculator
+            )
+        }
+    }
+
+    /**
+     * RIGHT 방향 repeat이 있는 시트에서 사용할 data 맵을 구성합니다.
+     *
+     * 스트리밍 모드에서 RIGHT 방향 repeat은 pendingRows 방식으로 처리되어야 하는데,
+     * 이때 data에 컬렉션이 없으면 repeat이 동작하지 않습니다.
+     * 따라서 해당 시트에서 사용하는 컬렉션을 DataProvider에서 가져와 List로 변환합니다.
+     */
+    private fun buildRightRepeatData(
+        data: Map<String, Any>,
+        repeatRegions: List<RepeatRegionSpec>,
+        context: RenderingContext
+    ): Map<String, Any> {
+        val streamingDataSource = context.streamingDataSource ?: return data
+        val dataProvider = getDataProviderFromStreamingDataSource(streamingDataSource)
+            ?: return data
+
+        val result = data.toMutableMap()
+
+        // 이 시트에서 사용하는 모든 컬렉션 수집
+        val collectionNames = repeatRegions.map { it.collection }.toSet()
+
+        for (collectionName in collectionNames) {
+            // 이미 data에 있으면 스킵
+            if (result.containsKey(collectionName)) continue
+
+            // DataProvider에서 컬렉션 가져와서 List로 변환
+            val iterator = dataProvider.getItems(collectionName)
+            if (iterator != null) {
+                val list = iterator.asSequence().toList()
+                result[collectionName] = list
+            }
+        }
+
+        return result
+    }
+
+    /**
+     * StreamingDataSource에서 DataProvider를 가져옵니다.
+     * 리플렉션 사용 (StreamingDataSource의 내부 구현에 의존)
+     */
+    private fun getDataProviderFromStreamingDataSource(streamingDataSource: StreamingDataSource): ExcelDataProvider? {
+        return try {
+            val field = StreamingDataSource::class.java.getDeclaredField("dataProvider")
+            field.isAccessible = true
+            field.get(streamingDataSource) as? ExcelDataProvider
+        } catch (e: Exception) {
+            null
+        }
     }
 
     private data class RowWriteContext(
@@ -500,7 +854,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
             is CellContent.Formula -> {
                 // SXSSF에서 수식은 수동 조정 필요
                 processFormulaSxssf(
-                    cell, content, data,
+                    cell, content, data, context,
                     repeatIndex, rowOffset, repeatRegions, blueprint, columnIndex, rowIndex, calculator
                 )
             }
@@ -554,7 +908,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
             is CellContent.Formula -> {
                 // PositionCalculator 기반 수식 조정
                 processFormulaSxssfWithCalculator(
-                    cell, content, data,
+                    cell, content, data, context,
                     repeatIndex, repeatRegions, blueprint, columnIndex, actualRowIndex, calculator
                 )
             }
@@ -657,6 +1011,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         cell: Cell,
         content: CellContent.Formula,
         data: Map<String, Any>,
+        context: RenderingContext,
         repeatIndex: Int,
         repeatRegions: Map<Int, RowSpec.RepeatRow>,
         blueprint: RowSpec,
@@ -680,15 +1035,22 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
 
             // SUM 등 집계 함수의 범위 확장
             for (repeatRegion in repeatRegions.values) {
-                val items = data[repeatRegion.collectionName] as? Collection<*> ?: continue
-                val expansion = calculator.getExpansionFor(repeatRegion.collectionName)
+                // 스트리밍 모드: context.collectionSizes에서 크기 가져옴
+                // 비스트리밍 모드: data에서 컬렉션 가져옴
+                val itemCount = context.collectionSizes?.get(repeatRegion.collectionName)
+                    ?: (data[repeatRegion.collectionName] as? Collection<*>)?.size
+                    ?: continue
 
-                if (expansion != null && items.size > 1) {
+                val expansion = calculator.getExpansionForRegion(
+                    repeatRegion.collectionName, repeatRegion.templateRowIndex, repeatRegion.repeatStartCol
+                )
+
+                if (expansion != null && itemCount > 1) {
                     val (expanded, hasDiscontinuous) = FormulaAdjuster.expandToRangeWithCalculator(
-                        adjustedFormula, expansion, items.size
+                        adjustedFormula, expansion, itemCount
                     )
                     if (expanded != adjustedFormula) {
-                        if (hasDiscontinuous && items.size > 255) {
+                        if (hasDiscontinuous && itemCount > 255) {
                             throw FormulaExpansionException(
                                 sheetName = cell.sheet.sheetName,
                                 cellRef = "${toColumnLetter(columnIndex)}${actualRowIndex + 1}",
@@ -717,6 +1079,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         cell: Cell,
         content: CellContent.Formula,
         data: Map<String, Any>,
+        context: RenderingContext,
         repeatIndex: Int,
         rowOffset: Int,
         repeatRegions: Map<Int, RowSpec.RepeatRow>,
@@ -737,15 +1100,22 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
             if (repeatEndRow >= 0 && blueprint.templateRowIndex > repeatEndRow) {
                 // PositionCalculator를 사용하여 수식 확장
                 for (repeatRegion in repeatRegions.values) {
-                    val items = data[repeatRegion.collectionName] as? Collection<*> ?: continue
-                    val expansion = calculator.getExpansionFor(repeatRegion.collectionName)
+                    // 스트리밍 모드: context.collectionSizes에서 크기 가져옴
+                    // 비스트리밍 모드: data에서 컬렉션 가져옴
+                    val itemCount = context.collectionSizes?.get(repeatRegion.collectionName)
+                        ?: (data[repeatRegion.collectionName] as? Collection<*>)?.size
+                        ?: continue
 
-                    if (expansion != null && items.size > 1) {
+                    val expansion = calculator.getExpansionForRegion(
+                        repeatRegion.collectionName, repeatRegion.templateRowIndex, repeatRegion.repeatStartCol
+                    )
+
+                    if (expansion != null && itemCount > 1) {
                         val (expanded, hasDiscontinuous) = FormulaAdjuster.expandToRangeWithCalculator(
-                            adjustedFormula, expansion, items.size
+                            adjustedFormula, expansion, itemCount
                         )
                         if (expanded != adjustedFormula) {
-                            if (hasDiscontinuous && items.size > 255) {
+                            if (hasDiscontinuous && itemCount > 255) {
                                 throw FormulaExpansionException(
                                     sheetName = cell.sheet.sheetName,
                                     cellRef = "${toColumnLetter(columnIndex)}${rowIndex + 1}",
