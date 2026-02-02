@@ -3,11 +3,12 @@
 ## 목차
 1. [지연 로딩 (DataProvider)](#1-지연-로딩-dataprovider)
 2. [비동기 처리](#2-비동기-처리)
-3. [피벗 테이블](#3-피벗-테이블)
-4. [수식에서 변수 사용](#4-수식에서-변수-사용)
-5. [하이퍼링크](#5-하이퍼링크)
-6. [다중 시트](#6-다중-시트)
-7. [대용량 데이터 처리](#7-대용량-데이터-처리)
+3. [수식에서 변수 사용](#3-수식에서-변수-사용)
+4. [하이퍼링크](#4-하이퍼링크)
+5. [다중 시트](#5-다중-시트)
+6. [대용량 데이터 처리](#6-대용량-데이터-처리)
+7. [다중 반복 영역](#7-다중-반복-영역)
+8. [오른쪽 방향 반복](#8-오른쪽-방향-반복)
 
 ---
 
@@ -60,48 +61,17 @@ fun main() {
 }
 ```
 
-### Java 코드
+### count 제공으로 성능 최적화
 
-```java
-import com.hunet.common.tbeg.ExcelGenerator;
-import com.hunet.common.tbeg.SimpleDataProvider;
-import java.io.*;
-import java.time.LocalDate;
-import java.util.*;
+```kotlin
+val employeeCount = 10000  // DB에서 COUNT 쿼리로 조회
 
-public class LazyLoading {
+val provider = simpleDataProvider {
+    value("title", "직원 현황 보고서")
 
-    public record Employee(String name, String position, int salary) {}
-
-    public static Iterator<Employee> fetchEmployeesFromDatabase() {
-        String[] positions = {"사원", "대리", "과장", "차장", "부장"};
-        List<Employee> employees = new ArrayList<>();
-        for (int i = 0; i < 10000; i++) {
-            employees.add(new Employee(
-                "직원" + (i + 1),
-                positions[i % positions.length],
-                3000 + (i % 5) * 1000
-            ));
-        }
-        return employees.iterator();
-    }
-
-    public static void main(String[] args) throws Exception {
-        SimpleDataProvider provider = SimpleDataProvider.builder()
-            .value("title", "직원 현황 보고서")
-            .value("date", LocalDate.now().toString())
-            // 지연 로딩
-            .itemsFromSupplier("employees", LazyLoading::fetchEmployeesFromDatabase)
-            .build();
-
-        try (ExcelGenerator generator = new ExcelGenerator();
-             InputStream template = new FileInputStream("template.xlsx")) {
-
-            byte[] bytes = generator.generate(template, provider);
-            try (FileOutputStream output = new FileOutputStream("output.xlsx")) {
-                output.write(bytes);
-            }
-        }
+    // count와 함께 지연 로딩 제공 (최적 성능)
+    items("employees", employeeCount) {
+        fetchEmployeesFromDatabase()
     }
 }
 ```
@@ -257,85 +227,20 @@ fun main() {
 
 ---
 
-## 3. 피벗 테이블
-
-템플릿에 피벗 테이블이 있으면 데이터 확장 후 자동으로 재생성됩니다.
-
-### 템플릿 구성
-
-1. **데이터 시트**: 피벗 테이블의 소스 데이터가 될 범위
-2. **피벗 테이블 시트**: 피벗 테이블이 배치된 시트
-
-### 템플릿 (pivot_template.xlsx)
-
-**Sheet1 (데이터)**:
-
-|   | A                                | B               | C             |
-|---|----------------------------------|-----------------|---------------|
-| 1 | ${repeat(employees, A3:C3, emp)} |                 |               |
-| 2 | 이름                               | 직급              | 급여            |
-| 3 | ${emp.name}                      | ${emp.position} | ${emp.salary} |
-
-**Sheet2 (피벗)**:
-- 피벗 테이블: 소스 범위 = Sheet1!A:C
-- 행: 직급
-- 값: 급여 합계
-
-### Kotlin 코드
-
-```kotlin
-import com.hunet.common.tbeg.ExcelGenerator
-import java.io.File
-
-data class Employee(val name: String, val position: String, val salary: Int)
-
-fun main() {
-    val data = mapOf(
-        "employees" to listOf(
-            Employee("황용호", "부장", 8000),
-            Employee("홍용호", "부장", 8500),
-            Employee("한용호", "과장", 6500),
-            Employee("김용호", "과장", 6800),
-            Employee("이용호", "대리", 4500),
-            Employee("박용호", "대리", 4200),
-            Employee("최용호", "사원", 3500)
-        )
-    )
-
-    ExcelGenerator().use { generator ->
-        val template = File("pivot_template.xlsx").inputStream()
-        val bytes = generator.generate(template, data)
-        File("pivot_output.xlsx").writeBytes(bytes)
-    }
-}
-```
-
-### 결과 피벗 테이블
-
-| 직급 | 급여 합계 |
-|------|----------|
-| 부장 | 16,500 |
-| 과장 | 13,300 |
-| 대리 | 8,700 |
-| 사원 | 3,500 |
-| **총합계** | **42,000** |
-
----
-
-## 4. 수식에서 변수 사용
+## 3. 수식에서 변수 사용
 
 ### 템플릿 (formula_template.xlsx)
 
-|   | A      | B                           | C |
-|---|--------|-----------------------------|---|
-| 1 | 시작 행   | ${startRow}                 |   |
-| 2 | 종료 행   | ${endRow}                   |   |
-| 3 |        |                             |   |
-| 4 | 데이터1   | 100                         |   |
-| 5 | 데이터2   | 200                         |   |
-| 6 | 데이터3   | 300                         |   |
-| 7 |        |                             |   |
-| 8 | 합계     | =SUM(B${startRow}:B${endRow}) |   |
+|   | A      | B                             |
+|---|--------|-------------------------------|
+| 1 | 시작 행   | ${startRow}                   |
+| 2 | 종료 행   | ${endRow}                     |
+| 3 |        |                               |
+| 4 | 데이터1   | 100                           |
+| 5 | 데이터2   | 200                           |
+| 6 | 데이터3   | 300                           |
+| 7 |        |                               |
+| 8 | 합계     | =SUM(B${startRow}:B${endRow}) |
 
 ### Kotlin 코드
 
@@ -361,24 +266,18 @@ fun main() {
 
 |   | A      | B                  |
 |---|--------|--------------------|
-| 1 | 시작 행   | 4                  |
-| 2 | 종료 행   | 6                  |
-| 3 |        |                    |
-| 4 | 데이터1   | 100                |
-| 5 | 데이터2   | 200                |
-| 6 | 데이터3   | 300                |
-| 7 |        |                    |
-| 8 | 합계     | =SUM(B4:B6) -> 600  |
+| 8 | 합계     | =SUM(B4:B6) -> 600 |
 
 ---
 
-## 5. 하이퍼링크
+## 4. 하이퍼링크
 
 ### 템플릿 (link_template.xlsx)
 
-셀 A1에 하이퍼링크를 설정합니다:
-- 텍스트: `${linkText}`
-- 하이퍼링크 주소: `${url}`
+셀 A1에 HYPERLINK 수식 설정:
+```
+=HYPERLINK("${url}", "${text}")
+```
 
 ### Kotlin 코드
 
@@ -388,7 +287,7 @@ import java.io.File
 
 fun main() {
     val data = mapOf(
-        "linkText" to "휴넷 홈페이지 바로가기",
+        "text" to "휴넷 홈페이지 바로가기",
         "url" to "https://www.hunet.co.kr"
     )
 
@@ -402,7 +301,7 @@ fun main() {
 
 ---
 
-## 6. 다중 시트
+## 5. 다중 시트
 
 ### 템플릿 (multi_sheet_template.xlsx)
 
@@ -411,15 +310,14 @@ fun main() {
 |   | A       | B              |
 |---|---------|----------------|
 | 1 | 제목      | ${title}       |
-| 2 | 총 직원 수  | ${totalCount}  |
+| 2 | 총 직원 수  | ${size(employees)} |
 
 **Employees 시트**:
 
-|   | A                                | B               | C             |
-|---|----------------------------------|-----------------|---------------|
-| 1 | ${repeat(employees, A3:C3, emp)} |                 |               |
-| 2 | 이름                               | 직급              | 급여            |
-| 3 | ${emp.name}                      | ${emp.position} | ${emp.salary} |
+|   | A                                  | B               | C             |
+|---|------------------------------------|-----------------|---------------|
+| 1 | ${repeat(employees, A2:C2, emp)}   |                 |               |
+| 2 | ${emp.name}                        | ${emp.position} | ${emp.salary} |
 
 ### Kotlin 코드
 
@@ -438,7 +336,6 @@ fun main() {
 
     val data = mapOf(
         "title" to "직원 현황",
-        "totalCount" to employees.size,
         "employees" to employees
     )
 
@@ -452,7 +349,7 @@ fun main() {
 
 ---
 
-## 7. 대용량 데이터 처리
+## 6. 대용량 데이터 처리
 
 ### 권장 설정
 
@@ -467,16 +364,21 @@ import java.nio.file.Path
 fun main() {
     // 대용량 데이터용 설정
     val config = ExcelGeneratorConfig(
-        streamingMode = StreamingMode.ENABLED,  // 스트리밍 모드 강제 활성화
+        streamingMode = StreamingMode.ENABLED,  // 스트리밍 모드 활성화
         progressReportInterval = 1000           // 1000행마다 진행률 보고
     )
+
+    // 데이터 개수 (DB COUNT 쿼리로 조회)
+    val dataCount = 1_000_000
 
     // 지연 로딩으로 데이터 제공
     val provider = simpleDataProvider {
         value("title", "대용량 보고서")
-        items("data") {
+
+        // count와 함께 지연 로딩 제공 (최적 성능)
+        items("data", dataCount) {
             // 100만 건 데이터 시뮬레이션
-            (1..1_000_000).asSequence().map {
+            (1..dataCount).asSequence().map {
                 mapOf("id" to it, "value" to it * 10)
             }.iterator()
         }
@@ -497,15 +399,103 @@ fun main() {
 }
 ```
 
-### 대용량 처리 팁
+---
 
-1. **스트리밍 모드 사용**: `StreamingMode.ENABLED`로 메모리 사용량 최소화
+## 7. 다중 반복 영역
 
-2. **지연 로딩 활용**: `items()` 블록에서 Iterator를 반환하여 필요할 때만 데이터 로드
+한 시트에 여러 개의 반복 영역을 사용할 수 있습니다.
 
-3. **비동기 처리**: API 서버에서는 `submit()` 또는 `submitToFile()`로 백그라운드 처리
+### 템플릿 (multi_repeat.xlsx)
 
-4. **진행률 모니터링**: `progressReportInterval`을 설정하여 진행률 확인
+|   | A                                     | B             | C | D                                      | E             |
+|---|---------------------------------------|---------------|---|----------------------------------------|---------------|
+| 1 | ${repeat(employees, A2:B2, emp)}      |               |   | ${repeat(departments, D2:E2, dept)}    |               |
+| 2 | ${emp.name}                           | ${emp.salary} |   | ${dept.name}                           | ${dept.budget}|
+
+### Kotlin 코드
+
+```kotlin
+import com.hunet.common.tbeg.ExcelGenerator
+import java.io.File
+
+data class Employee(val name: String, val salary: Int)
+data class Department(val name: String, val budget: Int)
+
+fun main() {
+    val data = mapOf(
+        "employees" to listOf(
+            Employee("황용호", 8000),
+            Employee("한용호", 6500),
+            Employee("홍용호", 4500)
+        ),
+        "departments" to listOf(
+            Department("개발팀", 50000),
+            Department("기획팀", 30000)
+        )
+    )
+
+    ExcelGenerator().use { generator ->
+        val template = File("multi_repeat.xlsx").inputStream()
+        val bytes = generator.generate(template, data)
+        File("output.xlsx").writeBytes(bytes)
+    }
+}
+```
+
+### 결과
+
+|   | A    | B     | C | D     | E      |
+|---|------|-------|---|-------|--------|
+| 1 |      |       |   |       |        |
+| 2 | 황용호 | 8,000 |   | 개발팀  | 50,000 |
+| 3 | 한용호 | 6,500 |   | 기획팀  | 30,000 |
+| 4 | 홍용호 | 4,500 |   |       |        |
+
+> **주의**: 반복 영역은 2D 공간에서 겹치면 안 됩니다.
+
+---
+
+## 8. 오른쪽 방향 반복
+
+### 템플릿 (right_repeat.xlsx)
+
+|   | A                                       | B             |
+|---|-----------------------------------------|---------------|
+| 1 | ${repeat(months, B1:B2, m, RIGHT)}      | ${m.month}월   |
+| 2 |                                         | ${m.sales}    |
+
+### Kotlin 코드
+
+```kotlin
+import com.hunet.common.tbeg.ExcelGenerator
+import java.io.File
+
+data class MonthData(val month: Int, val sales: Int)
+
+fun main() {
+    val data = mapOf(
+        "months" to listOf(
+            MonthData(1, 1000),
+            MonthData(2, 1500),
+            MonthData(3, 2000),
+            MonthData(4, 1800)
+        )
+    )
+
+    ExcelGenerator().use { generator ->
+        val template = File("right_repeat.xlsx").inputStream()
+        val bytes = generator.generate(template, data)
+        File("output.xlsx").writeBytes(bytes)
+    }
+}
+```
+
+### 결과
+
+|   | A  | B      | C      | D      | E      |
+|---|----|--------|--------|--------|--------|
+| 1 |    | 1월     | 2월     | 3월     | 4월     |
+| 2 |    | 1,000  | 1,500  | 2,000  | 1,800  |
 
 ---
 

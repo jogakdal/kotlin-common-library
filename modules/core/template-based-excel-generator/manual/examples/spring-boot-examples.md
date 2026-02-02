@@ -13,14 +13,22 @@
 
 ## 1. 설정
 
-### 의존성 추가
+### 리포지토리 및 의존성 추가
 
 ```kotlin
 // build.gradle.kts
+
+repositories {
+    mavenCentral()
+    maven { url = uri("https://nexus.hunet.tech/repository/maven-snapshot/") }
+}
+
 dependencies {
     implementation("com.hunet.common:tbeg:1.0.0-SNAPSHOT")
 }
 ```
+
+> 상세한 설정 방법(Groovy DSL, Maven)은 [사용자 가이드](../user-guide.md#11-의존성-추가)를 참조하세요.
 
 ### application.yml
 
@@ -86,13 +94,17 @@ class ReportService(
      */
     fun generateEmployeeReport(): Path {
         val template = resourceLoader.getResource("classpath:templates/employees.xlsx")
+        val employeeCount = employeeRepository.count().toInt()
 
         val provider = simpleDataProvider {
             value("title", "직원 현황 보고서")
             value("date", LocalDate.now().toString())
-            items("employees") {
+
+            // count와 함께 지연 로딩 제공 (최적 성능)
+            items("employees", employeeCount) {
                 employeeRepository.findAll().iterator()
             }
+
             metadata {
                 title = "직원 현황 보고서"
                 author = "HR 시스템"
@@ -154,11 +166,12 @@ public class ReportService {
 
     public Path generateEmployeeReport() throws IOException {
         var template = resourceLoader.getResource("classpath:templates/employees.xlsx");
+        int employeeCount = (int) employeeRepository.count();
 
         var provider = SimpleDataProvider.builder()
             .value("title", "직원 현황 보고서")
             .value("date", LocalDate.now().toString())
-            .itemsFromSupplier("employees",
+            .itemsFromSupplier("employees", employeeCount,
                 () -> employeeRepository.findAll().iterator())
             .metadata(meta -> meta
                 .title("직원 현황 보고서")
@@ -186,7 +199,6 @@ public class ReportService {
 package com.example.report
 
 import com.hunet.common.tbeg.ExcelGenerator
-import com.hunet.common.tbeg.SimpleDataProvider
 import org.springframework.core.io.ByteArrayResource
 import org.springframework.core.io.Resource
 import org.springframework.core.io.ResourceLoader
@@ -410,7 +422,7 @@ class AsyncReportController(
                     eventPublisher.publishEvent(
                         ReportReadyEvent(
                             jobId = jobId,
-                            filePath = result.filePath,
+                            filePath = result.filePath!!,
                             rowsProcessed = result.rowsProcessed
                         )
                     )
@@ -523,12 +535,13 @@ class LargeReportService(
     @Transactional(readOnly = true)
     fun generateLargeEmployeeReport(): Path {
         val template = resourceLoader.getResource("classpath:templates/employees.xlsx")
+        val employeeCount = employeeRepository.count().toInt()
 
         val provider = simpleDataProvider {
             value("title", "전체 직원 현황")
 
-            // JPA Stream을 통한 지연 로딩
-            items("employees") {
+            // JPA Stream을 통한 지연 로딩 + count 제공
+            items("employees", employeeCount) {
                 employeeRepository.streamAll().iterator()
             }
         }
@@ -636,7 +649,6 @@ package com.example.report
 import com.hunet.common.tbeg.ExcelGenerator
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import org.junit.jupiter.api.Test
 import org.springframework.core.io.ClassPathResource
@@ -691,8 +703,10 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.post
 
 @SpringBootTest
 @AutoConfigureMockMvc

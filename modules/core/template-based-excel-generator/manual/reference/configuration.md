@@ -25,8 +25,6 @@ com.hunet.common.tbeg.ExcelGeneratorConfig
 | `fileConflictPolicy`      | `FileConflictPolicy`  | `SEQUENCE`          | 파일명 충돌 시 처리 정책         |
 | `progressReportInterval`  | `Int`                 | `100`               | 진행률 콜백 호출 간격 (행 수)     |
 | `preserveTemplateLayout`  | `Boolean`             | `true`              | 템플릿 레이아웃(열 폭, 행 높이) 보존 |
-| `pivotIntegerFormatIndex` | `Short`               | `37`                | 피벗 테이블 정수 필드 포맷 인덱스    |
-| `pivotDecimalFormatIndex` | `Short`               | `39`                | 피벗 테이블 소수점 필드 포맷 인덱스   |
 | `missingDataBehavior`     | `MissingDataBehavior` | `WARN`              | 데이터 누락 시 동작            |
 
 ---
@@ -35,7 +33,7 @@ com.hunet.common.tbeg.ExcelGeneratorConfig
 
 #### streamingMode
 
-스트리밍 모드를 설정합니다. TBEG는 스트리밍 모드에서도 조건부 서식, 차트, 피벗 테이블 등 대부분의 Excel 기능을 지원합니다.
+스트리밍 모드를 설정합니다.
 
 | 값          | 설명                               |
 |------------|----------------------------------|
@@ -97,24 +95,6 @@ ExcelGeneratorConfig(progressReportInterval = 500)  // 500행마다 콜백
 
 ```kotlin
 ExcelGeneratorConfig(preserveTemplateLayout = true)
-```
-
-#### pivotIntegerFormatIndex / pivotDecimalFormatIndex
-
-피벗 테이블 값 필드에 적용할 Excel 내장 포맷 인덱스입니다.
-
-| 인덱스 | 형식                                        |
-|-----|-------------------------------------------|
-| 37  | `#,##0 ;(#,##0)` - 정수, 천 단위 구분 (기본값)      |
-| 38  | `#,##0 ;[Red](#,##0)` - 정수, 음수 빨간색        |
-| 39  | `#,##0.00 ;(#,##0.00)` - 소수점 2자리 (기본값)    |
-| 40  | `#,##0.00 ;[Red](#,##0.00)` - 소수점, 음수 빨간색 |
-
-```kotlin
-ExcelGeneratorConfig(
-    pivotIntegerFormatIndex = 38,  // 음수 빨간색
-    pivotDecimalFormatIndex = 40   // 음수 빨간색
-)
 ```
 
 #### missingDataBehavior
@@ -187,12 +167,6 @@ hunet:
     # 템플릿 레이아웃 보존
     preserve-template-layout: true
 
-    # 피벗 테이블 정수 필드 포맷 인덱스
-    pivot-integer-format-index: 37
-
-    # 피벗 테이블 소수점 필드 포맷 인덱스
-    pivot-decimal-format-index: 39
-
     # 데이터 누락 시 동작: warn, throw
     missing-data-behavior: warn
 ```
@@ -207,8 +181,6 @@ hunet:
 | `file-conflict-policy`       | `fileConflictPolicy`      |
 | `progress-report-interval`   | `progressReportInterval`  |
 | `preserve-template-layout`   | `preserveTemplateLayout`  |
-| `pivot-integer-format-index` | `pivotIntegerFormatIndex` |
-| `pivot-decimal-format-index` | `pivotDecimalFormatIndex` |
 | `missing-data-behavior`      | `missingDataBehavior`     |
 
 ---

@@ -82,13 +82,10 @@ public class SimpleReport {
 
 ### 템플릿 (employee_list.xlsx)
 
-|   | A           | B                                | C             |
-|---|-------------|----------------------------------|---------------|
-| 1 | ${title}    | ${repeat(employees, A3:C3, emp)} |               |
-| 2 | 이름          | 직급                               | 급여            |
-| 3 | ${emp.name} | ${emp.position}                  | ${emp.salary} |
-
-> `${repeat(...)}` 마커는 워크북 내 어디에 있어도 됩니다. 범위 파라미터로 지정된 영역이 반복되며, 마커 셀의 내용은 생성 시 자동으로 삭제됩니다.
+|   | A                                  | B               | C             |
+|---|------------------------------------|-----------------|---------------|
+| 1 | ${repeat(employees, A2:C2, emp)}   |                 |               |
+| 2 | ${emp.name}                        | ${emp.position} | ${emp.salary} |
 
 ### Kotlin 코드
 
@@ -100,7 +97,6 @@ data class Employee(val name: String, val position: String, val salary: Int)
 
 fun main() {
     val data = mapOf(
-        "title" to "직원 명단",
         "employees" to listOf(
             Employee("황용호", "부장", 8000),
             Employee("한용호", "과장", 6500),
@@ -130,7 +126,6 @@ public class EmployeeList {
 
     public static void main(String[] args) throws Exception {
         Map<String, Object> data = new HashMap<>();
-        data.put("title", "직원 명단");
         data.put("employees", List.of(
             new Employee("황용호", "부장", 8000),
             new Employee("한용호", "과장", 6500),
@@ -152,14 +147,13 @@ public class EmployeeList {
 
 ### 결과
 
-|   | A        | B  | C     |
-|---|----------|----|-------|
-| 1 | 직원 명단   |    |       |
-| 2 | 이름       | 직급 | 급여    |
-| 3 | 황용호     | 부장 | 8,000 |
-| 4 | 한용호     | 과장 | 6,500 |
-| 5 | 홍용호     | 대리 | 4,500 |
-| 6 | 김용호     | 사원 | 3,500 |
+|   | A    | B  | C     |
+|---|------|----|-------|
+| 1 |      |    |       |
+| 2 | 황용호 | 부장 | 8,000 |
+| 3 | 한용호 | 과장 | 6,500 |
+| 4 | 홍용호 | 대리 | 4,500 |
+| 5 | 김용호 | 사원 | 3,500 |
 
 ---
 
@@ -169,10 +163,8 @@ public class EmployeeList {
 
 |   | A             | B                |
 |---|---------------|------------------|
-| 1 | ${image.logo} | 회사명: ${company} |
+| 1 | ${image(logo)}| 회사명: ${company} |
 | 2 | (병합된 셀)       | 주소: ${address}   |
-
-> 이미지를 표시할 셀은 원하는 크기로 병합해두면 해당 영역에 맞게 이미지가 삽입됩니다.
 
 ### Kotlin 코드
 
@@ -456,6 +448,6 @@ public class WithMetadata {
 
 ## 다음 단계
 
-- [고급 예제](./advanced-examples.md) - 피벗 테이블, 비동기 처리 등
+- [고급 예제](./advanced-examples.md) - 대용량 처리, 비동기 처리 등
 - [Spring Boot 예제](./spring-boot-examples.md) - Spring Boot 환경 예제
 - [템플릿 문법 레퍼런스](../reference/template-syntax.md) - 상세 문법

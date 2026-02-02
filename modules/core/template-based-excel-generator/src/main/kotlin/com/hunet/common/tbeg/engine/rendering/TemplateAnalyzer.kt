@@ -484,13 +484,16 @@ class TemplateAnalyzer {
     /**
      * 이미지 크기 명세 파싱
      *
-     * @param sizeStr "width:height" 형식 (예: "100:200", "0:-1", "-1:-1")
+     * @param sizeStr "fit", "original", 또는 "width:height" 형식 (예: "100:200", "0:-1", "-1:-1")
      */
-    private fun parseSizeSpec(sizeStr: String?) =
-        sizeStr?.split(":")
-            ?.takeIf { it.size == 2 }
+    private fun parseSizeSpec(sizeStr: String?) = when (sizeStr?.lowercase()) {
+        null, "", "fit" -> ImageSizeSpec.FIT_TO_CELL
+        "original" -> ImageSizeSpec.ORIGINAL
+        else -> sizeStr.split(":")
+            .takeIf { it.size == 2 }
             ?.let { ImageSizeSpec(it[0].toIntOrNull() ?: 0, it[1].toIntOrNull() ?: 0) }
             ?: ImageSizeSpec.FIT_TO_CELL
+    }
 
     private fun Sheet.maxColumnIndex(): Int =
         maxOfOrNull { row -> row.lastCellNum.toInt() } ?: 0
