@@ -45,7 +45,7 @@ userRepository.upsert(user.copy(nickname = null)) // nickname 제거(초기화)
 선택 기준: 데이터 안전(IGNORE) vs 의도적 초기화(OVERWRITE).
 
 ## 3. 관계 3단계 삭제(RECURSIVE vs BULK)
-- RECURSIVE: 부모 → 자식(→ 손자)까지 삭제 마크를 일관되게 적용.
+- RECURSIVE: 부모 -> 자식(-> 손자)까지 삭제 마크를 일관되게 적용.
 ```kotlin
 orderRepository.softDeleteById(orderId) // 자식/손자도 함께 마킹(권장: 관계에 DeleteMark 부여)
 ```

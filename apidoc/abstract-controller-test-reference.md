@@ -66,7 +66,7 @@ open fun dtoToParam(value: Any): String = objectMapper.writeValueAsString(value)
 open fun dtoToQueryParams(obj: Any): MultiValueMap<String, String>
 ```
 리플렉션으로 public Kotlin 프로퍼티 순회:
-- Iterable/Array → 동일 key 반복 추가
+- Iterable/Array -> 동일 key 반복 추가
 - null 무시
 - 단일 값 `toString()` 변환
 
@@ -102,7 +102,7 @@ class FindApiTest : AbstractControllerTest() {
 
 ## 10. 베스트 프랙티스
 1. 테스트간 격리: 적절한 데이터 정리 전략 사용
-2. 실패 재현 쉬운 시딩: SQL 파일 commit → 리뷰 diff 용이
+2. 실패 재현 쉬운 시딩: SQL 파일 commit -> 리뷰 diff 용이
 3. 공통 header/인증: 상속한 베이스 재정의 or RequestPostProcessor 추상화
 4. REST Docs: 모든 성공 경로 최소 1 스니펫 생성 후 CI 에서 스니펫 검증
 
@@ -112,4 +112,4 @@ class FindApiTest : AbstractControllerTest() {
 - Multi-module test slicing (부분 컨텍스트 로딩)
 
 ## 12. 요약
-`AbstractControllerTest` 는 테스트 부트스트랩/헬퍼를 표준화해 반복 코드를 제거하고, "준비된 데이터 → 호출 → 검증" 흐름을 단순화합니다.
+`AbstractControllerTest` 는 테스트 부트스트랩/헬퍼를 표준화해 반복 코드를 제거하고, "준비된 데이터 -> 호출 -> 검증" 흐름을 단순화합니다.

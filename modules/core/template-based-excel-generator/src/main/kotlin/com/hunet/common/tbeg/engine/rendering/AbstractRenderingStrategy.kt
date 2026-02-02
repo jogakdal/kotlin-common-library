@@ -16,9 +16,6 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook
  * - 공통 유틸리티: 셀 값 설정, 위치 조정 등
  */
 internal abstract class AbstractRenderingStrategy : RenderingStrategy {
-
-    // ========== 템플릿 메서드 (알고리즘 골격) ==========
-
     /**
      * 템플릿을 렌더링합니다. (템플릿 메서드)
      *
@@ -203,11 +200,17 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
         val originalText = content.originalText
 
         // ${size(collection)} 패턴 치환
-        val dollarSizePattern = Regex("""\$\{size\s*\(\s*["'`]?${Regex.escape(content.collectionName)}["'`]?\s*\)}""", RegexOption.IGNORE_CASE)
+        val dollarSizePattern = Regex(
+            """\$\{size\s*\(\s*["'`]?${Regex.escape(content.collectionName)}["'`]?\s*\)}""",
+            RegexOption.IGNORE_CASE
+        )
         var result = dollarSizePattern.replace(originalText, size.toString())
 
         // =TBEG_SIZE(collection) 패턴 치환 (수식 또는 문자열로 저장된 경우)
-        val tbegSizePattern = Regex("""=?TBEG_SIZE\s*\(\s*["'`]?${Regex.escape(content.collectionName)}["'`]?\s*\)""", RegexOption.IGNORE_CASE)
+        val tbegSizePattern = Regex(
+            """=?TBEG_SIZE\s*\(\s*["'`]?${Regex.escape(content.collectionName)}["'`]?\s*\)""",
+            RegexOption.IGNORE_CASE
+        )
         result = tbegSizePattern.replace(result, size.toString())
 
         // 결과가 순수 숫자인 경우 숫자로 저장 (NumberFormatProcessor 적용을 위해)
@@ -332,18 +335,18 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
      */
     protected fun adjustPosition(position: String, rowOffset: Int, colOffset: Int): String {
         return if (position.contains(":")) {
-            // 범위: B5:D10 → 각 셀에 오프셋 적용
+            // 범위: B5:D10 -> 각 셀에 오프셋 적용
             val (start, end) = position.split(":")
             "${adjustCellRef(start, rowOffset, colOffset)}:${adjustCellRef(end, rowOffset, colOffset)}"
         } else {
-            // 단일 셀: B5 → 오프셋 적용
+            // 단일 셀: B5 -> 오프셋 적용
             adjustCellRef(position, rowOffset, colOffset)
         }
     }
 
     /**
      * 셀 참조에 오프셋을 적용합니다.
-     * 예: B5 + (2, 1) → C7
+     * 예: B5 + (2, 1) -> C7
      */
     protected fun adjustCellRef(ref: String, rowOffset: Int, colOffset: Int): String {
         val (row, col) = parseCellRef(ref)
@@ -354,7 +357,7 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
 
     /**
      * 열 인덱스를 열 이름으로 변환합니다.
-     * 예: 0 → A, 25 → Z, 26 → AA
+     * 예: 0 -> A, 25 -> Z, 26 -> AA
      */
     protected fun toColumnName(colIndex: Int): String {
         val sb = StringBuilder()

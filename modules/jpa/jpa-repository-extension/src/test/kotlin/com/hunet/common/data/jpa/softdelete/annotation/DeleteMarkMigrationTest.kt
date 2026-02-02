@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test
 import kotlin.reflect.full.memberProperties
 
 /**
- * DeleteMark annotation에서 findAnnotation → getAnnotation 마이그레이션 테스트
+ * DeleteMark annotation에서 findAnnotation -> getAnnotation 마이그레이션 테스트
  */
 class DeleteMarkMigrationTest {
 

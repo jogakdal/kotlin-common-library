@@ -304,7 +304,7 @@ ${repeat(employees, "데이터시트"!A3:C3, emp)}
 #### 설정 방법
 
 1. Excel에서 반복할 영역 선택
-2. 수식 탭 → 이름 정의 → 이름 입력 (예: `DataRange`)
+2. 수식 탭 -> 이름 정의 -> 이름 입력 (예: `DataRange`)
 3. 템플릿에서 Named Range 사용
 
 #### 사용 예시

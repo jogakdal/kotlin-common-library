@@ -1,12 +1,9 @@
 package com.hunet.common.tbeg.engine.rendering
 
-import com.hunet.common.tbeg.engine.core.parseCellRef
-import com.hunet.common.tbeg.engine.core.setInitialView
-import com.hunet.common.tbeg.engine.core.toByteArray
+import com.hunet.common.tbeg.engine.core.*
 import org.apache.poi.ss.formula.FormulaParseException
 import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.CellType
-import org.apache.poi.ss.usermodel.Row
 import org.apache.poi.ss.usermodel.Sheet
 import org.apache.poi.ss.usermodel.Workbook
 import org.apache.poi.xssf.usermodel.XSSFSheet
@@ -57,10 +54,8 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
     override fun <T> withWorkbook(
         templateBytes: ByteArray,
         block: (workbook: Workbook, xssfWorkbook: XSSFWorkbook) -> T
-    ): T {
-        return XSSFWorkbook(ByteArrayInputStream(templateBytes)).use { workbook ->
-            block(workbook, workbook)
-        }
+    ) = XSSFWorkbook(ByteArrayInputStream(templateBytes)).use { workbook ->
+        block(workbook, workbook)
     }
 
     override fun processSheet(
@@ -70,10 +65,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         data: Map<String, Any>,
         imageLocations: MutableList<ImageLocation>,
         context: RenderingContext
-    ) {
-        val xssfSheet = sheet as XSSFSheet
-        processSheetXssf(xssfSheet, blueprint, data, imageLocations, context)
-    }
+    ) = processSheetXssf(sheet as XSSFSheet, blueprint, data, imageLocations, context)
 
     override fun afterProcessSheets(workbook: Workbook, context: RenderingContext) {
         val xssfWorkbook = workbook as XSSFWorkbook
@@ -88,9 +80,8 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         xssfWorkbook.setInitialView()
     }
 
-    override fun finalizeWorkbook(workbook: Workbook): ByteArray {
-        return (workbook as XSSFWorkbook).toByteArray()
-    }
+    override fun finalizeWorkbook(workbook: Workbook) =
+        (workbook as XSSFWorkbook).toByteArray()
 
     // ========== XSSF 특화 로직 ==========
 
@@ -117,7 +108,6 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         // collection 크기 추출 및 PositionCalculator 생성
         val collectionSizes = PositionCalculator.extractCollectionSizes(data, repeatRegions)
         val calculator = PositionCalculator(repeatRegions, collectionSizes)
-        val expansions = calculator.calculate()
 
         // 기존 방식과의 호환성을 위해 열 그룹도 계산
         val columnGroups = ColumnGroup.fromRepeatRegions(repeatRegions)
@@ -143,7 +133,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         for (repeatRow in repeatRows.reversed()) {
             val rawItems = data[repeatRow.collectionName] as? Collection<*> ?: continue
             // 빈 컬렉션이면 최소 1개 반복 단위(빈 행/열)를 위해 null 아이템 추가
-            val items: Collection<Any?> = if (rawItems.isEmpty()) listOf(null) else rawItems
+            val items: Collection<Any?> = rawItems.ifEmpty { listOf(null) }
             val expansion = calculator.getExpansionForRegion(
                 repeatRow.collectionName, repeatRow.templateRowIndex, repeatRow.repeatStartCol
             ) ?: continue
@@ -185,7 +175,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
     }
 
     /**
-     * 행을 아래 방향으로 확장합니다. (PositionCalculator 사용)
+     * 행을 아래 방향으로 확장한다. (PositionCalculator 사용)
      */
     private fun expandRowsDownWithCalculator(
         sheet: XSSFSheet,
@@ -228,6 +218,8 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
                         for (colIdx in colStart..minOf(colEnd, templateRow.lastCellNum.toInt())) {
                             val templateCell = templateRow.getCell(colIdx) ?: continue
                             if (colIdx !in repeatRow.repeatStartCol..repeatRow.repeatEndCol) continue
+                            // 템플릿 셀이 BLANK면 새 셀을 생성하지 않음 (SXSSF와 동일하게)
+                            if (templateCell.cellType == CellType.BLANK) continue
 
                             val newCell = newRow.createCell(colIdx)
                             newCell.cellStyle = templateCell.cellStyle
@@ -267,8 +259,14 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
             // 지정된 열 범위의 셀만 이동
             for (colIdx in startCol..minOf(endCol, sourceRow.lastCellNum.toInt())) {
                 val sourceCell = sourceRow.getCell(colIdx) ?: continue
-                val targetCell = targetRow.createCell(colIdx)
 
+                // BLANK 셀은 타겟에 생성하지 않고 원본만 제거
+                if (sourceCell.cellType == CellType.BLANK) {
+                    sourceRow.removeCell(sourceCell)
+                    continue
+                }
+
+                val targetCell = targetRow.createCell(colIdx)
                 targetCell.cellStyle = sourceCell.cellStyle
                 copyCellValue(sourceCell, targetCell)
 
@@ -281,29 +279,23 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
     /**
      * 셀 값 복사 (타입에 따라)
      */
-    private fun copyCellValue(source: Cell, target: Cell) {
-        when (source.cellType) {
-            CellType.STRING -> target.setCellValue(source.stringCellValue)
-            CellType.NUMERIC -> target.setCellValue(source.numericCellValue)
-            CellType.BOOLEAN -> target.setCellValue(source.booleanCellValue)
-            CellType.FORMULA -> {
-                val formula = source.cellFormula
-                try {
-                    target.cellFormula = formula
-                } catch (e: FormulaParseException) {
-                    // TBEG 마커 수식(예: TBEG_SIZE(collection))은 Named Range 검증 실패 가능
-                    // 문자열로 임시 저장 (나중에 템플릿 처리 시 실제 값으로 치환됨)
-                    target.setCellValue("=$formula")
-                }
-            }
-            CellType.BLANK -> target.setBlank()
-            else -> {}
+    private fun copyCellValue(source: Cell, target: Cell) = when (source.cellType) {
+        CellType.STRING -> target.setCellValue(source.stringCellValue)
+        CellType.NUMERIC -> target.setCellValue(source.numericCellValue)
+        CellType.BOOLEAN -> target.setCellValue(source.booleanCellValue)
+        CellType.FORMULA -> runCatching {
+            target.cellFormula = source.cellFormula
+        }.onFailure {
+            // TBEG 마커 수식(예: TBEG_SIZE(collection))은 Named Range 검증 실패 가능
+            // 문자열로 임시 저장 (나중에 템플릿 처리 시 실제 값으로 치환됨)
+            target.setCellValue("=${source.cellFormula}")
         }
+        else -> {} // BLANK 셀은 생성하지 않음 (호출 전에 체크됨)
     }
 
     /**
      * 시트에서 모든 TBEG 마커 셀을 비웁니다.
-     * shiftRows 전에 호출하여 POI 경고를 방지합니다.
+     * shiftRows 전에 호출하여 POI 경고를 방지한다.
      */
     private fun clearAllMarkers(sheet: XSSFSheet) {
         sheet.forEach { row ->
@@ -362,7 +354,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
                 is RowSpec.RepeatRow -> {
                     val rawItems = data[rowSpec.collectionName] as? Collection<*> ?: continue
                     // 빈 컬렉션이면 최소 1개 반복 단위(빈 행/열)를 위해 null 아이템 추가
-                    val items: Collection<Any?> = if (rawItems.isEmpty()) listOf(null) else rawItems
+                    val items: Collection<Any?> = rawItems.ifEmpty { listOf(null) }
                     val templateRowCount = rowSpec.repeatEndRowIndex - rowSpec.templateRowIndex + 1
                     val repeatKey = RepeatKey(rowSpec.collectionName, rowSpec.templateRowIndex, rowSpec.repeatStartCol)
                     val expansion = calculator.getExpansionForRegion(
@@ -380,7 +372,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
 
                             processDownRepeatWithCalculator(
                                 sheet, rowSpec, items, blueprint, data, sheetIndex,
-                                imageLocations, context, currentOffset, rowOffsets, columnGroup, expansion, calculator
+                                imageLocations, context, currentOffset, rowOffsets, columnGroup, calculator
                             )
 
                             val addedOffset = rowOffsets[rowSpec.templateRowIndex] ?: 0
@@ -395,7 +387,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
                         RepeatDirection.RIGHT -> {
                             processRightRepeat(
                                 sheet, rowSpec, items, blueprint, data, sheetIndex,
-                                imageLocations, context, defaultOffset, templateRowCount
+                                imageLocations, context, defaultOffset
                             )
                         }
                     }
@@ -462,7 +454,6 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         currentOffset: Int,
         rowOffsets: Map<Int, Int>,
         columnGroup: ColumnGroup?,
-        expansion: PositionCalculator.RepeatExpansion?,
         calculator: PositionCalculator
     ) {
         val templateRowCount = rowSpec.repeatEndRowIndex - rowSpec.templateRowIndex + 1
@@ -531,8 +522,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         sheetIndex: Int,
         imageLocations: MutableList<ImageLocation>,
         context: RenderingContext,
-        currentOffset: Int,
-        templateRowCount: Int
+        currentOffset: Int
     ) {
         val templateColCount = rowSpec.repeatEndCol - rowSpec.repeatStartCol + 1
         val colShiftAmount = (items.size - 1) * templateColCount
@@ -581,7 +571,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
 
     /**
      * XSSF용 셀 내용 처리.
-     * 기본 처리는 부모 클래스에 위임하고, 이미지 마커와 Formula는 XSSF 특화 처리합니다.
+     * 기본 처리는 부모 클래스에 위임하고, 이미지 마커와 Formula는 XSSF 특화 처리한다.
      */
     private fun processCellContentXssf(
         cell: Cell,
@@ -604,21 +594,16 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
             return
         }
 
-        // 부모 클래스의 공통 처리 시도
-        val handled = processCellContent(
+        // 부모 클래스의 공통 처리 (Formula는 XSSF에서 특별 처리 필요 없음 - POI가 자동 조정)
+        processCellContent(
             cell, content, data, sheetIndex, imageLocations, context,
             rowOffset, colOffset, repeatItemIndex
         )
-
-        // Formula는 XSSF에서 특별 처리 필요 없음 (POI가 자동 조정)
-        if (!handled && content is CellContent.Formula) {
-            // 일반 수식은 그대로 유지 (XSSF는 shiftRows 시 자동 조정)
-        }
     }
 
     /**
-     * PositionCalculator를 사용하여 이미지 마커를 처리합니다.
-     * 이미지의 위치를 모든 repeat 확장에 따라 정확하게 계산합니다.
+     * PositionCalculator를 사용하여 이미지 마커를 처리한다.
+     * 이미지의 위치를 모든 repeat 확장에 따라 정확하게 계산한다.
      */
     private fun processImageMarkerWithCalculator(
         cell: Cell,
@@ -661,29 +646,25 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
     }
 
     /**
-     * PositionCalculator를 사용하여 위치 문자열을 조정합니다.
-     * 모든 repeat 확장에 의한 위치 변화를 고려합니다.
+     * PositionCalculator를 사용하여 위치 문자열을 조정한다.
+     * 모든 repeat 확장에 의한 위치 변화를 고려한다.
      *
      * @param position 원본 위치 (단일 셀 "B5" 또는 범위 "B5:D10")
      * @param calculator 위치 계산기
-     * @return 조정된 위치 문자열
      */
-    private fun adjustPositionWithCalculator(position: String, calculator: PositionCalculator): String {
-        return if (position.contains(":")) {
-            // 범위: B5:D10 → 각 끝점의 최종 위치 계산
+    private fun adjustPositionWithCalculator(position: String, calculator: PositionCalculator) =
+        if (position.contains(":")) {
+            // 범위: B5:D10 -> 각 끝점의 최종 위치 계산
             val (start, end) = position.split(":")
             val (startRow, startCol) = parseCellRef(start)
             val (endRow, endCol) = parseCellRef(end)
-
             val (finalStartRow, finalStartCol) = calculator.getFinalPosition(startRow, startCol)
             val (finalEndRow, finalEndCol) = calculator.getFinalPosition(endRow, endCol)
-
-            "${toColumnName(finalStartCol)}${finalStartRow + 1}:${toColumnName(finalEndCol)}${finalEndRow + 1}"
+            toRangeRef(finalStartRow, finalStartCol, finalEndRow, finalEndCol)
         } else {
-            // 단일 셀: B5 → 최종 위치
+            // 단일 셀: B5 -> 최종 위치
             val (row, col) = parseCellRef(position)
             val (finalRow, finalCol) = calculator.getFinalPosition(row, col)
-            "${toColumnName(finalCol)}${finalRow + 1}"
+            toCellRef(finalRow, finalCol)
         }
-    }
 }

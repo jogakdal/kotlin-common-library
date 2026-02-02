@@ -37,8 +37,8 @@ class PositionCalculatorTest {
         @DisplayName("단일 DOWN repeat 영역의 총 행 수를 계산한다")
         fun singleDownRepeat() {
             // 템플릿: 5-6행에 2행짜리 repeat (0-indexed: 4-5)
-            // 아이템 3개 → 2행 × 3개 = 6행
-            // 마지막 행: 5 + (3-1)*2 = 9 → 총 10행 (0-9)
+            // 아이템 3개 -> 2행 × 3개 = 6행
+            // 마지막 행: 5 + (3-1)*2 = 9 -> 총 10행 (0-9)
             val regions = listOf(
                 RepeatRegionSpec(
                     collection = "items",
@@ -82,7 +82,7 @@ class PositionCalculatorTest {
             )
             calculator.calculate()
 
-            // 아이템 1개 → 확장 없음
+            // 아이템 1개 -> 확장 없음
             // 템플릿 마지막 행(5) + 확장량(0) + 1 = 6
             assertEquals(6, calculator.getTotalRows())
         }
@@ -108,7 +108,7 @@ class PositionCalculatorTest {
             )
             calculator.calculate()
 
-            // 아이템 0개 → 확장 없음
+            // 아이템 0개 -> 확장 없음
             assertEquals(6, calculator.getTotalRows())
         }
     }
@@ -209,7 +209,7 @@ class PositionCalculatorTest {
         @DisplayName("반복 영역 이후의 정적 행은 올바른 템플릿 행 인덱스를 가진다")
         fun staticRowAfterRepeat() {
             // 템플릿: 행 4-5가 repeat, 행 6-7은 정적
-            // 아이템 3개 → 확장량 4행
+            // 아이템 3개 -> 확장량 4행
             // 실제 행 10-11은 템플릿 행 6-7에 해당
             val regions = listOf(
                 RepeatRegionSpec(
@@ -355,12 +355,12 @@ class PositionCalculatorTest {
             )
             calculator.calculate()
 
-            // 템플릿 행 6 (repeat 이후) → 실제 행 10 (6 + 4)
+            // 템플릿 행 6 (repeat 이후) -> 실제 행 10 (6 + 4)
             val (actualRow, actualCol) = calculator.getFinalPosition(6, 0)
             assertEquals(10, actualRow)
             assertEquals(0, actualCol)
 
-            // 템플릿 행 10 → 실제 행 14
+            // 템플릿 행 10 -> 실제 행 14
             val (actualRow2, _) = calculator.getFinalPosition(10, 0)
             assertEquals(14, actualRow2)
         }

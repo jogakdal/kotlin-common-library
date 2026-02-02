@@ -167,8 +167,6 @@ class VariableProcessor(registries: List<VariableResolverRegistry>) {
      * 지원 표현식:
      * - `${variable}` - 단순 변수
      * - `${object.property}` - 프로퍼티 접근
-     * - `${list.size()}` - 메서드 호출 (인자 없는 경우)
-     * - `총원: ${employees.size()}명` - 표현식 + 리터럴 혼합
      *
      * @param template 템플릿 문자열
      * @param data 데이터 맵
@@ -205,43 +203,13 @@ class VariableProcessor(registries: List<VariableResolverRegistry>) {
         val firstPart = parts[0]
         var current: Any? = data[firstPart]
 
-        // 나머지 부분: 프로퍼티 접근 또는 메서드 호출
+        // 나머지 부분: 프로퍼티 접근
         for (i in 1 until parts.size) {
             if (current == null) return null
-            current = resolveAccess(current, parts[i])
+            current = resolveProperty(current, parts[i])
         }
 
         return current
-    }
-
-    /**
-     * 프로퍼티 접근 또는 메서드 호출 해석
-     */
-    private fun resolveAccess(obj: Any, accessor: String): Any? {
-        // 메서드 호출 확인 (예: size(), isEmpty())
-        val methodPattern = Regex("""^(\w+)\(\s*\)$""")
-        methodPattern.find(accessor)?.let { match ->
-            val methodName = match.groupValues[1]
-            return invokeMethod(obj, methodName)
-        }
-
-        // 프로퍼티 접근
-        return resolveProperty(obj, accessor)
-    }
-
-    /**
-     * 메서드 호출
-     */
-    private fun invokeMethod(obj: Any, methodName: String): Any? {
-        return try {
-            val method = obj::class.java.getMethod(methodName)
-            method.invoke(obj)
-        } catch (e: NoSuchMethodException) {
-            // Kotlin 컬렉션의 size는 프로퍼티이므로 프로퍼티로도 시도
-            resolveProperty(obj, methodName)
-        } catch (e: Exception) {
-            null
-        }
     }
 
     /**
@@ -250,18 +218,6 @@ class VariableProcessor(registries: List<VariableResolverRegistry>) {
     private fun resolveProperty(obj: Any, propertyName: String): Any? {
         return when (obj) {
             is Map<*, *> -> obj[propertyName]
-            is List<*> -> when (propertyName) {
-                "size" -> obj.size
-                "isEmpty" -> obj.isEmpty()
-                "first" -> obj.firstOrNull()
-                "last" -> obj.lastOrNull()
-                else -> null
-            }
-            is Collection<*> -> when (propertyName) {
-                "size" -> obj.size
-                "isEmpty" -> obj.isEmpty()
-                else -> null
-            }
             else -> resolveObjectProperty(obj, propertyName)
         }
     }

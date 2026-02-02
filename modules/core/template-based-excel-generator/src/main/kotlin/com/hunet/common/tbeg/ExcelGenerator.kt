@@ -126,7 +126,7 @@ class ExcelGenerator @JvmOverloads constructor(
      * Excel을 생성하여 파일로 저장합니다.
      *
      * 파일명에 타임스탬프가 자동으로 추가됩니다.
-     * 예: "report" → "report_20240106_143052.xlsx"
+     * 예: "report" -> "report_20240106_143052.xlsx"
      *
      * @param template 템플릿 입력 스트림
      * @param data 바인딩할 데이터 맵
@@ -148,7 +148,7 @@ class ExcelGenerator @JvmOverloads constructor(
      * Excel을 생성하여 파일로 저장합니다.
      *
      * 파일명에 타임스탬프가 자동으로 추가됩니다.
-     * 예: "report" → "report_20240106_143052.xlsx"
+     * 예: "report" -> "report_20240106_143052.xlsx"
      *
      * @param template 템플릿 입력 스트림
      * @param dataProvider 데이터 제공자

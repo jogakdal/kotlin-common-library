@@ -29,7 +29,7 @@ import java.lang.reflect.Method
  * - **스트리밍 모드**: SXSSF 기반 순차 생성 (청사진 기반)
  *
  * ## Strategy Pattern
- * 내부적으로 RenderingStrategy를 사용하여 XSSF/SXSSF 모드를 분리합니다.
+ * 내부적으로 RenderingStrategy를 사용하여 XSSF/SXSSF 모드를 분리한다.
  * - [XssfRenderingStrategy]: 비스트리밍 모드
  * - [SxssfRenderingStrategy]: 스트리밍 모드
  */
@@ -60,7 +60,7 @@ class TemplateRenderingEngine(
     private fun createRenderingContext(
         streamingDataSource: StreamingDataSource? = null,
         collectionSizes: Map<String, Int> = emptyMap()
-    ): RenderingContext = RenderingContext(
+    ) = RenderingContext(
         analyzer = analyzer,
         imageInserter = imageInserter,
         repeatExpansionProcessor = repeatExpansionProcessor,
@@ -74,11 +74,8 @@ class TemplateRenderingEngine(
     /**
      * 템플릿에 데이터를 바인딩하여 Excel 생성
      */
-    fun process(template: InputStream, data: Map<String, Any>): ByteArray {
-        val templateBytes = template.readBytes()
-        val renderingContext = createRenderingContext()
-        return strategy.render(templateBytes, data, renderingContext)
-    }
+    fun process(template: InputStream, data: Map<String, Any>) =
+        strategy.render(template.readBytes(), data, createRenderingContext())
 
     /**
      * 템플릿에 DataProvider 데이터를 바인딩하여 Excel 생성
@@ -95,16 +92,11 @@ class TemplateRenderingEngine(
      * @param dataProvider 데이터 제공자
      * @param requiredNames 템플릿에서 필요로 하는 데이터 이름 (선택적)
      */
-    fun process(
-        template: InputStream,
-        dataProvider: ExcelDataProvider,
-        requiredNames: RequiredNames? = null
-    ): ByteArray {
-        return when (streamingMode) {
+    fun process(template: InputStream, dataProvider: ExcelDataProvider, requiredNames: RequiredNames? = null) =
+        when (streamingMode) {
             StreamingMode.ENABLED -> processWithStreaming(template, dataProvider, requiredNames)
             StreamingMode.DISABLED -> processWithoutStreaming(template, dataProvider, requiredNames)
         }
-    }
 
     /**
      * SXSSF (스트리밍) 모드 처리
@@ -112,21 +104,20 @@ class TemplateRenderingEngine(
      * - Iterator를 순차적으로 소비하여 메모리 사용 최소화
      * - 현재 아이템만 메모리에 유지
      */
-    private fun processWithStreaming(
-        template: InputStream,
+    private fun processWithStreaming(template: InputStream,
         dataProvider: ExcelDataProvider,
         requiredNames: RequiredNames?
     ): ByteArray {
         val templateBytes = template.readBytes()
 
-        // 1. 컬렉션 크기 계산 (위치 계산용)
+        // 컬렉션 크기 계산 (위치 계산용)
         val collectionSizes = mutableMapOf<String, Int>()
         requiredNames?.collections?.forEach { name ->
             collectionSizes[name] = getCollectionSize(dataProvider, name)
             logger.debug("컬렉션 '{}': {} 건", name, collectionSizes[name])
         }
 
-        // 2. 단순 변수와 이미지 데이터 수집 (컬렉션 제외)
+        // 단순 변수와 이미지 데이터 수집 (컬렉션 제외)
         val simpleData = buildMap {
             requiredNames?.variables?.forEach { name ->
                 dataProvider.getValue(name)?.let { put(name, it) }
@@ -136,7 +127,7 @@ class TemplateRenderingEngine(
             }
         }
 
-        // 3. StreamingDataSource 생성 (expectedSizes 전달: count 불일치 경고용)
+        // StreamingDataSource 생성 (expectedSizes 전달: count 불일치 경고용)
         val streamingDataSource = StreamingDataSource(dataProvider, collectionSizes)
 
         return try {
@@ -160,38 +151,32 @@ class TemplateRenderingEngine(
         template: InputStream,
         dataProvider: ExcelDataProvider,
         requiredNames: RequiredNames?
-    ): ByteArray {
-        val templateBytes = template.readBytes()
+    ) = buildMap {
+        requiredNames?.let { names ->
+            // 단순 변수
+            names.variables.forEach { name ->
+                dataProvider.getValue(name)?.let { put(name, it) }
+            }
 
-        val data = buildMap {
-            requiredNames?.let { names ->
-                // 단순 변수
-                names.variables.forEach { name ->
-                    dataProvider.getValue(name)?.let { put(name, it) }
-                }
+            // 컬렉션 (List로 변환)
+            names.collections.forEach { name ->
+                val iterator = dataProvider.getItems(name) ?: return@forEach
+                logger.debug("컬렉션 '{}': XSSF 모드, List로 변환", name)
+                put(name, iterator.asSequence().toList())
+            }
 
-                // 컬렉션 (List로 변환)
-                names.collections.forEach { name ->
-                    val iterator = dataProvider.getItems(name) ?: return@forEach
-                    logger.debug("컬렉션 '{}': XSSF 모드, List로 변환", name)
-                    put(name, iterator.asSequence().toList())
-                }
-
-                // 이미지
-                names.images.forEach { name ->
-                    dataProvider.getImage(name)?.let { put("image.$name", it) }
-                }
+            // 이미지
+            names.images.forEach { name ->
+                dataProvider.getImage(name)?.let { put("image.$name", it) }
             }
         }
-
-        val renderingContext = createRenderingContext()
-        return strategy.render(templateBytes, data, renderingContext)
+    }.let { data ->
+        strategy.render(template.readBytes(), data, createRenderingContext())
     }
 
-    private fun evaluateText(text: String, data: Map<String, Any>): String {
-        @Suppress("UNCHECKED_CAST")
-        return variableProcessor.processWithData(text, data as Map<String, Any?>)
-    }
+    @Suppress("UNCHECKED_CAST")
+    private fun evaluateText(text: String, data: Map<String, Any>) =
+        variableProcessor.processWithData(text, data as Map<String, Any?>)
 
     private fun resolveFieldPath(obj: Any?, fieldPath: String): Any? {
         if (obj == null) return null

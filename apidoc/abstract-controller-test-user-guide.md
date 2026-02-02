@@ -63,7 +63,7 @@ result.checkSize("users", 3)
 - `checkData(key, value)`: `$.payload.<key>` 또는 배열 인덱스 지원 (`[0].id` 형태 전달 시 가공 안 함)
 - `checkSize(key, size)`: 컬렉션 길이 검증
 
-## 7. DTO → Query Param 변환 규칙
+## 7. DTO -> Query Param 변환 규칙
 | 타입 | 처리 방식 |
 |------|-----------|
 | Iterable / Array | 각 요소를 같은 key 로 add |
@@ -81,7 +81,7 @@ val params = dtoToQueryParams(SearchCond(listOf("ACTIVE", "HOLD"), 1))
 | 메서드 | 목적 | 예시 |
 |--------|------|------|
 | `dtoToParam` | 본문 직렬화 전략 교체 | YAML 직렬화 등 |
-| `dtoToQueryParams` | DTO → MultiValueMap 매핑 커스터마이즈 | 날짜 포맷 변환 |
+| `dtoToQueryParams` | DTO -> MultiValueMap 매핑 커스터마이즈 | 날짜 포맷 변환 |
 
 ## 9. Troubleshooting
 | 증상 | 원인 | 해결 |
@@ -90,7 +90,7 @@ val params = dtoToQueryParams(SearchCond(listOf("ACTIVE", "HOLD"), 1))
 | JSON Path 실패 | payload 구조 상이 | 응답 본문 로그 후 key 재확인 |
 
 ## 10. 베스트 프랙티스 요약
-- 각 테스트 독립성 확보: 데이터 준비 → 검증 → 정리 패턴
+- 각 테스트 독립성 확보: 데이터 준비 -> 검증 -> 정리 패턴
 - 테스트 간 데이터 격리를 위한 적절한 설정 활용
 
 ## See also

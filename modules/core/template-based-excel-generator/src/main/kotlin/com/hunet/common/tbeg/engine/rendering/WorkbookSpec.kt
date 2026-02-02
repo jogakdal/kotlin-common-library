@@ -10,7 +10,7 @@ data class WorkbookSpec(
     val sheets: List<SheetSpec>
 ) {
     /**
-     * 템플릿에서 필요로 하는 데이터 이름을 추출합니다.
+     * 템플릿에서 필요로 하는 데이터 이름을 추출한다.
      */
     fun extractRequiredNames(): RequiredNames {
         val variables = mutableSetOf<String>()
@@ -183,7 +183,7 @@ sealed class CellContent {
     ) : CellContent()
 
     /**
-     * 이미지 마커 - ${image.name} 또는 ${image(name, position, size)}
+     * 이미지 마커 - ${image(name)}, ${image(name, position)}, ${image(name, position, size)}
      * @param position null이면 마커 셀 위치 사용
      * @param sizeSpec 크기 명세 (기본값: 셀 크기에 맞춤)
      */

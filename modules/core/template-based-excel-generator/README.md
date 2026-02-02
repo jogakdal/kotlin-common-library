@@ -81,38 +81,28 @@ ${repeat(employees, A3:C3, emp, DOWN)}
 
 ### 이미지
 ```
-${image.logo}
+${image(logo)}
+${image(logo, B5)}
+${image(logo, B5, 100:50)}
 ```
 
 ## 스트리밍 모드
 
-대용량 데이터 처리 시 메모리 효율성과 처리 속도를 개선하는 모드입니다.
+메모리 효율성과 처리 속도를 개선하는 모드입니다. 기본값(`enabled`)을 권장합니다.
 
-### streaming-mode 설정
-
-| 모드 | 설명 | 권장 상황 |
-|------|------|----------|
-| `enabled` (기본값) | 대용량 데이터에 최적화 | 10,000행 이상, 단순 데이터 목록 |
-| `disabled` | 모든 Excel 기능 완벽 지원 | 1,000행 이하, 복잡한 수식 템플릿 |
+| 모드 | 설명 |
+|------|------|
+| `enabled` (기본값) | 메모리 효율적, 빠른 처리 속도 |
+| `disabled` | 모든 행을 메모리에 유지 |
 
 ### 성능 비교
 
 | 항목 | disabled | enabled |
 |------|----------|---------|
 | 메모리 사용량 | 행 수에 비례 | 일정 수준 유지 |
-| 처리 속도 | 기준 | 약 3배 빠름 |
-| 50,000행 처리 | 높은 메모리 사용 | 빠르고 안정적 |
-
-### 템플릿 작성 팁
-
-합계 수식(`SUM`, `AVERAGE` 등)은 **데이터 영역 아래**에 배치하면 최적의 성능을 얻을 수 있습니다.
-
-```
-# 권장 배치
-| 이름 | 금액 |        ← 헤더
-| ... | ...  |        ← 반복 데이터 영역
-| 합계 | =SUM(...) |  ← 수식은 아래에
-```
+| 처리 속도 (100행) | 91ms | 79ms (**1.2배 빠름**) |
+| 처리 속도 (1,000행) | 315ms | 94ms (**3.3배 빠름**) |
+| 처리 속도 (10,000행) | 4,696ms | 481ms (**9.8배 빠름**) |
 
 ## 설정 (application.yml)
 
@@ -170,6 +160,8 @@ src/main/kotlin/com/hunet/common/tbeg/
 │       ├── TemplateRenderingEngine.kt      # 렌더링 엔진
 │       ├── TemplateAnalyzer.kt             # 템플릿 분석기
 │       ├── WorkbookSpec.kt                 # 워크북/시트/셀 명세
+│       ├── PositionCalculator.kt           # 반복 확장 위치 계산
+│       ├── CollectionBuffer.kt             # 스트리밍 데이터 소스
 │       ├── ImageInserter.kt                # 이미지 삽입
 │       ├── FormulaAdjuster.kt              # 수식 조정
 │       ├── RepeatExpansionProcessor.kt     # 반복 영역 확장
@@ -196,7 +188,7 @@ src/main/kotlin/com/hunet/common/tbeg/
 ┌─────────────────────▼───────────────────────────────────────┐
 │                    ExcelPipeline                            │
 │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐            │
-│  │ Extract │→│ Render  │→│ Restore │→│Metadata │→ ...       │
+│  │ Extract │->│ Render  │->│ Restore │->│Metadata │-> ...       │
 │  │  Chart  │ │Template │ │  Chart  │ │         │            │
 │  └─────────┘ └─────────┘ └─────────┘ └─────────┘            │
 └─────────────────────┬───────────────────────────────────────┘

@@ -17,9 +17,9 @@ repeat에서 확장된 모든 행은 **repeat 기준 템플릿 행**의 스타�
 
 ```
 예시: 단일 행 repeat (templateRow 6)
-- actualRow 6 → templateRow 6 스타일
-- actualRow 7 → templateRow 6 스타일
-- actualRow 8 → templateRow 6 스타일
+- actualRow 6 -> templateRow 6 스타일
+- actualRow 7 -> templateRow 6 스타일
+- actualRow 8 -> templateRow 6 스타일
 ```
 
 #### 1.3 행 높이 충돌 해결
@@ -72,7 +72,7 @@ fun getCurrentItem(repeatKey: RepeatKey): Any?
 repeat 영역에 포함된 수식과 범위 참조는 확장량만큼 자동 조정됩니다.
 
 ```
-예시: =SUM(C6) → =SUM(C6:C105) (100개 아이템 확장 시)
+예시: =SUM(C6) -> =SUM(C6:C105) (100개 아이템 확장 시)
 ```
 
 #### 3.2 정적 요소 위치 이동

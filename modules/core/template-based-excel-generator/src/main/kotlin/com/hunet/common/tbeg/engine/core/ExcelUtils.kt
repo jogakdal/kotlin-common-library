@@ -52,7 +52,7 @@ internal fun toColumnLetter(index: Int) = index.toColumnLetter()
 
 /**
  * 셀 참조 문자열을 파싱합니다.
- * 예: "B5" → (row=4, col=1)
+ * 예: "B5" -> (row=4, col=1)
  *
  * @param ref 셀 참조 문자열 (예: "A1", "B5", "AA100")
  * @return Pair(행 인덱스, 열 인덱스) - 0-based
@@ -64,6 +64,19 @@ internal fun parseCellRef(ref: String): Pair<Int, Int> {
     val row = rowPart.toInt() - 1
     return row to col
 }
+
+/**
+ * 0-based 행/열 인덱스를 셀 참조 문자열로 변환합니다.
+ * 예: (row=4, col=1) -> "B5"
+ */
+internal fun toCellRef(row: Int, col: Int) = "${col.toColumnLetter()}${row + 1}"
+
+/**
+ * 0-based 행/열 인덱스를 범위 참조 문자열로 변환합니다.
+ * 예: (startRow=0, startCol=0, endRow=4, endCol=2) -> "A1:C5"
+ */
+internal fun toRangeRef(startRow: Int, startCol: Int, endRow: Int, endCol: Int) =
+    "${toCellRef(startRow, startCol)}:${toCellRef(endRow, endCol)}"
 
 // ========== XML 유틸리티 ==========
 

@@ -393,10 +393,10 @@ generator.generate(template, provider)
 
 | 처리 방식      | 바이트 배열 반환                                           | 파일 저장                                                |
 |------------|-----------------------------------------------------|------------------------------------------------------|
-| **동기**     | `generate()` → `ByteArray`                          | `generateToFile()` → `Path`                          |
-| **코루틴**    | `generateAsync()` → `ByteArray` (suspend)           | `generateToFileAsync()` → `Path` (suspend)           |
-| **Future** | `generateFuture()` → `CompletableFuture<ByteArray>` | `generateToFileFuture()` → `CompletableFuture<Path>` |
-| **백그라운드**  | `submit()` → `GenerationJob`                        | `submitToFile()` → `GenerationJob`                   |
+| **동기**     | `generate()` -> `ByteArray`                          | `generateToFile()` -> `Path`                          |
+| **코루틴**    | `generateAsync()` -> `ByteArray` (suspend)           | `generateToFileAsync()` -> `Path` (suspend)           |
+| **Future** | `generateFuture()` -> `CompletableFuture<ByteArray>` | `generateToFileFuture()` -> `CompletableFuture<Path>` |
+| **백그라운드**  | `submit()` -> `GenerationJob`                        | `submitToFile()` -> `GenerationJob`                   |
 
 #### 권장 사용 패턴
 

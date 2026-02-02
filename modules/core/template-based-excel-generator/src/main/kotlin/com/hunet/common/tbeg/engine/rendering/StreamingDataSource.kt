@@ -24,7 +24,6 @@ internal class StreamingDataSource(
     private val dataProvider: ExcelDataProvider,
     private val expectedSizes: Map<String, Int> = emptyMap()
 ) : Closeable {
-
     private val iteratorsByRepeat = mutableMapOf<RepeatKey, Iterator<Any>>()
     private val currentItemByRepeat = mutableMapOf<RepeatKey, Any?>()
     private val exhaustedRepeats = mutableSetOf<RepeatKey>()
@@ -51,21 +50,14 @@ internal class StreamingDataSource(
         val startCol: Int
     )
 
-    /**
-     * 현재 아이템을 반환합니다.
-     *
-     * advanceToNextItem()으로 이동한 현재 아이템을 반환합니다.
-     * 아직 advanceToNextItem()을 호출하지 않았거나, Iterator가 소진되었으면 null을 반환합니다.
-     */
-    fun getCurrentItem(repeatKey: RepeatKey): Any? {
-        return currentItemByRepeat[repeatKey]
-    }
+    /** 현재 아이템 반환 (advanceToNextItem() 호출 전이거나 소진 시 null) */
+    fun getCurrentItem(repeatKey: RepeatKey) = currentItemByRepeat[repeatKey]
 
     /**
-     * 다음 아이템으로 이동합니다.
+     * 다음 아이템으로 이동한다.
      *
-     * Iterator에서 다음 아이템을 가져와 현재 아이템으로 설정합니다.
-     * Iterator가 소진되면 null을 반환합니다.
+     * Iterator에서 다음 아이템을 가져와 현재 아이템으로 설정한다.
+     * Iterator가 소진되면 null을 반환한다.
      *
      * @return 다음 아이템, 또는 소진 시 null
      */
@@ -84,8 +76,7 @@ internal class StreamingDataSource(
             if (existingIteratorForCollection && repeatKey.collectionName !in warnedCollections) {
                 LOG.warn(
                     "컬렉션 '{}'이 여러 repeat 영역에서 사용됩니다. " +
-                        "DataProvider를 재호출하여 새 Iterator를 생성합니다. " +
-                        "(repeat 영역: row={}, col={})",
+                        "DataProvider를 재호출하여 새 Iterator를 생성합니다. (repeat 영역: row={}, col={})",
                     repeatKey.collectionName,
                     repeatKey.startRow,
                     repeatKey.startCol
@@ -114,7 +105,7 @@ internal class StreamingDataSource(
     }
 
     /**
-     * Iterator 소진 시 count 불일치를 검증합니다.
+     * Iterator 소진 시 count 불일치를 검증한다.
      */
     private fun checkCountMismatchOnExhaustion(repeatKey: RepeatKey) {
         if (repeatKey in mismatchWarnedRepeats) return
@@ -140,8 +131,8 @@ internal class StreamingDataSource(
     }
 
     /**
-     * 예상 count에 도달했는지 확인하고, 초과 아이템이 있으면 경고합니다.
-     * repeat 처리 완료 후 호출해야 합니다.
+     * 예상 count에 도달했는지 확인하고, 초과 아이템이 있으면 경고한다.
+     * repeat 처리 완료 후 호출해야 한다.
      */
     fun checkRemainingItems(repeatKey: RepeatKey) {
         if (repeatKey in mismatchWarnedRepeats) return
@@ -179,24 +170,6 @@ internal class StreamingDataSource(
         }
     }
 
-    /**
-     * 특정 repeat 영역이 소진되었는지 확인합니다.
-     */
-    fun isExhausted(repeatKey: RepeatKey): Boolean {
-        return repeatKey in exhaustedRepeats
-    }
-
-    /**
-     * 특정 repeat 영역의 Iterator를 초기화합니다.
-     *
-     * RIGHT 방향 확장에서 각 행마다 처음부터 다시 순회해야 할 때 사용합니다.
-     */
-    fun resetRepeat(repeatKey: RepeatKey) {
-        iteratorsByRepeat.remove(repeatKey)
-        currentItemByRepeat.remove(repeatKey)
-        exhaustedRepeats.remove(repeatKey)
-    }
-
     override fun close() {
         iteratorsByRepeat.clear()
         currentItemByRepeat.clear()
@@ -208,26 +181,9 @@ internal class StreamingDataSource(
 }
 
 /**
- * 컬렉션 크기를 계산합니다.
- *
- * DataProvider.getItemCount()가 제공되면 그 값을 사용하고,
- * 제공되지 않으면 Iterator를 전체 순회하여 count를 파악합니다.
- *
- * count 미제공 시 Iterator가 소비되므로, 이후 렌더링 시 DataProvider.getItems()를 재호출해야 합니다.
+ * 컬렉션 크기 계산 (count 미제공 시 Iterator 순회, 이후 DataProvider.getItems() 재호출 필요)
  */
-internal fun getCollectionSize(dataProvider: ExcelDataProvider, collectionName: String): Int {
-    val count = dataProvider.getItemCount(collectionName)
-    if (count != null) return count
-
-    // count 미제공: Iterator 전체 순회하여 count 파악
-    // Note: top-level function이므로 logging 생략
-    // 실제 count가 필요한 경우에만 Iterator 순회
-
-    var size = 0
-    val iterator = dataProvider.getItems(collectionName) ?: return 0
-    while (iterator.hasNext()) {
-        iterator.next()
-        size++
-    }
-    return size
-}
+internal fun getCollectionSize(dataProvider: ExcelDataProvider, collectionName: String) =
+    dataProvider.getItemCount(collectionName)
+        ?: dataProvider.getItems(collectionName)?.asSequence()?.count()
+        ?: 0

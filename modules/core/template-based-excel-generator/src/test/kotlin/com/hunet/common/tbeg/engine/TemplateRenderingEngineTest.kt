@@ -382,7 +382,7 @@ class TemplateRenderingEngineTest {
 
             val sheet = workbook.getSheetAt(2)
             // 반복 영역(A7:B8, 2행) × 3개 데이터 = 6행 확장
-            // 원래 B11 → B13으로 이동 (4행 추가)
+            // 원래 B11 -> B13으로 이동 (4행 추가)
             // 수식은 =SUM(B8,B10,B12) 형태로 확장 (비연속)
 
             // 수식 셀 찾기 (급여 합계 행)
@@ -508,7 +508,7 @@ class TemplateRenderingEngineTest {
             val sheet = workbook.getSheetAt(0)
             val cell = sheet.getRow(0).getCell(0)
 
-            // ${size(employees)}명 → 3명
+            // ${size(employees)}명 -> 3명
             assertEquals("3명", cell.stringCellValue, "size 마커가 컬렉션 크기로 치환되어야 함")
         }
     }
@@ -536,7 +536,7 @@ class TemplateRenderingEngineTest {
             val sheet = workbook.getSheetAt(0)
             val cell = sheet.getRow(0).getCell(0)
 
-            // ${size(employees)}명 → 5명
+            // ${size(employees)}명 -> 5명
             assertEquals("5명", cell.stringCellValue, "size 마커가 컬렉션 크기로 치환되어야 함")
         }
     }

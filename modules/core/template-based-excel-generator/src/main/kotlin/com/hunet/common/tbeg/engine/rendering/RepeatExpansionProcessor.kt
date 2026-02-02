@@ -7,7 +7,7 @@ import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.XSSFSheet
 
 /**
- * 셀 값을 다른 셀에서 복사합니다.
+ * 셀 값을 다른 셀에서 복사한다.
  */
 private fun Cell.copyValueFrom(source: Cell) {
     when (source.cellType) {
@@ -24,7 +24,7 @@ private fun Cell.copyValueFrom(source: Cell) {
  * 반복 영역 확장 처리를 담당하는 프로세서.
  *
  * TemplateRenderingEngine에서 반복(repeat) 영역의 행/열 확장 및
- * 관련 셀 복사, 병합 영역, 조건부 서식, 수식 확장을 처리합니다.
+ * 관련 셀 복사, 병합 영역, 조건부 서식, 수식 확장을 처리한다.
  *
  * 처리 대상:
  * - DOWN 방향 반복: 행 삽입, 행 복사, 병합 영역 복제
@@ -33,7 +33,6 @@ private fun Cell.copyValueFrom(source: Cell) {
  * - 반복 영역 참조 수식 확장
  */
 internal class RepeatExpansionProcessor {
-
     /**
      * RIGHT 방향 확장 - 템플릿 열을 오른쪽으로 복사
      * 확장 시 반복 영역 오른쪽의 기존 셀들을 오른쪽으로 이동
@@ -152,7 +151,7 @@ internal class RepeatExpansionProcessor {
      * 조건부 서식 범위를 반복 영역에 맞게 확장 (XSSF 모드)
      *
      * 템플릿의 반복 영역에 조건부 서식이 있으면, 각 반복 아이템에 대해
-     * 조건부 서식을 복제합니다.
+     * 조건부 서식을 복제한다.
      */
     fun expandConditionalFormattingForRepeat(
         sheet: XSSFSheet,
@@ -205,7 +204,7 @@ internal class RepeatExpansionProcessor {
      * 반복 영역 이후 행의 수식에서 반복 영역 내 셀 참조를 범위로 확장 (XSSF 모드)
      *
      * 예: 반복 영역 A7:B8, 데이터 3개
-     * - B11의 `=SUM(B8)` → B13으로 이동 (shiftRows에 의해)
+     * - B11의 `=SUM(B8)` -> B13으로 이동 (shiftRows에 의해)
      * - 수식을 `=SUM(B8,B10,B12)`로 확장 (2행 템플릿이므로 비연속)
      */
     fun expandFormulasAfterRepeat(
@@ -226,7 +225,7 @@ internal class RepeatExpansionProcessor {
             row.forEach { cell ->
                 if (cell.cellType == CellType.FORMULA) {
                     val originalFormula = cell.cellFormula
-                    val (expandedFormula, hasDiscontinuous) = FormulaAdjuster.expandSingleRefToRange(
+                    val (expandedFormula, isSeq) = FormulaAdjuster.expandSingleRefToRowRange(
                         originalFormula,
                         repeatRow.templateRowIndex,
                         repeatRow.repeatEndRowIndex,
@@ -236,7 +235,7 @@ internal class RepeatExpansionProcessor {
 
                     if (expandedFormula != originalFormula) {
                         // 비연속 참조이고 인자 수가 255개를 초과하면 경고
-                        if (hasDiscontinuous && itemCount > 255) {
+                        if (!isSeq && itemCount > 255) {
                             throw FormulaExpansionException(
                                 sheetName = sheet.sheetName,
                                 cellRef = cell.address.formatAsString(),
@@ -281,7 +280,7 @@ internal class RepeatExpansionProcessor {
                     // shiftColumnsRight 이후에 생성되므로 추가 열 이동이 필요 없음.
                     // 순환 참조도 발생하지 않음: 확장 범위(열 1~itemCount*templateColCount)가
                     // 수식 셀 위치(newColStart 이상)를 포함하지 않음.
-                    val (expandedFormula, hasDiscontinuous) = FormulaAdjuster.expandSingleRefToColumnRange(
+                    val (expandedFormula, isSeq) = FormulaAdjuster.expandSingleRefToColumnRange(
                         originalFormula,
                         repeatRow.repeatStartCol,
                         repeatRow.repeatEndCol,
@@ -293,7 +292,7 @@ internal class RepeatExpansionProcessor {
 
                     if (expandedFormula != originalFormula) {
                         // 비연속 참조이고 인자 수가 255개를 초과하면 오류
-                        if (hasDiscontinuous && itemCount > 255) {
+                        if (!isSeq && itemCount > 255) {
                             throw FormulaExpansionException(
                                 sheetName = sheet.sheetName,
                                 cellRef = cell.address.formatAsString(),
@@ -303,112 +302,6 @@ internal class RepeatExpansionProcessor {
                         cell.cellFormula = expandedFormula
                     }
                 }
-            }
-        }
-    }
-
-    // ========== PositionCalculator 연동 메서드 ==========
-
-    /**
-     * PositionCalculator를 사용하여 수식을 확장합니다 (XSSF 모드용).
-     *
-     * repeat 영역 이후 행의 수식에서 반복 영역 내 셀 참조를 범위로 확장합니다.
-     *
-     * @param sheet 대상 시트
-     * @param expansion repeat 확장 정보
-     * @param itemCount 반복 아이템 수
-     */
-    fun expandFormulasWithCalculator(
-        sheet: XSSFSheet,
-        expansion: PositionCalculator.RepeatExpansion,
-        itemCount: Int
-    ) {
-        if (itemCount <= 1 || expansion.rowExpansion <= 0) return
-
-        val newRepeatEndRow = expansion.finalEndRow
-
-        for (rowIdx in (newRepeatEndRow + 1)..sheet.lastRowNum) {
-            val row = sheet.getRow(rowIdx) ?: continue
-            row.forEach { cell ->
-                if (cell.cellType == CellType.FORMULA) {
-                    val originalFormula = cell.cellFormula
-                    val (expandedFormula, hasDiscontinuous) = FormulaAdjuster.expandToRangeWithCalculator(
-                        originalFormula, expansion, itemCount
-                    )
-
-                    if (expandedFormula != originalFormula) {
-                        if (hasDiscontinuous && itemCount > 255) {
-                            throw FormulaExpansionException(
-                                sheetName = sheet.sheetName,
-                                cellRef = cell.address.formatAsString(),
-                                formula = originalFormula
-                            )
-                        }
-                        cell.cellFormula = expandedFormula
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * PositionCalculator를 사용하여 반복 영역 내 병합 영역을 복제합니다 (XSSF 모드용).
-     *
-     * @param sheet 대상 시트
-     * @param expansion repeat 확장 정보
-     * @param itemCount 반복 아이템 수
-     * @param templateMergedRegions 템플릿의 병합 영역 목록
-     */
-    fun copyMergedRegionsWithCalculator(
-        sheet: XSSFSheet,
-        expansion: PositionCalculator.RepeatExpansion,
-        itemCount: Int,
-        templateMergedRegions: List<CellRangeAddress>
-    ) {
-        if (itemCount <= 1) return
-
-        val region = expansion.region
-        val templateRowCount = region.endRow - region.startRow + 1
-        val templateColCount = region.endCol - region.startCol + 1
-
-        // 반복 영역 내 병합 영역 찾기
-        val repeatMergedRegions = templateMergedRegions.filter { merged ->
-            merged.firstRow >= region.startRow &&
-                merged.lastRow <= region.endRow &&
-                merged.firstColumn >= region.startCol &&
-                merged.lastColumn <= region.endCol
-        }
-
-        // 각 추가 아이템에 대해 병합 영역 복제
-        for (itemIdx in 1 until itemCount) {
-            for (templateMerged in repeatMergedRegions) {
-                val relativeFirstRow = templateMerged.firstRow - region.startRow
-                val relativeLastRow = templateMerged.lastRow - region.startRow
-                val relativeFirstCol = templateMerged.firstColumn - region.startCol
-                val relativeLastCol = templateMerged.lastColumn - region.startCol
-
-                val newRegion = when (region.direction) {
-                    RepeatDirection.DOWN -> {
-                        val rowOffset = itemIdx * templateRowCount
-                        CellRangeAddress(
-                            expansion.finalStartRow + rowOffset + relativeFirstRow,
-                            expansion.finalStartRow + rowOffset + relativeLastRow,
-                            expansion.finalStartCol + relativeFirstCol,
-                            expansion.finalStartCol + relativeLastCol
-                        )
-                    }
-                    RepeatDirection.RIGHT -> {
-                        val colOffset = itemIdx * templateColCount
-                        CellRangeAddress(
-                            expansion.finalStartRow + relativeFirstRow,
-                            expansion.finalStartRow + relativeLastRow,
-                            expansion.finalStartCol + colOffset + relativeFirstCol,
-                            expansion.finalStartCol + colOffset + relativeLastCol
-                        )
-                    }
-                }
-
-                runCatching { sheet.addMergedRegion(newRegion) }
             }
         }
     }

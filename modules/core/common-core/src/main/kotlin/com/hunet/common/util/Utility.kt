@@ -60,9 +60,9 @@ fun Any.smartCopyFrom(source: Any): Any = source.smartCopyTo(this)
  * 문자열에서 앞뒤 따옴표(쌍따옴표 또는 홑따옴표)를 제거합니다.
  *
  * 예시:
- * - `"hello"` → `hello`
- * - `'world'` → `world`
- * - `hello` → `hello` (변화 없음)
+ * - `"hello"` -> `hello`
+ * - `'world'` -> `world`
+ * - `hello` -> `hello` (변화 없음)
  */
 fun String.unquote(): String {
     val trimmed = this.trim()

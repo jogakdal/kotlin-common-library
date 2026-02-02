@@ -255,7 +255,7 @@ enum class FileConflictPolicy {
 | 값          | 동작                                                |
 |------------|---------------------------------------------------|
 | `ERROR`    | 파일 존재 시 `FileAlreadyExistsException` 발생           |
-| `SEQUENCE` | `report.xlsx` → `report_1.xlsx` → `report_2.xlsx` |
+| `SEQUENCE` | `report.xlsx` -> `report_1.xlsx` -> `report_2.xlsx` |
 
 ### MissingDataBehavior
 

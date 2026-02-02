@@ -25,9 +25,6 @@ class CountProviderConsistencyTest {
 
     private lateinit var generator: ExcelGenerator
 
-    data class Employee(val name: String, val position: String, val salary: Int)
-    data class Department(val name: String, val members: Int, val office: String)
-
     @BeforeEach
     fun setUp() {
         generator = ExcelGenerator()
@@ -52,10 +49,10 @@ class CountProviderConsistencyTest {
         // SXSSF 모드로 생성
         val sxssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.ENABLED)
         ExcelGenerator(sxssfConfig).use { sxssfGenerator ->
-            val template1 = loadTemplate()
+            val template1 = TestUtils.loadTemplate()
             val bytesWithCount = sxssfGenerator.generate(template1, withCountProvider)
 
-            val template2 = loadTemplate()
+            val template2 = TestUtils.loadTemplate()
             val bytesWithoutCount = sxssfGenerator.generate(template2, withoutCountProvider)
 
             // 두 결과 비교
@@ -77,10 +74,10 @@ class CountProviderConsistencyTest {
         // XSSF 모드로 생성
         val xssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.DISABLED)
         ExcelGenerator(xssfConfig).use { xssfGenerator ->
-            val template1 = loadTemplate()
+            val template1 = TestUtils.loadTemplate()
             val bytesWithCount = xssfGenerator.generate(template1, withCountProvider)
 
-            val template2 = loadTemplate()
+            val template2 = TestUtils.loadTemplate()
             val bytesWithoutCount = xssfGenerator.generate(template2, withoutCountProvider)
 
             // 두 결과 비교
@@ -103,12 +100,12 @@ class CountProviderConsistencyTest {
             }
 
             override fun getItems(name: String): Iterator<Any>? = when (name) {
-                "employees" -> generateEmployees(employeeCount).iterator()
-                "mergedEmployees" -> generateEmployees(mergedEmployeeCount).iterator()
+                "employees" -> TestUtils.generateEmployees(employeeCount).iterator()
+                "mergedEmployees" -> TestUtils.generateEmployees(mergedEmployeeCount).iterator()
                 "departments" -> listOf(
-                    Department("공통플랫폼팀", 15, "814호"),
-                    Department("IT전략기획팀", 8, "801호"),
-                    Department("인재경영실", 5, "813호")
+                    TestUtils.Department("공통플랫폼팀", 15, "814호"),
+                    TestUtils.Department("IT전략기획팀", 8, "801호"),
+                    TestUtils.Department("인재경영실", 5, "813호")
                 ).iterator()
                 else -> null
             }
@@ -122,8 +119,8 @@ class CountProviderConsistencyTest {
             }
 
             override fun getImage(name: String): ByteArray? = when (name) {
-                "logo" -> loadImage("hunet_logo.png")
-                "ci" -> loadImage("hunet_ci.png")
+                "logo" -> TestUtils.loadImage("hunet_logo.png")
+                "ci" -> TestUtils.loadImage("hunet_ci.png")
                 else -> null
             }
 
@@ -146,12 +143,12 @@ class CountProviderConsistencyTest {
             }
 
             override fun getItems(name: String): Iterator<Any>? = when (name) {
-                "employees" -> generateEmployees(employeeCount).iterator()
-                "mergedEmployees" -> generateEmployees(mergedEmployeeCount).iterator()
+                "employees" -> TestUtils.generateEmployees(employeeCount).iterator()
+                "mergedEmployees" -> TestUtils.generateEmployees(mergedEmployeeCount).iterator()
                 "departments" -> listOf(
-                    Department("공통플랫폼팀", 15, "814호"),
-                    Department("IT전략기획팀", 8, "801호"),
-                    Department("인재경영실", 5, "813호")
+                    TestUtils.Department("공통플랫폼팀", 15, "814호"),
+                    TestUtils.Department("IT전략기획팀", 8, "801호"),
+                    TestUtils.Department("인재경영실", 5, "813호")
                 ).iterator()
                 else -> null
             }
@@ -160,24 +157,12 @@ class CountProviderConsistencyTest {
             override fun getItemCount(name: String): Int? = null
 
             override fun getImage(name: String): ByteArray? = when (name) {
-                "logo" -> loadImage("hunet_logo.png")
-                "ci" -> loadImage("hunet_ci.png")
+                "logo" -> TestUtils.loadImage("hunet_logo.png")
+                "ci" -> TestUtils.loadImage("hunet_ci.png")
                 else -> null
             }
 
             override fun getMetadata(): DocumentMetadata? = null
-        }
-    }
-
-    private fun generateEmployees(count: Int): List<Employee> {
-        val positions = listOf("사원", "대리", "과장", "차장", "부장")
-        val names = listOf("황", "김", "이", "박", "최", "정", "강", "조", "윤", "장")
-        return (1..count).map { i ->
-            Employee(
-                name = "${names[i % names.size]}용호$i",
-                position = positions[i % positions.size],
-                salary = 3000 + (i % 5) * 1000
-            )
         }
     }
 
@@ -261,10 +246,4 @@ class CountProviderConsistencyTest {
         }
     }
 
-    private fun loadTemplate() =
-        javaClass.getResourceAsStream("/templates/template.xlsx")
-            ?: throw IllegalStateException("템플릿 파일을 찾을 수 없습니다")
-
-    private fun loadImage(fileName: String): ByteArray? =
-        javaClass.getResourceAsStream("/$fileName")?.use { it.readBytes() }
 }

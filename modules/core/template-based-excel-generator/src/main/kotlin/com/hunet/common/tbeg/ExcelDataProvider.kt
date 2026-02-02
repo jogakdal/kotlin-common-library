@@ -6,7 +6,7 @@ package com.hunet.common.tbeg
  * 지연 로딩 방식으로 데이터를 제공하여 대용량 처리 시 메모리 효율성을 높입니다.
  * - [getValue]: 단일 변수 값 제공 (예: title, date) - `${변수명}` 형식
  * - [getItems]: 컬렉션 데이터 제공 (예: employees) - `${repeat(컬렉션, 범위, 변수)}` 형식
- * - [getImage]: 이미지 데이터 제공 (예: logo) - `${image.이름}` 형식
+ * - [getImage]: 이미지 데이터 제공 (예: logo) - `${image(이름)}` 형식
  */
 interface ExcelDataProvider {
 
@@ -34,7 +34,7 @@ interface ExcelDataProvider {
     /**
      * 이미지 데이터를 반환합니다.
      *
-     * 템플릿의 `${image.name}` 마커에 이미지를 삽입합니다.
+     * 템플릿의 `${image(name)}` 마커에 이미지를 삽입합니다.
      *
      * @param name 이미지 이름
      * @return 이미지 바이트 배열, 존재하지 않으면 null
@@ -53,9 +53,6 @@ interface ExcelDataProvider {
 
     /**
      * 컬렉션의 아이템 수를 반환합니다. (선택적)
-     *
-     * 이 메서드가 구현되면 메모리 효율적인 스트리밍 처리가 가능합니다.
-     * 구현되지 않으면 내부적으로 임시 파일에 버퍼링하여 처리합니다.
      *
      * **성능 권장사항:**
      * - 대용량 데이터 처리 시 이 메서드를 구현하면 최적의 성능을 얻을 수 있습니다.

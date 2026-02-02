@@ -27,7 +27,7 @@ class SequenceGeneratorDirectTest {
 
     @Test
     fun `val 로만 선언된 엔티티 필드에도 시퀀스 코드가 생성된다`() {
-        // given: val 로 선언되어 Kotlin mutable property 경로에서 제외됨 → direct field 경로 필수
+        // given: val 로 선언되어 Kotlin mutable property 경로에서 제외됨 -> direct field 경로 필수
         class FieldOnlySeqEntity(
             @field:GenerateSequentialCode(prefixExpression = "'FX-'")
             val code: String? = null
@@ -77,7 +77,7 @@ class SequenceGeneratorDirectTest {
         // when 첫 번째
         applySequentialCode(entity, seqGen)
         val first = entity.code
-        // when 두 번째 (이미 값 존재 → 재생성 금지)
+        // when 두 번째 (이미 값 존재 -> 재생성 금지)
         applySequentialCode(entity, seqGen)
         val second = entity.code
         // then

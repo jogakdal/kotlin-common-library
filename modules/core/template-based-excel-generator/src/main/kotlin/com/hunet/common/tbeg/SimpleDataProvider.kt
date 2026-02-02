@@ -122,8 +122,7 @@ class SimpleDataProvider private constructor(
         /**
          * 컬렉션과 개수를 함께 추가합니다. (지연 로딩 + count 제공)
          *
-         * 대용량 데이터 처리 시 메모리 효율성을 위해 count를 제공하세요.
-         * count가 제공되면 임시 파일 버퍼링 없이 스트리밍 처리됩니다.
+         * 대용량 데이터 처리 시 count를 제공하면 최적의 성능을 얻을 수 있습니다.
          *
          * ```kotlin
          * items("employees", employeeCount) {

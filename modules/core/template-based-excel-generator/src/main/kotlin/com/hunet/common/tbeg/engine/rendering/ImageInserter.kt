@@ -1,7 +1,7 @@
 package com.hunet.common.tbeg.engine.rendering
 
 import com.hunet.common.tbeg.engine.core.detectImageTypeForPoi
-import com.hunet.common.tbeg.engine.core.toColumnIndex
+import com.hunet.common.tbeg.engine.core.parseCellRef
 import org.apache.poi.ss.usermodel.ClientAnchor
 import org.apache.poi.ss.usermodel.Picture
 import org.apache.poi.ss.usermodel.Sheet
@@ -32,6 +32,15 @@ class ImageInserter {
         /** 셀 테두리가 보이도록 적용하는 기본 마진 */
         private const val IMAGE_MARGIN_PX = 1
         private const val IMAGE_MARGIN_EMU = IMAGE_MARGIN_PX * EMU_PER_PIXEL
+
+        /** 1인치 = 72포인트 */
+        private const val POINTS_PER_INCH = 72
+
+        /** 1인치 = 96픽셀 (96 DPI 기준) */
+        private const val PIXELS_PER_INCH = 96
+
+        /** 포인트를 픽셀로 변환 */
+        private fun pointsToPixels(points: Double) = points * PIXELS_PER_INCH / POINTS_PER_INCH
     }
 
     /**
@@ -58,7 +67,7 @@ class ImageInserter {
             position == null -> {
                 insertImage(workbook, sheet, imageBytes, markerRowIndex, markerColIndex, sizeSpec, markerMergedRegion)
             }
-            // position이 범위 (B5:D10) - 범위 전체에 맞춤
+            // position이 범위 - 범위 전체에 맞춤
             position.contains(":") -> {
                 val (startRef, endRef) = position.split(":")
                 val (startRow, startCol) = parseCellRef(startRef)
@@ -67,7 +76,7 @@ class ImageInserter {
                 // 범위 지정 시 sizeSpec 무시하고 범위 크기에 맞춤
                 insertImage(workbook, sheet, imageBytes, startRow, startCol, ImageSizeSpec.FIT_TO_CELL, rangeAddress)
             }
-            // position이 단일 셀 (B5)
+            // position이 단일 셀
             else -> {
                 val (targetRow, targetCol) = parseCellRef(position)
                 // 지정 위치의 병합 영역 확인
@@ -77,27 +86,11 @@ class ImageInserter {
         }
     }
 
-    /**
-     * 셀 참조 파싱 (예: "B5" -> Pair(4, 1))
-     */
-    private fun parseCellRef(ref: String): Pair<Int, Int> {
-        val colPart = ref.takeWhile(Char::isLetter)
-        val rowPart = ref.dropWhile(Char::isLetter)
-        return Pair(rowPart.toInt() - 1, toColumnIndex(colPart))
-    }
-
-    /**
-     * 병합 영역 찾기
-     */
-    private fun findMergedRegion(sheet: Sheet, rowIndex: Int, colIndex: Int): CellRangeAddress? {
-        for (i in 0 until sheet.numMergedRegions) {
-            val region = sheet.getMergedRegion(i)
-            if (region.isInRange(rowIndex, colIndex)) {
-                return region
-            }
-        }
-        return null
-    }
+    /** 병합 영역 찾기 */
+    private fun findMergedRegion(sheet: Sheet, rowIndex: Int, colIndex: Int) =
+        (0 until sheet.numMergedRegions)
+            .map { sheet.getMergedRegion(it) }
+            .firstOrNull { it.isInRange(rowIndex, colIndex) }
 
     /**
      * 이미지 삽입
@@ -143,7 +136,7 @@ class ImageInserter {
                 drawing.createPicture(anchor, pictureIdx)
             }
             else -> {
-                val anchor = createAnchor(workbook, rowIndex, colIndex, null)
+                val anchor = createAnchor(workbook, rowIndex, colIndex, mergedRegion)
                 val picture = drawing.createPicture(anchor, pictureIdx)
                 picture.resize()
                 val scale = calculateScale(picture, sheet, rowIndex, colIndex, sizeSpec, mergedRegion)
@@ -195,70 +188,24 @@ class ImageInserter {
         return (finalWidth / originalWidth) to (finalHeight / originalHeight)
     }
 
-    private fun getCellWidthInPixels(
-        sheet: Sheet,
-        colIndex: Int,
-        mergedRegion: CellRangeAddress?
-    ): Double {
-        val startCol = mergedRegion?.firstColumn ?: colIndex
-        val endCol = mergedRegion?.lastColumn ?: colIndex
+    private fun getCellWidthInPixels(sheet: Sheet, colIndex: Int, mergedRegion: CellRangeAddress?) =
+        ((mergedRegion?.firstColumn ?: colIndex)..(mergedRegion?.lastColumn ?: colIndex))
+            .sumOf { sheet.getColumnWidthInPixels(it).toDouble() }
 
-        var totalWidth = 0.0
-        for (col in startCol..endCol) {
-            totalWidth += sheet.getColumnWidthInPixels(col).toDouble()
+    private fun getCellHeightInPixels(sheet: Sheet, rowIndex: Int, mergedRegion: CellRangeAddress?) =
+        ((mergedRegion?.firstRow ?: rowIndex)..(mergedRegion?.lastRow ?: rowIndex))
+            .sumOf { getRowHeightInPixels(sheet, it) }
+
+    private fun createAnchor(workbook: Workbook, rowIndex: Int, colIndex: Int, mergedRegion: CellRangeAddress?) =
+        // POI 버그: col1/col2 getter(short)/setter(int) 타입 불일치
+        // 제보함: https://bz.apache.org/bugzilla/show_bug.cgi?id=69935
+        workbook.creationHelper.createClientAnchor().apply {
+            setCol1(mergedRegion?.firstColumn ?: colIndex)
+            row1 = mergedRegion?.firstRow ?: rowIndex
+            setCol2((mergedRegion?.lastColumn ?: colIndex) + 1)
+            row2 = (mergedRegion?.lastRow ?: rowIndex) + 1
+            anchorType = ClientAnchor.AnchorType.MOVE_AND_RESIZE
         }
-        return totalWidth
-    }
-
-    private fun getCellHeightInPixels(
-        sheet: Sheet,
-        rowIndex: Int,
-        mergedRegion: CellRangeAddress?
-    ): Double {
-        val startRow = mergedRegion?.firstRow ?: rowIndex
-        val endRow = mergedRegion?.lastRow ?: rowIndex
-
-        var totalHeight = 0.0
-        for (row in startRow..endRow) {
-            val rowObj = sheet.getRow(row)
-            val heightPt = if (rowObj?.height?.toInt() == -1 || rowObj == null) {
-                sheet.defaultRowHeightInPoints.toDouble()
-            } else {
-                rowObj.heightInPoints.toDouble()
-            }
-            totalHeight += heightPt * 96 / 72
-        }
-        return totalHeight
-    }
-
-    private fun createAnchor(
-        workbook: Workbook,
-        rowIndex: Int,
-        colIndex: Int,
-        mergedRegion: CellRangeAddress?
-    ): ClientAnchor {
-        val helper = workbook.creationHelper
-
-        return if (mergedRegion != null) {
-            helper.createClientAnchor().apply {
-                // POI 버그: col1/col2 getter(short)/setter(int) 타입 불일치
-                // 제보함: https://bz.apache.org/bugzilla/show_bug.cgi?id=69935
-                setCol1(mergedRegion.firstColumn)
-                row1 = mergedRegion.firstRow
-                setCol2(mergedRegion.lastColumn + 1)
-                row2 = mergedRegion.lastRow + 1
-                anchorType = ClientAnchor.AnchorType.MOVE_AND_RESIZE
-            }
-        } else {
-            helper.createClientAnchor().apply {
-                setCol1(colIndex)
-                row1 = rowIndex
-                setCol2(colIndex + 1)
-                row2 = rowIndex + 1
-                anchorType = ClientAnchor.AnchorType.MOVE_AND_RESIZE
-            }
-        }
-    }
 
     /** 원본 크기 이미지용 앵커 생성 (EMU 단위 정밀 계산) */
     private fun createAnchorForOriginalSize(
@@ -280,8 +227,8 @@ class ImageInserter {
         )
 
         return XSSFClientAnchor(
-            IMAGE_MARGIN_EMU, IMAGE_MARGIN_EMU,  // dx1, dy1 (시작 마진)
-            dx2, dy2,  // dx2, dy2 (끝점)
+            IMAGE_MARGIN_EMU, IMAGE_MARGIN_EMU,  // 시작 마진
+            dx2, dy2,  // 끝점
             colIndex, rowIndex,
             endCol, endRow
         ).apply {
@@ -290,31 +237,17 @@ class ImageInserter {
     }
 
     /** 마진이 적용된 앵커 생성 (dx2/dy2 음수 = 끝점에서 안쪽으로) */
-    private fun createAnchorWithMargin(
-        rowIndex: Int,
-        colIndex: Int,
-        mergedRegion: CellRangeAddress?
-    ): XSSFClientAnchor {
-        return if (mergedRegion != null) {
-            XSSFClientAnchor(
-                IMAGE_MARGIN_EMU, IMAGE_MARGIN_EMU,
-                -IMAGE_MARGIN_EMU, -IMAGE_MARGIN_EMU,
-                mergedRegion.firstColumn, mergedRegion.firstRow,
-                mergedRegion.lastColumn + 1, mergedRegion.lastRow + 1
-            ).apply {
-                anchorType = ClientAnchor.AnchorType.MOVE_AND_RESIZE
-            }
-        } else {
-            XSSFClientAnchor(
-                IMAGE_MARGIN_EMU, IMAGE_MARGIN_EMU,
-                -IMAGE_MARGIN_EMU, -IMAGE_MARGIN_EMU,
-                colIndex, rowIndex,
-                colIndex + 1, rowIndex + 1
-            ).apply {
-                anchorType = ClientAnchor.AnchorType.MOVE_AND_RESIZE
-            }
+    private fun createAnchorWithMargin(rowIndex: Int, colIndex: Int, mergedRegion: CellRangeAddress?) =
+        XSSFClientAnchor(
+            IMAGE_MARGIN_EMU, IMAGE_MARGIN_EMU,
+            -IMAGE_MARGIN_EMU, -IMAGE_MARGIN_EMU,
+            mergedRegion?.firstColumn ?: colIndex,
+            mergedRegion?.firstRow ?: rowIndex,
+            (mergedRegion?.lastColumn ?: colIndex) + 1,
+            (mergedRegion?.lastRow ?: rowIndex) + 1
+        ).apply {
+            anchorType = ClientAnchor.AnchorType.MOVE_AND_RESIZE
         }
-    }
 
     /**
      * 비율 유지 앵커 생성 (EMU 단위 정밀 계산)
@@ -417,13 +350,9 @@ class ImageInserter {
         return currentCol to 0
     }
 
-    private fun getRowHeightInPixels(sheet: Sheet, rowIndex: Int): Double {
-        val rowObj = sheet.getRow(rowIndex)
-        val heightPt = if (rowObj?.height?.toInt() == -1 || rowObj == null) {
-            sheet.defaultRowHeightInPoints.toDouble()
-        } else {
-            rowObj.heightInPoints.toDouble()
-        }
-        return heightPt * 96 / 72
-    }
+    private fun getRowHeightInPixels(sheet: Sheet, rowIndex: Int) =
+        pointsToPixels(
+            sheet.getRow(rowIndex)?.takeIf { it.height.toInt() != -1 }?.heightInPoints?.toDouble()
+                ?: sheet.defaultRowHeightInPoints.toDouble()
+        )
 }

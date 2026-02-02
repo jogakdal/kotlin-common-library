@@ -44,10 +44,6 @@ class PivotTableTest {
             val template = javaClass.getResourceAsStream("/templates/no_pivot_template.xlsx")!!
             val bytes = generator.generate(template, dataProvider)
             samplesDir.resolve("streaming_disabled.xlsx").toFile().writeBytes(bytes)
-            println("DISABLED mode file: ${samplesDir.resolve("streaming_disabled.xlsx").toAbsolutePath()}")
-
-            // 파일 크기 확인
-            println("DISABLED mode file size: ${bytes.size} bytes")
             assertTrue(bytes.size > 0, "DISABLED 모드에서 파일이 생성되어야 합니다")
         }
 
@@ -57,10 +53,6 @@ class PivotTableTest {
             val template = javaClass.getResourceAsStream("/templates/no_pivot_template.xlsx")!!
             val bytes = generator.generate(template, dataProvider)
             samplesDir.resolve("streaming_enabled.xlsx").toFile().writeBytes(bytes)
-            println("ENABLED mode file: ${samplesDir.resolve("streaming_enabled.xlsx").toAbsolutePath()}")
-
-            // 파일 크기 확인
-            println("ENABLED mode file size: ${bytes.size} bytes")
             assertTrue(bytes.size > 0, "ENABLED 모드에서 파일이 생성되어야 합니다")
         }
     }
@@ -94,10 +86,8 @@ class PivotTableTest {
                 val sheet = workbook.getSheetAt(sheetIndex) as? org.apache.poi.xssf.usermodel.XSSFSheet
                 val pivotTables = sheet?.pivotTables ?: continue
 
-                println("시트 '${sheet.sheetName}': 피벗 테이블 ${pivotTables.size}개")
                 for (pt in pivotTables) {
                     val def = pt.ctPivotTableDefinition
-                    println("  피벗 테이블: name=${def.name}, rowHeaderCaption=${def.rowHeaderCaption}")
                     // rowHeaderCaption이 있는 피벗 테이블을 찾음
                     if (def.rowHeaderCaption != null) {
                         foundCaption = def.rowHeaderCaption
@@ -105,8 +95,6 @@ class PivotTableTest {
                     }
                 }
             }
-
-            println("찾은 피벗 테이블: $foundPivotTableName, rowHeaderCaption: $foundCaption")
             assertNotNull(foundCaption, "rowHeaderCaption이 설정되어야 합니다")
             assertEquals("직급", foundCaption, "rowHeaderCaption이 '직급'이어야 합니다")
         }

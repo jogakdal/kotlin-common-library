@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayInputStream
-import java.io.InputStream
 
 /**
  * 빈 컬렉션(count=0) 처리 테스트.
@@ -19,8 +18,6 @@ import java.io.InputStream
 class EmptyCollectionTest {
 
     private lateinit var generator: ExcelGenerator
-
-    data class Employee(val name: String, val position: String, val salary: Int)
 
     @BeforeEach
     fun setUp() {
@@ -36,7 +33,7 @@ class EmptyCollectionTest {
     fun `SXSSF mode - empty collection should output one empty repeat unit`() {
         val sxssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.ENABLED)
         ExcelGenerator(sxssfConfig).use { sxssfGenerator ->
-            val template = loadTemplate()
+            val template = TestUtils.loadTemplate()
             val emptyProvider = createEmptyCollectionProvider()
 
             val result = sxssfGenerator.generate(template, emptyProvider)
@@ -49,7 +46,7 @@ class EmptyCollectionTest {
     fun `XSSF mode - empty collection should output one empty repeat unit`() {
         val xssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.DISABLED)
         ExcelGenerator(xssfConfig).use { xssfGenerator ->
-            val template = loadTemplate()
+            val template = TestUtils.loadTemplate()
             val emptyProvider = createEmptyCollectionProvider()
 
             val result = xssfGenerator.generate(template, emptyProvider)
@@ -68,10 +65,10 @@ class EmptyCollectionTest {
             ExcelGenerator(xssfConfig).use { xssfGenerator ->
                 val emptyProvider = createEmptyCollectionProvider()
 
-                val template1 = loadTemplate()
+                val template1 = TestUtils.loadTemplate()
                 val sxssfResult = sxssfGenerator.generate(template1, emptyProvider)
 
-                val template2 = loadTemplate()
+                val template2 = TestUtils.loadTemplate()
                 val xssfResult = xssfGenerator.generate(template2, emptyProvider)
 
                 assertExcelFilesEqual(sxssfResult, xssfResult)
@@ -88,19 +85,15 @@ class EmptyCollectionTest {
             // count=null (라이브러리가 Iterator 순회로 파악)
             val withNullCount = createEmptyCollectionProvider(provideCount = false)
 
-            val template1 = loadTemplate()
+            val template1 = TestUtils.loadTemplate()
             val result1 = sxssfGenerator.generate(template1, withZeroCount)
 
-            val template2 = loadTemplate()
+            val template2 = TestUtils.loadTemplate()
             val result2 = sxssfGenerator.generate(template2, withNullCount)
 
             assertExcelFilesEqual(result1, result2)
         }
     }
-
-    private fun loadTemplate(): InputStream =
-        javaClass.getResourceAsStream("/templates/template.xlsx")
-            ?: throw IllegalStateException("템플릿 파일을 찾을 수 없습니다")
 
     /**
      * 빈 컬렉션을 제공하는 DataProvider 생성
@@ -117,8 +110,8 @@ class EmptyCollectionTest {
             }
 
             override fun getItems(name: String): Iterator<Any>? = when (name) {
-                "employees" -> emptyList<Employee>().iterator()
-                "mergedEmployees" -> emptyList<Employee>().iterator()
+                "employees" -> emptyList<TestUtils.Employee>().iterator()
+                "mergedEmployees" -> emptyList<TestUtils.Employee>().iterator()
                 "departments" -> emptyList<Any>().iterator()
                 else -> null
             }
@@ -131,17 +124,14 @@ class EmptyCollectionTest {
             }
 
             override fun getImage(name: String): ByteArray? = when (name) {
-                "logo" -> loadImage("hunet_logo.png")
-                "ci" -> loadImage("hunet_ci.png")
+                "logo" -> TestUtils.loadImage("hunet_logo.png")
+                "ci" -> TestUtils.loadImage("hunet_ci.png")
                 else -> null
             }
 
             override fun getMetadata(): DocumentMetadata? = null
         }
     }
-
-    private fun loadImage(fileName: String): ByteArray? =
-        javaClass.getResourceAsStream("/$fileName")?.use { it.readBytes() }
 
     /**
      * 빈 반복 단위가 올바르게 출력되었는지 검증

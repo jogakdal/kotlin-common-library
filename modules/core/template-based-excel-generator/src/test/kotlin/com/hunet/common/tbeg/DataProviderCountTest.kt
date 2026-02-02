@@ -125,7 +125,6 @@ class DataProviderCountTest {
             val sheetWithoutCount = wbWithoutCount.getSheetAt(0)
 
             // 행 수 비교
-            println("count 제공 시 행 수: ${sheetWithCount.lastRowNum}, 미제공 시 행 수: ${sheetWithoutCount.lastRowNum}")
             assertEquals(sheetWithCount.lastRowNum, sheetWithoutCount.lastRowNum,
                 "두 결과의 행 수가 동일해야 합니다 (count 제공: ${sheetWithCount.lastRowNum}, 미제공: ${sheetWithoutCount.lastRowNum})")
 

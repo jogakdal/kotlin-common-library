@@ -1,4 +1,4 @@
-# 하드 삭제 → 소프트 삭제 마이그레이션 가이드
+# 하드 삭제 -> 소프트 삭제 마이그레이션 가이드
 
 ## 문서 간 교차 링크
 - [사용자 가이드](./soft-delete-user-guide.md)
@@ -124,7 +124,7 @@ WHERE user_id IN (SELECT user_id FROM deleted_user_log);
   - [ ] 삭제 대상이 NOW로 올바르게 마킹됨
   - [ ] RECURSIVE/BULK 설정에 맞춰 관계 엔티티의 삭제 마킹 일관성 보장
   - [ ] 유니크 제약 정책(부분 인덱스/논리 유니크)이 충돌 없이 동작함
-  - [ ] 서비스 계층의 deleteById → softDeleteById 대체가 완료됨
+  - [ ] 서비스 계층의 deleteById -> softDeleteById 대체가 완료됨
   - [ ] 복구 플로우(최소 DateTime 복구 또는 null 복구)가 정상 동작
   - [ ] @Query 혼용 시 Alive 조건 중복/누락이 없음
   - [ ] 락/타임아웃/데드락에 대한 재시도 정책이 도입됨

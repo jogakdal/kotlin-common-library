@@ -4,7 +4,7 @@ package com.hunet.common.tbeg.engine.rendering
  * 템플릿 렌더링 전략 인터페이스.
  *
  * XSSF(비스트리밍)와 SXSSF(스트리밍) 모드를 추상화하여
- * 동일한 인터페이스로 템플릿 렌더링을 수행합니다.
+ * 동일한 인터페이스로 템플릿 렌더링을 수행한다.
  *
  * ## 구현체
  * - [XssfRenderingStrategy]: XSSF 기반 비스트리밍 렌더링
@@ -17,7 +17,7 @@ internal interface RenderingStrategy {
     val name: String
 
     /**
-     * 템플릿에 데이터를 바인딩하여 Excel을 생성합니다.
+     * 템플릿에 데이터를 바인딩하여 Excel을 생성한다.
      *
      * @param templateBytes 템플릿 바이트 배열
      * @param data 바인딩할 데이터 맵
@@ -34,7 +34,7 @@ internal interface RenderingStrategy {
 /**
  * 렌더링에 필요한 컨텍스트 정보.
  *
- * 전략 구현체에서 공통으로 사용하는 유틸리티와 프로세서를 제공합니다.
+ * 전략 구현체에서 공통으로 사용하는 유틸리티와 프로세서를 제공한다.
  *
  * @property analyzer 템플릿 분석기
  * @property imageInserter 이미지 삽입기

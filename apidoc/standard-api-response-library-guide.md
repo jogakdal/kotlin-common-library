@@ -262,8 +262,8 @@ val user: UserDto? = anyResp.getRealPayload<UserDto>() // 타입 불일치 시 n
 
 | 영역 | 안전 메커니즘 | 이점 |
 |------|---------------|------|
-| 실패 처리 | 역직렬화 예외 → `status=FAILURE` + `ErrorPayload` (첫 `errors[0]` = `E_DESERIALIZE_FAIL`) | 호출측 try/catch 최소화, 표준 오류 코드 일관성 |
-| Canonical/Alias | 케이스/구분자 변형 허용 | 외부 시스템 표기 편차 허용 → 호환성 ↑ |
+| 실패 처리 | 역직렬화 예외 -> `status=FAILURE` + `ErrorPayload` (첫 `errors[0]` = `E_DESERIALIZE_FAIL`) | 호출측 try/catch 최소화, 표준 오류 코드 일관성 |
+| Canonical/Alias | 케이스/구분자 변형 허용 | 외부 시스템 표기 편차 허용 -> 호환성 ↑ |
 | BEST_MATCH 전략 | (WARN+BEST_MATCH) 충돌 시 실제 입력 키와 가장 유사 alias 선택 | 다수 alias 혼재 상황에서도 자동 분기 |
 | 부분 다운캐스팅 | `getRealPayload<T>()` | 잘못된 캐스팅 예외 회피 |
 | Wrapper 분리 | 상위 메타 파싱 실패 시에도 payload 영향 국한 | 손상 JSON 일부라도 최대 정보 확보 |
@@ -338,7 +338,7 @@ class BuildExample {
 - 단위 변경: `@InjectDuration(TimeUnit.SECONDS)` 등
 - 최종 응답에 표시되는 `duration`(StandardResponse 필드)은 빌더 콜백 실행 시간 또는 요청 전체(elapsed) 중 자동 계산된 값(필터 + Advice)으로 주입되며, 요청 시간 필터 활성 시 필터 기준 elapsed 값이 override 됩니다.
 - 지원 주입 타입: Long, Int, Double, String, `java.time.Duration`, `kotlin.time.Duration` (필드 타입에 따라 변환)
-- 재귀 범위: 최상위 `StandardResponse` → `payload` → 중첩 `BasePayload` → 컬렉션(List/Set 등) 요소 중 `BasePayload` → Map 값 중 `BasePayload`.
+- 재귀 범위: 최상위 `StandardResponse` -> `payload` -> 중첩 `BasePayload` -> 컬렉션(List/Set 등) 요소 중 `BasePayload` -> Map 값 중 `BasePayload`.
 
 ### 3.5 오류 응답 패턴
 ```kotlin
@@ -389,8 +389,8 @@ IncrementalList<String, Long> inc = IncrementalList.buildFromTotalJava(
 3. 빈 결과: `current=0`, `list=[]`, `total` 은 0 또는 전체 총계(정책에 따라 선택)
 
 활용 패턴:
-- 페이지 응답: 페이징 소스(`Page<E>`)에서 `totalElements` → `total`, `content.size` → `current`, `mappedList` → `list`.
-- 커서 응답: 커서 범위 내 fetch된 레코드 수 → `current`; 전체 총계 계산 가능 시 → `total`, 아니면 추정값 사용 또는 별도 appendix로 예측치 전달.
+- 페이지 응답: 페이징 소스(`Page<E>`)에서 `totalElements` -> `total`, `content.size` -> `current`, `mappedList` -> `list`.
+- 커서 응답: 커서 범위 내 fetch된 레코드 수 -> `current`; 전체 총계 계산 가능 시 -> `total`, 아니면 추정값 사용 또는 별도 appendix로 예측치 전달.
 
 성능 고려:
 - 클라이언트가 `list.size` 반복 계산하는 대신 즉시 `current` 로 액세스 가능.
@@ -408,7 +408,7 @@ IncrementalList<String, Long> inc = IncrementalList.buildFromTotalJava(
 - `direction`: `ASC` 또는 `DESC` (DTO 필드인 경우 `OrderDirection` Enum class 사용 권장)
 
 활용 패턴:
-- JPA/Page 요청에서 Sort 정보 매핑 → `OrderInfo.sorted = sort.isSorted`, `OrderInfo.by = sort.orders.map { OrderBy(it.property, it.direction.name) }`
+- JPA/Page 요청에서 Sort 정보 매핑 -> `OrderInfo.sorted = sort.isSorted`, `OrderInfo.by = sort.orders.map { OrderBy(it.property, it.direction.name) }`
 - 다중 필드 정렬: `by` 리스트 순서대로 우선순위 적용.
 
 JSON 예시:
@@ -442,7 +442,7 @@ val resp = StandardResponse.build(pageableList)
 #### 3.6.1.5 Edge Case & 품질 체크
 | 상황 | 점검 포인트 | 해결 |
 |------|-------------|------|
-| total < current | 잘못된 총계 계산 | 총계 재계산 또는 total=0 정책 → 문서화 필요 |
+| total < current | 잘못된 총계 계산 | 총계 재계산 또는 total=0 정책 -> 문서화 필요 |
 | sorted=true 이지만 by 빈 리스트 | 정렬 플래그 불일치 | sorted=false 로 교정 또는 by 채우기 |
 | current != list.size | 누락/중복 매핑 | 리스트 변환(map) 후 size 재동기화 |
 | direction 오타 | 클라이언트 파싱 실패 | Enum 사용 강제 / 검증 테스트 추가 |
@@ -476,7 +476,7 @@ API 개발자가 직접 생성/전파할 수도 있지만, 일반적으로 API G
 | 하위 호환 | 기존 클라이언트는 traceid 부재에도 정상 동작 (Optional 유지)                                     |
 
 ##### 생성/전파 예시 흐름
-1. 클라이언트가 요청 시 `X-Trace-Id` 헤더가 없으면 Gateway가 UUID 생성 → 요청 헤더 및 응답 body `traceid` 모두 설정.
+1. 클라이언트가 요청 시 `X-Trace-Id` 헤더가 없으면 Gateway가 UUID 생성 -> 요청 헤더 및 응답 body `traceid` 모두 설정.
 2. 내부 서비스 A가 B를 호출할 때 기존 헤더의 값을 그대로 전달.
 3. 각 서비스는 로깅 프레임워크 MDC 등에 `traceid` 반영 후 처리.
 4. 최종 응답은 원래 값을 `traceid` 필드에 그대로 포함.
@@ -485,7 +485,7 @@ API 개발자가 직접 생성/전파할 수도 있지만, 일반적으로 API G
 
 ## 4. 역직렬화
 ### 4.1 개요
-두 단계: Wrapper(kotlinx) → payload(Jackson). <br>
+두 단계: Wrapper(kotlinx) -> payload(Jackson). <br>
 실패 시 예외를 그대로 Throw 하지 않고 **FAILURE 상태 + ErrorPayload(code="E_DESERIALIZE_FAIL")** 로 감싼 응답 반환.
 
 ### 4.2 기본 역직렬화 API
@@ -538,13 +538,13 @@ data class AliasSample(
 ```
 역직렬화 허용 예 (모두 동일 프로퍼티 매핑):
 ```
-user_id / user-id / userId / USER_ID / USERID → userId
-surname / familyName / lastName → lastName
+user_id / user-id / userId / USER_ID / USERID -> userId
+surname / familyName / lastName -> lastName
 ```
 
 #### 4.5.2 Canonical 키 규칙
-입력 키에서 영문/숫자만 추출 → 소문자화 → 연결한 문자열을 Canonical. 구분자(`_`, `-`)·대소문자 차이 제거됨.
-예: `FIRST-NAME`, `First_Name`, `firstName` → canonical: `firstname` (충돌 시 경고 로깅 후 매핑 우선순위 규칙 적용)
+입력 키에서 영문/숫자만 추출 -> 소문자화 -> 연결한 문자열을 Canonical. 구분자(`_`, `-`)·대소문자 차이 제거됨.
+예: `FIRST-NAME`, `First_Name`, `firstName` -> canonical: `firstname` (충돌 시 경고 로깅 후 매핑 우선순위 규칙 적용)
 - 변형 처리: `_` ↔ `-` 교차 변형도 canonical 후보로 등록하여 충돌 후보 집합(`conflictCandidates`) 구축.
 - 충돌 해소 전략: `AliasConflictMode=ERROR` 시 즉시 예외; `WARN` + `AliasConflictResolution=BEST_MATCH` 시 입력 실제 key와 alias 후보 유사도 기반 선택.
 
@@ -559,7 +559,7 @@ surname / familyName / lastName → lastName
 data class Child(@JsonProperty("child_name") @JsonAlias("childName","child-name") val childName: String): BasePayload
 data class Wrapper(@JsonProperty("items_map") val items: Map<String, Child>): BasePayload
 ```
-JSON: `items-map` / `child-name` → 각각 `items` / `childName` 매핑
+JSON: `items-map` / `child-name` -> 각각 `items` / `childName` 매핑
 
 #### 4.5.4 성능 & 캐싱
 - 클래스 단위 리플렉션 메타는 1회 분석 후 글로벌 캐시
@@ -570,7 +570,7 @@ JSON: `items-map` / `child-name` → 각각 `items` / `childName` 매핑
 | 증상 | 원인 | 해결 |
 |------|------|------|
 | 필드 null | alias 누락/철자 불일치 | `@JsonProperty`/`@JsonAlias` 재확인 (canonical 충돌 여부 로그) |
-| 엉뚱한 필드 매핑 | canonical 충돌 | 서로 다른 필드 alias 정리 → 유일화 |
+| 엉뚱한 필드 매핑 | canonical 충돌 | 서로 다른 필드 alias 정리 -> 유일화 |
 | 출력 변환 제외 불가 | `@NoCaseTransform` 누락 | DTO 대상 필드에 어노테이션 추가 |
 
 #### 4.5.6 `@NoCaseTransform` 관계
@@ -579,17 +579,17 @@ JSON: `items-map` / `child-name` → 각각 `items` / `childName` 매핑
 
 ### 4.6 재귀/중첩 구조 & 성능
 - BasePayload/Collection/Map 내부 재귀
-- 캐시: 최초 방문 후 전역 저장 → `clearAliasCaches()` 호출로 초기화 가능
+- 캐시: 최초 방문 후 전역 저장 -> `clearAliasCaches()` 호출로 초기화 가능
 
 ---
 ## 5. 케이스 컨벤션 변환
 ### 5.1 개요
-응답 JSON 직렬화(DTO → JSON) 시 필드 키를 `snake_case`, `kebab-case`, `SCREAMING_SNAKE_CASE` 등으로 변환.
+응답 JSON 직렬화(DTO -> JSON) 시 필드 키를 `snake_case`, `kebab-case`, `SCREAMING_SNAKE_CASE` 등으로 변환.
 (역직렬화는 Canonical/Alias 매핑 로직이 별도 처리됨 – 케이스 변환 설정 비영향)
 
 ### 5.2 동작 순서
 기존 순서 교정 및 alias 단계 명시:
-1. Jackson 기본 직렬화 (원본 DTO → JSON Tree)
+1. Jackson 기본 직렬화 (원본 DTO -> JSON Tree)
 2. Alias serializationMap 적용(필드별 최종 출력 alias로 치환) + `@NoCaseTransform` 대상 skip 키 수집
 3. 선택된 CaseConvention에 따라 변환(IDENTITY 이외) – skip 키는 원본 유지
 4. Pretty 옵션 여부에 따라 최종 문자열 생성
@@ -686,14 +686,14 @@ assertTrue(incResp.payload.cursor?.expandable == true)
 ### 7.1 Java 상호 운용성 주의사항
 | 항목 | 설명 |
 |------|------|
-| 기본 파라미터 | Kotlin 기본값 → Java 사용 시 오버로드 메서드로 모두 명시 |
-| reified 한계 | `fromPage()` 등 reified 함수 → `fromPageJava()`, `buildFromTotalJava()` 사용 |
+| 기본 파라미터 | Kotlin 기본값 -> Java 사용 시 오버로드 메서드로 모두 명시 |
+| reified 한계 | `fromPage()` 등 reified 함수 -> `fromPageJava()`, `buildFromTotalJava()` 사용 |
 | 제네릭 안전성 | `StandardResponse<Payload>` 변수 형태로 명확히 선언하여 캐스팅 방지 |
 | 복합 제네릭 역직렬화 | 내장 `deserialize(json, TypeReference<T>)` 사용 (payload 타입 T 지정) |
 
 권고 사항:
-- 생성 편의: `StatusPayload.Companion.of(code, message, appendixNullable)` 사용 → appendix null-safe.
-- 콜백 결과: `StandardCallbackResult.of(payload)` 또는 `of(payload, status, version)` 사용 → Kotlin 기본 인자 차이와 NPE 방지.
+- 생성 편의: `StatusPayload.Companion.of(code, message, appendixNullable)` 사용 -> appendix null-safe.
+- 콜백 결과: `StandardCallbackResult.of(payload)` 또는 `of(payload, status, version)` 사용 -> Kotlin 기본 인자 차이와 NPE 방지.
 
 ### 7.2 Callback 빌더 패턴
 `StandardResponse.build(callback = { ... })`(Kotlin) / `StandardResponse.buildWithCallback(() -> { ... })`(Java)는 응답 생성 직전 도메인 로직을 람다/함수 블록으로 감싸 **payload + status + version**을 한 번에 선언하도록 하는 패턴입니다.<br>
@@ -778,7 +778,7 @@ class UserController(private val userService: UserService) {
 
 ### 7.3 Duration 측정 주의 사항
 - 콜백 빌더 내부 시간: callback 블록 실행 전후 차이 (업무 로직 측정)
-- 요청 전체 시간: 필터(System.nanoTime 시작) → 응답 직전 Advice에서 계산, `@InjectDuration` 표기된 모든 재귀 필드에 주입
+- 요청 전체 시간: 필터(System.nanoTime 시작) -> 응답 직전 Advice에서 계산, `@InjectDuration` 표기된 모든 재귀 필드에 주입
 - 최종 출력 `StandardResponse.duration`: 필터 기반 값 우선, 필터 비활성 시 빌더 측정값 사용.
 
 ### 7.4 Batch 실패 개선 예시
@@ -804,7 +804,7 @@ fun batch(items: List<String>): StandardResponse<BasePayload> = StandardResponse
 ```
 정책 포인트:
 - 성공 시 `StatusPayload` 사용 (오류 리스트 불필요)
-- 실패/부분 실패 시 `ErrorPayload` 사용 → 클라이언트는 payload 타입 확인 또는 `getRealPayload<ErrorPayload>()` 사용
+- 실패/부분 실패 시 `ErrorPayload` 사용 -> 클라이언트는 payload 타입 확인 또는 `getRealPayload<ErrorPayload>()` 사용
 
 ---
 ## 8. 실 서비스 적용 패턴
@@ -814,7 +814,7 @@ fun batch(items: List<String>): StandardResponse<BasePayload> = StandardResponse
 |--------|------|------|
 | Controller | 엔드포인트 정의, 컨텍스트 추출 | `StandardResponse.build { service.method(...) }` |
 | Service | 비즈니스 + DTO 매핑 | 성공: `StandardCallbackResult(payload=...)` / 실패: 예외 throw |
-| Advice | 전역 예외 처리 | 예외 → `ErrorPayload` + `FAILURE` 응답 |
+| Advice | 전역 예외 처리 | 예외 -> `ErrorPayload` + `FAILURE` 응답 |
 | 비동기 트리거 | 오래 걸리는 작업 위임 | 즉시 CUD 결과 응답 + 비동기 실행 |
 
 ### 8.2 StandardCallbackResult 활용 (페이징 서비스 실전)
@@ -924,7 +924,7 @@ class ManagerSessionController(
 | 특정 필드 케이스 변환 제외 | `@NoCaseTransform` |
 | Alias 충돌 강제 검사 | 모드 `ERROR` 또는 WARN+로그, 필요 시 BEST_MATCH 전략 |
 | 페이지 번호 기준 | `PageInfo.current` 는 1부터 시작 (Spring Page.number + 1) |
-| 오류/성공 선택 기준 | 단순 상태 → `StatusPayload`, 오류/부분실패/검증 → `ErrorPayload` |
+| 오류/성공 선택 기준 | 단순 상태 -> `StatusPayload`, 오류/부분실패/검증 -> `ErrorPayload` |
 
 ---
 ## Appendix

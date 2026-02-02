@@ -54,7 +54,7 @@ enum class FileConflictPolicy {
 
     /**
      * 동일 파일명이 존재하면 시퀀스 번호를 추가.
-     * 예: report.xlsx → report_1.xlsx → report_2.xlsx
+     * 예: report.xlsx -> report_1.xlsx -> report_2.xlsx
      */
     SEQUENCE
 }

@@ -8,12 +8,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 
-@Deprecated("Use TbegAutoConfiguration instead", ReplaceWith("TbegAutoConfiguration"))
-typealias ExcelGeneratorAutoConfiguration = TbegAutoConfiguration
-
-@Deprecated("Use TbegProperties instead", ReplaceWith("TbegProperties"))
-typealias ExcelGeneratorProperties = TbegProperties
-
 /**
  * TBEG (Template Based Excel Generator) Auto-Configuration.
  *
