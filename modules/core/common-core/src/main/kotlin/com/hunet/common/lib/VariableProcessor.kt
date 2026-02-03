@@ -157,4 +157,112 @@ class VariableProcessor(registries: List<VariableResolverRegistry>) {
     /** 모든 설정 + Map */
     fun process(template: String, options: Options, params: Map<String, Any?>): String =
         internalProcess(template, params.entries.map { it.key to it.value }.toTypedArray(), options)
+
+    // ========== 데이터 맵 기반 동적 표현식 평가 ==========
+
+    /**
+     * 데이터 맵에서 직접 값을 가져와 치환합니다.
+     * 레지스트리 없이 동적으로 데이터 맵의 값을 참조합니다.
+     *
+     * 지원 표현식:
+     * - `${variable}` - 단순 변수
+     * - `${object.property}` - 프로퍼티 접근
+     *
+     * @param template 템플릿 문자열
+     * @param data 데이터 맵
+     * @param options 처리 옵션 (구분자 등)
+     * @return 치환된 문자열
+     */
+    fun processWithData(
+        template: String,
+        data: Map<String, Any?>,
+        options: Options = Options(
+            delimiters = Delimiters("\${", "}"),
+            ignoreMissing = true
+        )
+    ): String {
+        if (template.isEmpty()) return template
+
+        val regex = regexOf(options.delimiters)
+
+        return regex.replace(template) { m ->
+            val expression = m.groupValues[1]
+            val result = evaluateExpression(expression, data)
+            result?.toString() ?: if (options.ignoreMissing) m.value else ""
+        }
+    }
+
+    /**
+     * 표현식을 평가하여 값 반환
+     */
+    private fun evaluateExpression(expression: String, data: Map<String, Any?>): Any? {
+        val parts = expression.split(".")
+        if (parts.isEmpty()) return null
+
+        // 첫 번째 부분: 데이터 맵에서 변수 조회
+        val firstPart = parts[0]
+        var current: Any? = data[firstPart]
+
+        // 나머지 부분: 프로퍼티 접근
+        for (i in 1 until parts.size) {
+            if (current == null) return null
+            current = resolveProperty(current, parts[i])
+        }
+
+        return current
+    }
+
+    /**
+     * 프로퍼티 접근
+     */
+    private fun resolveProperty(obj: Any, propertyName: String): Any? {
+        return when (obj) {
+            is Map<*, *> -> obj[propertyName]
+            else -> resolveObjectProperty(obj, propertyName)
+        }
+    }
+
+    /**
+     * 일반 객체의 프로퍼티 접근
+     */
+    private fun resolveObjectProperty(obj: Any, propertyName: String): Any? {
+        val clazz = obj::class.java
+
+        // 필드 접근 시도
+        try {
+            val field = clazz.getDeclaredField(propertyName)
+            field.isAccessible = true
+            return field.get(obj)
+        } catch (_: NoSuchFieldException) {
+            // 필드 없음, getter 시도
+        }
+
+        // getter 메서드 시도 (getPropertyName)
+        try {
+            val getterName = "get${propertyName.replaceFirstChar { it.uppercase() }}"
+            val getter = clazz.getMethod(getterName)
+            return getter.invoke(obj)
+        } catch (_: NoSuchMethodException) {
+            // getter 없음
+        }
+
+        // is 접두사 getter 시도 (isPropertyName) - Boolean
+        try {
+            val isGetterName = "is${propertyName.replaceFirstChar { it.uppercase() }}"
+            val isGetter = clazz.getMethod(isGetterName)
+            return isGetter.invoke(obj)
+        } catch (_: NoSuchMethodException) {
+            // is getter 없음
+        }
+
+        // Kotlin 프로퍼티 접근 시도 (프로퍼티명과 동일한 메서드)
+        try {
+            val method = clazz.getMethod(propertyName)
+            return method.invoke(obj)
+        } catch (_: NoSuchMethodException) {
+            // 메서드 없음
+        }
+
+        return null
+    }
 }

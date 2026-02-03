@@ -1,6 +1,7 @@
 package com.hunet.common.lib.repository
 
 import com.hunet.common.data.jpa.extension.getAnnotation
+import com.hunet.common.logging.commonLogger
 import jakarta.persistence.EntityManager
 import jakarta.persistence.Table
 import jakarta.persistence.TemporalType
@@ -13,6 +14,7 @@ import org.springframework.data.repository.NoRepositoryBean
 import org.springframework.transaction.annotation.Transactional
 import java.io.Serializable
 import java.util.*
+import kotlin.getValue
 
 @NoRepositoryBean
 interface PersistJpaRepository<T, ID: Serializable> : JpaRepository<T, ID> {
@@ -46,7 +48,10 @@ class PersistJpaRepositoryImpl<T : Any, ID: Serializable>(
     entityInformation: JpaEntityInformation<T, *>,
     val entityManager: EntityManager,
 ) : SimpleJpaRepository<T, ID>(entityInformation, entityManager), PersistJpaRepository<T, ID> {
-    companion object { private val LOG = LoggerFactory.getLogger(PersistJpaRepositoryImpl::class.java) }
+    companion object {
+//        private val LOG = LoggerFactory.getLogger(PersistJpaRepositoryImpl::class.java)
+        private val LOG by commonLogger()
+    }
 
     protected val entityType by lazy { entityInformation.javaType }
     protected val entityName by lazy { entityManager.metamodel.entity(entityType).name }

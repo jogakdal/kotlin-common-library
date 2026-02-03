@@ -13,9 +13,9 @@
 | `@EnumConstant` | Annotation | enum class | 표준 문서/스키마에서 열거형을 ‘표준 enum’으로 식별 (정적 수집/문서화) |
 | `DescriptiveEnum` | Interface | enum 구현 | value / description / describable 제공 + 커스텀 (역)직렬화 지원 |
 | `ExceptionCode` | Interface | enum 구현 | `DescriptiveEnum` 확장 + `code`/`message` 필드(예외/오류 코드 표현) |
-| `@SwaggerDescribable` | Annotation (Deprecated) | class | (Deprecated) → 클래스 문서화 시 @Schema 사용 권장 |
+| `@SwaggerDescribable` | Annotation (Deprecated) | class | (Deprecated) -> 클래스 문서화 시 @Schema 사용 권장 |
 | `@SwaggerDescription` | Annotation | property | 필드별 설명/optional 표시 (응답/요청 공용; @Schema 병행 가능) |
-| ~~`@RequestDescription`~~ | Annotation (Deprecated) | property | (Deprecated) → `@SwaggerDescription` 또는 `@Schema` 로 대체 |
+| ~~`@RequestDescription`~~ | Annotation (Deprecated) | property | (Deprecated) -> `@SwaggerDescription` 또는 `@Schema` 로 대체 |
 | `@Sequence` | Annotation | property | 문서/출력 정렬 순서를 위한 우선순위 정수 값 지정 |
 
 ---
@@ -74,9 +74,9 @@ annotation class Sequence(val value: Int)
 ## 3. Enum 직렬화/역직렬화 동작 (DescriptiveEnum)
 | 항목 | 설명 |
 |------|------|
-| 직렬화 | `DescriptiveEnumSerializer` → JSON 문자열로 `value` 만 출력 |
-| 역직렬화 순서 | `fromValue` → value(대소문자 무시) → enum name(대소문자 무시) |
-| 기본값 처리 | 빈/ null → `fromValue("")` 시도 후 value=="" 항목 fallback |
+| 직렬화 | `DescriptiveEnumSerializer` -> JSON 문자열로 `value` 만 출력 |
+| 역직렬화 순서 | `fromValue` -> value(대소문자 무시) -> enum name(대소문자 무시) |
+| 기본값 처리 | 빈/ null -> `fromValue("")` 시도 후 value=="" 항목 fallback |
 | 컬렉션 | ContextualDeserializer 로 List/Set/Map value 동일 처리 |
 
 ### 기본 예시
@@ -103,7 +103,7 @@ enum class StandardStatus(
 
 ---
 ## 4. (Deprecated) RequestDescription
-→ `@SwaggerDescription` 또는 `@Schema` 사용.
+-> `@SwaggerDescription` 또는 `@Schema` 사용.
 
 ---
 ## 5. @SwaggerDescription 과 @Schema 공존 규칙
@@ -116,7 +116,7 @@ enum class StandardStatus(
 | @Schema 만 | schema description / required 반영 |
 | @RequestDescription | 무시 (Deprecation) |
 
-권장: 한 필드 하나만. 표준 호환 강조 → @Schema, 간단 메타만 필요 → @SwaggerDescription.
+권장: 한 필드 하나만. 표준 호환 강조 -> @Schema, 간단 메타만 필요 -> @SwaggerDescription.
 
 ---
 ## 6. @Sequence 활용
@@ -126,7 +126,7 @@ enum class StandardStatus(
 | 값 범위 | Int (충돌 시 정렬 구현체가 secondary 정렬: 이름 순/선언 순) |
 | 권장 | 루트 응답/핵심 메타 필드에 낮은 숫자 부여 (1,2,3...) |
 
-예) `StandardResponse` 에서 status(1) → version(2) → datetime(3) → duration(4) → payload(5)
+예) `StandardResponse` 에서 status(1) -> version(2) -> datetime(3) -> duration(4) -> payload(5)
 
 ---
 ## 7. ExceptionCode 인터페이스

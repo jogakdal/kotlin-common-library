@@ -16,9 +16,6 @@
 - AbstractControllerTest (테스트 클래스 베이스)
   - [User Guide](./abstract-controller-test-user-guide.md)
   - [Reference Manual](./abstract-controller-test-reference.md)
-- DataFeed (테스트 데이터 시딩 / SQL 실행)
-  - [User Guide](./datafeed-user-guide.md)
-  - [Reference Manual](./datafeed-reference.md)
 
 ## apidoc Annotations
 - [Mini Reference](./std-api-annotations-reference.md)  

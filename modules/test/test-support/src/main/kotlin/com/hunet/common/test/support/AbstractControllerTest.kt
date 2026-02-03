@@ -16,12 +16,10 @@ import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers
-import com.hunet.common.support.DataFeed
 import org.springframework.util.LinkedMultiValueMap
 import org.springframework.util.MultiValueMap
 import kotlin.reflect.full.memberProperties
 
-@Suppress("SpringJavaInjectionPointsAutowiringInspection")
 @ActiveProfiles("local")
 @SpringBootTest
 @ExtendWith(RestDocumentationExtension::class, SpringExtension::class)
@@ -30,7 +28,6 @@ import kotlin.reflect.full.memberProperties
 @AutoConfigureRestDocs
 abstract class AbstractControllerTest {
     @Autowired lateinit var mockMvc: MockMvc
-    @Autowired(required = false) var dataFeed: DataFeed? = null
 
     val objectMapper = jacksonObjectMapper().enable(SerializationFeature.INDENT_OUTPUT)
     val prettyPrinter = objectMapper.writerWithDefaultPrettyPrinter()

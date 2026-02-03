@@ -74,7 +74,7 @@ BasePayloadImpl : BasePayload
 ```
 <details><summary>구현상 세부 규칙</summary>
 
-- StandardStatus 직렬화 값: SUCCESS -> "SUCCESS", FAILURE -> "FAILURE", NONE -> ""(빈 문자열). fromString 미매칭/빈 문자열 → SUCCESS.
+- StandardStatus 직렬화 값: SUCCESS -> "SUCCESS", FAILURE -> "FAILURE", NONE -> ""(빈 문자열). fromString 미매칭/빈 문자열 -> SUCCESS.
 - OrderDirection 직렬화 값(JSON): ASC -> "asc", DESC -> "desc" (소문자).
 - StandardStatus.fromString(text): 매칭 실패 시 SUCCESS.
 </details>
@@ -161,7 +161,7 @@ typealias DefaultResponse = StandardResponse<BasePayload>
 ---
 ## 6. Case Convention 적용 규칙
 1. 적용 위치: `StandardApiResponseAdvice.beforeBodyWrite` (JSON 직렬화 직전)
-2. 결정 우선순위 (높음→낮음):
+2. 결정 우선순위 (높음->낮음):
    1) Query Parameter (`?case=...`) – `stdapi.response.case.query-override=true`
    2) Header (`X-Response-Case`) – `stdapi.response.case.header-override=true`
    3) Payload 클래스 `@ResponseCase`
@@ -169,14 +169,14 @@ typealias DefaultResponse = StandardResponse<BasePayload>
    5) Fallback: `IDENTITY`
 3. 변환 제외: `@NoCaseTransform` 필드 + 해당 alias/variant
 4. 지원 값: `IDENTITY, SNAKE_CASE, SCREAMING_SNAKE_CASE, KEBAB_CASE, CAMEL_CASE, PASCAL_CASE`
-5. 구현 요약: 토큰 분해 → 캐시 재조합(ConcurrentHashMap) → 변환
+5. 구현 요약: 토큰 분해 -> 캐시 재조합(ConcurrentHashMap) -> 변환
 6. 최상위(`StandardResponse`의 `status`/`version`/`datetime`/`duration`/`traceid`) 필드는 case 변환/alias 치환 이후에도 canonical 기반 탐색만 사용되며, payload 내부 재귀(alias+canonical) 처리와 구분됨.
 7. `toJson(case = ...)` 호출 시 케이스 결정 우선순위: 전달된 `case` 인자 > payload 클래스 `@ResponseCase` > `IDENTITY`. 이 메서드는 Spring Advice 경로를 거치지 않고 직접 직렬화된 문자열을 얻을 때 사용하며, 글로벌 기본 케이스(`stdapi.response.case.default`)는 적용되지 않습니다.
 8. 캐시 구조 상세:
    - 내부 캐시: `Map<CaseConvention, ConcurrentHashMap<String, String>>`
-   - 키: 원본 property/field 명(변환 대상) → 변환 후 문자열
+   - 키: 원본 property/field 명(변환 대상) -> 변환 후 문자열
    - 토큰화 정규식: `[A-Z]+(?=[A-Z][a-z0-9])|[A-Z]?[a-z0-9]+|[A-Z]+|[0-9]+`
-     - 예: `UserID2Value` → tokens: user, id, 2, value → SNAKE_CASE: `user_id_2_value`
+     - 예: `UserID2Value` -> tokens: user, id, 2, value -> SNAKE_CASE: `user_id_2_value`
    - 무효화: 현재 라이브러리에서 case 캐시는 명시적 무효화 기능 없음 (runtime 영속). `clearAliasCaches()`는 alias 캐시만 초기화하며 case 캐시에 영향 없음.
 
 ---
@@ -185,31 +185,31 @@ typealias DefaultResponse = StandardResponse<BasePayload>
 |------|------|
 | `@JsonProperty` | 직렬화 시 대체 필드명 |
 | `@JsonAlias` | 역직렬화 허용 추가 키 |
-| Canonical Key | 영문/숫자 제외 제거 + 소문자화 (`user-id`, `user_id` → 동일) |
+| Canonical Key | 영문/숫자 제외 제거 + 소문자화 (`user-id`, `user_id` -> 동일) |
 | Skip Case Keys | `@NoCaseTransform` 대상 및 모든 alias variant 집합 |
 
-수집 흐름 (`collectGlobalAliasMaps`): 클래스 트리 재귀 순회 → (serializationMap / canonicalAliasToProp / skipCaseKeys) 구성
+수집 흐름 (`collectGlobalAliasMaps`): 클래스 트리 재귀 순회 -> (serializationMap / canonicalAliasToProp / skipCaseKeys) 구성
 
 직렬화(`toJson`):
-1. Jackson → JsonNode
-2. Alias 적용 (propertyName→alias)
+1. Jackson -> JsonNode
+2. Alias 적용 (propertyName->alias)
 3. Case 변환 (skip-case 제외)
 4. Pretty 옵션 시 pretty printer
 
 역직렬화(`StandardResponse.deserialize`):
 1. Kotlinx Json 1차 파싱 & canonical 키 매칭 (상위 필드: `status`/`version`/`datetime`/`duration`/`traceid`는 alias 재귀 없음)
 2. payload JsonObject 에 alias + canonical 재귀 적용 후 Jackson 변환
-3. 실패 → `ErrorPayload(code="E_DESERIALIZE_FAIL")`로 FAILURE 응답
+3. 실패 -> `ErrorPayload(code="E_DESERIALIZE_FAIL")`로 FAILURE 응답
 
 ### 7.1 Canonical 키 생성 규칙
 | 입력 | filter(isLetterOrDigit) | lowercase | canonical 결과 |
 |------|------------------------|-----------|----------------|
 | `User-ID` | `UserID` | `userid` | `userid` |
-| `user_id` | `user_id` → `userid` | `userid` | `userid` |
+| `user_id` | `user_id` -> `userid` | `userid` | `userid` |
 | `USERID` | `USERID` | `userid` | `userid` |
 | `user-id_Extra` | `useridExtra` | `useridextra` | `useridextra` |
 
-충돌 예시: `user-id`, `user_id`, `UserID` 모두 동일 canonical(`userid`) → 최초 발견 property 우선, 충돌 후보(`conflictCandidates`)에 기록.
+충돌 예시: `user-id`, `user_id`, `UserID` 모두 동일 canonical(`userid`) -> 최초 발견 property 우선, 충돌 후보(`conflictCandidates`)에 기록.
 
 ### 7.2 SkipCaseKeys 처리 예시
 `@NoCaseTransform`이 붙은 property `user_id`에 `@JsonAlias("user-id")`가 추가된 경우:
@@ -218,7 +218,7 @@ typealias DefaultResponse = StandardResponse<BasePayload>
 |-----------|---------------------------|
 | 기본명 `user_id` | `user_id`, `user-id` (underscore ↔ hyphen variant) |
 | Alias `user-id` | `user-id`, `user_id` (역변환) |
-| Canonical 비교 | 모두 동일 canonical(`userid`) → case 변환 제외 |
+| Canonical 비교 | 모두 동일 canonical(`userid`) -> case 변환 제외 |
 
 Before (SNAKE_CASE 지정):
 ```json
@@ -231,7 +231,7 @@ After (SkipCaseKeys는 변환 대상에서 제외되므로 alias/variant 형태 
 
 ### 7.3 BEST_MATCH 간단 의사 결정
 - 충돌 canonical 키 집합 내 후보 property들에 대해 실제 입력 JSON 키 소문자 값이 `propertyAliasLower[property]` 셋에 포함되는 첫 번째 property 선택.
-- 예: 입력 JSON 키 `user-id-extra` / 후보: `userIdExtra`, `userId` → `userIdExtra`가 더 긴 alias 집합 포함하면 해당 property 우선.
+- 예: 입력 JSON 키 `user-id-extra` / 후보: `userIdExtra`, `userId` -> `userIdExtra`가 더 긴 alias 집합 포함하면 해당 property 우선.
 
 ---
 ## 8. 역직렬화 (Deserialization) 동작
@@ -258,10 +258,10 @@ StandardResponse<PageableList<ItemPayload>> r2 =
 ```
 
 Edge Case 처리:
-- payload 누락 → ErrorPayload 래핑
-- datetime 파싱 실패 → `Instant.now()` 대입
-- status 미인식 → `SUCCESS` fallback
-- 제네릭 역직렬화 필요 → `TypeReference` 사용
+- payload 누락 -> ErrorPayload 래핑
+- datetime 파싱 실패 -> `Instant.now()` 대입
+- status 미인식 -> `SUCCESS` fallback
+- 제네릭 역직렬화 필요 -> `TypeReference` 사용
 
 ### 8.1 Jackson ObjectMapper 설정
 | 설정 항목 | 값 / 상태 | 의미                              |
@@ -294,9 +294,9 @@ Edge Case 처리:
 | 목적 | API | 특징 |
 |------|-----|------|
 | 단순 성공 응답 | `StandardResponse.build(payload)` | status=SUCCESS, version 기본, duration 자동 측정 |
-| 커스텀 상태/버전 | `build(payload, status, version[, duration])` | duration null → 자동 측정 |
+| 커스텀 상태/버전 | `build(payload, status, version[, duration])` | duration null -> 자동 측정 |
 | 콜백 빌드 | `buildWithCallback(Supplier<StandardCallbackResult<T>>)` | payload + (선택) status/version 동시 제공 |
-| 페이지 변환 | `PageableList.fromPage`, `PageListPayload.fromPage` | Spring `Page` → 표준 구조 |
+| 페이지 변환 | `PageableList.fromPage`, `PageListPayload.fromPage` | Spring `Page` -> 표준 구조 |
 | 커서 리스트 | `IncrementalList.buildFromTotal` | `start/howMany/total` 기반 커서 산출 |
 | Java 호환 | `fromPageJava`, `buildFromTotalJava` | `Function` 기반 매퍼 |
 
@@ -306,7 +306,7 @@ Edge Case 처리:
 ## 11. 페이지 / 커서 계산 규칙 (Algorithm)
 | 항목 | 규칙 |
 |------|------|
-| 총 페이지 | `(totalItems + pageSize - 1) / pageSize` (`pageSize <= 0` → `totalItems` 1페이지 취급) |
+| 총 페이지 | `(totalItems + pageSize - 1) / pageSize` (`pageSize <= 0` -> `totalItems` 1페이지 취급) |
 | Cursor end | `start + (min(howMany, total - start) - 1)` (음수/0 보정) |
 | expandable | `start + howMany < total` 일 때 true |
 | Generic 커서 | `CursorInfo.buildFromTotalGeneric` – 커스텀 인덱스 타입 변환 람다 |
@@ -325,23 +325,23 @@ Edge Case 표:
 | 케이스 | 입력(start, howMany, total) | 결과 start | 결과 end | expandable |
 |--------|---------------------------|------------|----------|------------|
 | 정상 | (10, 5, 100) | 10 | 14 | true |
-| howMany == 0 | (10, 0, 100) | 10 | 10 | true (0→1 보정 후) |
+| howMany == 0 | (10, 0, 100) | 10 | 10 | true (0->1 보정 후) |
 | start < 0 | (-3, 5, 50) | 0 | 4 | true |
 | start > total | (60, 5, 50) | 50 | 50 | false |
 | total == 0 | (0, 5, 0) | 0 | 0 | false |
 | near end | (48, 10, 50) | 48 | 49 | false |
 
 ### 11.2 PageInfo 총 페이지 계산 상세
-- 공식: `(totalItems + pageSize - 1) / pageSize` 단, `pageSize <= 0` → `pageSize = 1`로 간주.
-- 예: totalItems = 101, pageSize = 10 → 11 페이지.
-- page.number (0-base) + 1 → current 페이지.
+- 공식: `(totalItems + pageSize - 1) / pageSize` 단, `pageSize <= 0` -> `pageSize = 1`로 간주.
+- 예: totalItems = 101, pageSize = 10 -> 11 페이지.
+- page.number (0-base) + 1 -> current 페이지.
 
 ---
 ## 12. 캐시 & 성능 (Case / Alias)
 | 캐시 대상 | 구현 | 무효화 |
 |----------|------|--------|
 | Case 변환 결과 | 내부 캐시(`Map<CaseConvention, ConcurrentHashMap<String,String>>`) | 런타임 유지 |
-| Alias 메타 | `AliasCache` (KClass → GlobalAliasMaps) | `clearAliasCaches()` 호출 |
+| Alias 메타 | `AliasCache` (KClass -> GlobalAliasMaps) | `clearAliasCaches()` 호출 |
 
 ### 12.1 Case 캐시 상세
 | 항목 | 값 |
@@ -357,8 +357,8 @@ Edge Case 표:
 > 대량 다양한 key 사용 시 최초 변환 비용 발생, 이후 메모리 상주. 메모리 누수 방지 위해 key 폭발 상황(동적 생성 필드명) 지양.
 
 GlobalAliasMaps 구성:
-- `serializationMap`: propertyName → 직렬화 alias
-- `canonicalAliasToProp`: canonical(alias) → propertyName
+- `serializationMap`: propertyName -> 직렬화 alias
+- `canonicalAliasToProp`: canonical(alias) -> propertyName
 - `skipCaseKeys`: 변환 제외 키 집합
 - `conflictCandidates`: canonical 충돌 발생 시 후보 property 집합 (BEST_MATCH 전략 선택 참고)
 - `propertyAliasLower`: property 별 alias(소문자) 전체 세트 – BEST_MATCH 실제 key 비교에 활용
@@ -424,7 +424,7 @@ GlobalAliasMaps 구성:
 ### 17.1 점검 항목 표
 | 항목 | 점검 내용 | 권장 조치 |
 |------|----------|-----------|
-| Alias 충돌 모드 변경 | WARN → ERROR 전환 전 테스트 | staging 에서 샘플 JSON 다수 역직렬화 후 예외 여부 확인 |
+| Alias 충돌 모드 변경 | WARN -> ERROR 전환 전 테스트 | staging 에서 샘플 JSON 다수 역직렬화 후 예외 여부 확인 |
 | BEST_MATCH 활성화 | 성능 영향(추가 후보 탐색) | 대량 동적 키 입력 발생 여부 모니터, 필요시 FIRST_WIN 유지 |
 | 캐시 초기화 필요 시점 | Payload 구조(필드/alias) 코드 변경 배포 후 | 애플리케이션 재시작(현재 별도 무효화 API 없음) 또는 `clearAliasCaches()` 호출 |
 | Duration 측정 정확도 | 초고속(서브 ms) 요청 다수 | 수동 duration 지정(빌더 인자) 또는 나노 단위 필드 타입(Duration) 사용 |
@@ -442,10 +442,10 @@ GlobalAliasMaps 구성:
 ### 18.1 계층 패턴 개요
 | 구분 | 패턴 | 비고 |
 |------|------|------|
-| Controller → Service → Response | Controller: `StandardResponse.build(callback={ service.method() })` / Service: `StandardCallbackResult` 반환 | status/version 대부분 기본값(SUCCESS/1.0 가정) |
+| Controller -> Service -> Response | Controller: `StandardResponse.build(callback={ service.method() })` / Service: `StandardCallbackResult` 반환 | status/version 대부분 기본값(SUCCESS/1.0 가정) |
 | 비동기 즉시 응답 | 긴 작업 비동기 실행 후 즉시 `CudResultPayload` 성공 응답 | JobId 등 후속 추적 |
-| Error 처리 | 전역 `@ControllerAdvice` → 예외를 `ErrorPayload` 로 포장 | 성공 흐름/실패 흐름 분리 |
-| 페이지 응답 | Service Page 결과 → DTO 매핑 → `PageListPayload` (또는 도메인 전용 래퍼) | 일관 인터페이스 |
+| Error 처리 | 전역 `@ControllerAdvice` -> 예외를 `ErrorPayload` 로 포장 | 성공 흐름/실패 흐름 분리 |
+| 페이지 응답 | Service Page 결과 -> DTO 매핑 -> `PageListPayload` (또는 도메인 전용 래퍼) | 일관 인터페이스 |
 | CallbackResult 통일 | Service 경계: 성공 시 payload, 실패 시 예외 throw | Controller 단순화 |
 | Duration 자동 주입 | `auto-duration-calculation.active=true` + callback 빌드 | 측정 로직 분리 |
 | 빌더 선택 | 기본: 콜백 빌드 / 예외 Advice 경로: 직접 `build(payload=ErrorPayload)` | 일관 패턴 |

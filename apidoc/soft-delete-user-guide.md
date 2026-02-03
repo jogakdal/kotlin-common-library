@@ -3,7 +3,7 @@
 ## 최신 버전 정보
 <!-- version-info:start -->
 ```
-Last updated: 2026-01-05 18:00:39 KST
+Last updated: 2026-01-21 15:04:13 KST
 jpa-repository-extension: 1.2.0-SNAPSHOT
 ```
 <!-- version-info:end -->
@@ -103,7 +103,7 @@ data class User(
   val deletedAt: LocalDateTime?
 )
 ```
-- 규칙 요약: 권장 패턴은 `deleted_at = MIN_DATETIME` → Alive, 삭제 시 `deleted_at = NOW()`; 대체 패턴은 `deleted_at == null` → Alive.
+- 규칙 요약: 권장 패턴은 `deleted_at = MIN_DATETIME` -> Alive, 삭제 시 `deleted_at = NOW()`; 대체 패턴은 `deleted_at == null` -> Alive.
 - 스키마 예(MySQL/MariaDB 예시):
 ```sql
 ALTER TABLE users
@@ -134,7 +134,7 @@ ALTER TABLE users
 ## 6. 고급 사용법
 ### 6.1 삭제 전략 상세(Recursive vs Bulk)
 - `RECURSIVE`
-  - 특징: 부모 → 자식(→ 손자)로 관계를 따라가며 삭제 마크를 갱신.
+  - 특징: 부모 -> 자식(-> 손자)로 관계를 따라가며 삭제 마크를 갱신.
   - 장점: 관계 일관성 보장, 자식도 함께 소프트 삭제 처리.
   - 단점: 쿼리 수 증가, 성능 부담. 깊은 관계에서 트랜잭션 시간이 길어질 수 있음.
   - 사용 권장: 강한 참조 무결성과 함께 논리 삭제가 계층 전체에 적용되어야 할 때.
@@ -188,10 +188,10 @@ ALTER TABLE users
 교차 사용 시 다음 규칙을 따르십시오.
 
 - 대체 API 매핑(요약)
-  - deleteById / delete → softDeleteById / softDelete(entity)
-  - findById → findOneById
-  - existsById → existsAliveById 
-  - findAll / count → Alive 자동 필터가 적용되는 리포지토리 메서드로 사용
+  - deleteById / delete -> softDeleteById / softDelete(entity)
+  - findById -> findOneById
+  - existsById -> existsAliveById 
+  - findAll / count -> Alive 자동 필터가 적용되는 리포지토리 메서드로 사용
   - `@Query` 혼용 시 where 절에 Alive 조건 명시
 
 - Do & Don't 체크리스트
@@ -204,10 +204,10 @@ ALTER TABLE users
   - [Don't] BULK 후 영속성 컨텍스트 동기화를 누락하지 않는다
 
 - 위험 시나리오와 회피책
-  - 하드 삭제 호출: 데이터 보존·관계 일관성 붕괴 → softDelete*로 치환
-  - Alive 조건 누락(`@Query`): 삭제된 행 노출 / 통계 왜곡 → where에 Alive 조건 포함, strict=true 설정
-  - `existsById()` / `findById()` 정책 혼선: 삭제 마크 행 처리 정의 부재 → `existsAliveById()` / `findOneById()`로 일관성 확보
-  - 락 / 배치 혼용: 데드락/타임아웃 → 접근 순서 통일 / 잠금 범위 최소화 / 재시도 도입
+  - 하드 삭제 호출: 데이터 보존·관계 일관성 붕괴 -> softDelete*로 치환
+  - Alive 조건 누락(`@Query`): 삭제된 행 노출 / 통계 왜곡 -> where에 Alive 조건 포함, strict=true 설정
+  - `existsById()` / `findById()` 정책 혼선: 삭제 마크 행 처리 정의 부재 -> `existsAliveById()` / `findOneById()`로 일관성 확보
+  - 락 / 배치 혼용: 데드락/타임아웃 -> 접근 순서 통일 / 잠금 범위 최소화 / 재시도 도입
 
 - 장단점
   - 장점: 기존 API 학습 자산 활용, 단순 조회 / 카운트 생산성 향상
