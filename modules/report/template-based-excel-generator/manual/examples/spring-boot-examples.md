@@ -20,7 +20,7 @@
 
 repositories {
     mavenCentral()
-    maven { url = uri("https://nexus.hunet.tech/repository/maven-snapshot/") }
+    maven { url = uri("https://nexus.hunet.tech/repository/maven-public/") }
 }
 
 dependencies {
