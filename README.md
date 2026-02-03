@@ -4,15 +4,17 @@
 
 ## 문서 (Documentation)
 - 통합 문서 인덱스: [apidoc/index.md](apidoc/index.md)
+- TBEG 매뉴얼: [modules/report/template-based-excel-generator/manual/index.md](modules/report/template-based-excel-generator/manual/index.md)
 
 ## 주요 모듈
 - common-core
 - standard-api-response
+- std-api-annotations
 - apidoc-annotations
 - apidoc-core
 - jpa-repository-extension
 - test-support
-- excel-generator
+- tbeg (template-based-excel-generator)
 
 ## 모듈 & 패키지 구조
 각 모듈에서 제공하는 대표(루트/기능) 패키지 목록입니다. 테스트나 예제 전용(*.test, *.examples 등) 패키지는 필요 시만 참고하세요.
@@ -46,21 +48,22 @@
 ### test-support (`modules/test/test-support`)
 - `com.hunet.common.test.support` : 통합 테스트 지원 (Controller Test 등)
 
-### excel-generator (`modules/core/excel-generator`)
-- `com.hunet.common.excel` : 템플릿 기반 Excel 생성기
-- `com.hunet.common.excel.async` : 비동기 생성 지원 (Job, Listener)
-- `com.hunet.common.excel.spring` : Spring Boot 자동 설정
-- (tests/examples) `com.hunet.common.excel.spring` : Spring Boot 샘플
+### tbeg (`modules/report/template-based-excel-generator`)
+- `com.hunet.common.tbeg` : 템플릿 기반 Excel 생성기 (TBEG)
+- `com.hunet.common.tbeg.async` : 비동기 생성 지원 (Job, Listener)
+- `com.hunet.common.tbeg.spring` : Spring Boot 자동 설정
+- (tests/examples) `com.hunet.common.tbeg.spring` : Spring Boot 샘플
 
 ## 빠른 의존성 예 (Gradle Kotlin DSL)
 ```kotlin
 dependencies {
     implementation("com.hunet.common:common-core:<version>")
     implementation("com.hunet.common:standard-api-response:<version>")
+    implementation("com.hunet.common:std-api-annotations:<version>")
     implementation("com.hunet.common:apidoc-core:<version>")
     implementation("com.hunet.common:apidoc-annotations:<version>")
     implementation("com.hunet.common:jpa-repository-extension:<version>")
-    implementation("com.hunet.common:excel-generator:<version>")
+    implementation("com.hunet.common:tbeg:<version>")
     testImplementation("com.hunet.common:test-support:<version>")
 }
 ```
@@ -69,13 +72,14 @@ dependencies {
 ## 모듈 버전 관리
 `gradle.properties`에서 각 모듈별 override 속성을 통해 버전을 개별 관리합니다.
 ```properties
-moduleVersion.common-core=1.1.0-SNAPSHOT
-moduleVersion.standard-api-response=1.2.0-SNAPSHOT
+moduleVersion.common-core=1.2.1-SNAPSHOT
+moduleVersion.standard-api-response=1.3.1-SNAPSHOT
+moduleVersion.std-api-annotations=1.1.0-SNAPSHOT
 moduleVersion.apidoc-core=1.1.0-SNAPSHOT
 moduleVersion.apidoc-annotations=1.1.0-SNAPSHOT
-moduleVersion.jpa-repository-extension=1.1.0-SNAPSHOT
-moduleVersion.test-support=1.1.0-SNAPSHOT
-moduleVersion.excel-generator=1.0.0-SNAPSHOT
+moduleVersion.jpa-repository-extension=1.2.0-SNAPSHOT
+moduleVersion.test-support=1.1.1-SNAPSHOT
+moduleVersion.tbeg=1.0.0-SNAPSHOT
 ```
 - 루트 `version` (예: 1.1.0-SNAPSHOT)이 기본이며, 존재하는 `moduleVersion.*` 키가 우선 적용됩니다.
 
@@ -130,7 +134,7 @@ class UserControllerTest : AbstractControllerTest() {
 ```
 `AbstractControllerTest` 는 스프링 컨텍스트 + MockMvc(or WebTestClient) 세팅을 캡슐화합니다.
 
-### 5. Excel Generator (excel-generator)
+### 5. TBEG (Template-Based Excel Generator)
 ```kotlin
 @Service
 class ReportService(
@@ -147,7 +151,7 @@ class ReportService(
     }
 }
 ```
-템플릿에서 `${title}`, `${repeat(employees, A3:C3, emp)}` 문법으로 데이터 바인딩. 상세 문서: [excel-generator](apidoc/excel-generator/user-guide.md)
+템플릿에서 `${title}`, `${repeat(employees, A3:C3, emp)}` 문법으로 데이터 바인딩. 상세 문서: [tbeg](modules/report/template-based-excel-generator/manual/index.md)
 
 ## 빌드 & 문서 작업
 ```bash

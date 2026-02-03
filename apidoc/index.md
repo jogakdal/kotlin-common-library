@@ -24,18 +24,6 @@
 - [User Guide](./variable-processor.md)
 - [Examples](./variable-processor-examples.md)
 
-## Excel Generator (템플릿 기반 Excel 생성기)
-- [User Guide](./tbeg/user-guide.md)
-- Reference
-  - [Template Syntax](./tbeg/reference/template-syntax.md)
-  - [API Reference](./tbeg/reference/api-reference.md)
-  - [Configuration](./tbeg/reference/configuration.md)
-- Examples
-  - [Basic Examples](./tbeg/examples/basic-examples.md)
-  - [Advanced Examples](./tbeg/examples/advanced-examples.md)
-  - [Spring Boot Examples](./tbeg/examples/spring-boot-examples.md)
-- [Developer Guide](./tbeg/developer-guide.md)
-
 ## 기타
 - 모듈별 추가 README / 샘플 코드는 각 모듈 디렉터리 참조
 
