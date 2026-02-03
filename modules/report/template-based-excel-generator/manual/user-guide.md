@@ -23,7 +23,7 @@ repositories {
     mavenCentral()
     // 사내 Nexus 리포지토리
     maven {
-        url = uri("https://nexus.hunet.tech/repository/maven-snapshot/")
+        url = uri("https://nexus.hunet.tech/repository/maven-public/")
     }
 }
 
@@ -43,7 +43,7 @@ repositories {
     mavenCentral()
     // 사내 Nexus 리포지토리
     maven {
-        url 'https://nexus.hunet.tech/repository/maven-snapshot/'
+        url 'https://nexus.hunet.tech/repository/maven-public/'
     }
 }
 
@@ -61,12 +61,9 @@ dependencies {
 <!-- 1. 리포지토리 설정 -->
 <repositories>
     <repository>
-        <id>hunet-nexus-snapshot</id>
-        <name>Hunet Nexus Snapshot Repository</name>
-        <url>https://nexus.hunet.tech/repository/maven-snapshot/</url>
-        <snapshots>
-            <enabled>true</enabled>
-        </snapshots>
+        <id>hunet-nexus</id>
+        <name>Hunet Nexus Repository</name>
+        <url>https://nexus.hunet.tech/repository/maven-public/</url>
     </repository>
 </repositories>
 
@@ -79,9 +76,6 @@ dependencies {
     </dependency>
 </dependencies>
 ```
-
-> **참고**: 현재 SNAPSHOT 버전은 `maven-snapshot` 리포지토리에서 제공됩니다.
-> 향후 정식 릴리스 버전은 `maven-releases` 리포지토리에서 제공될 예정입니다.
 
 ### 1.2 첫 번째 Excel 생성
 

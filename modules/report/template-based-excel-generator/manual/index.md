@@ -25,7 +25,7 @@ TBEG은 Excel 템플릿에 데이터를 바인딩하여 보고서, 명세서 등
 
 repositories {
     mavenCentral()
-    maven { url = uri("https://nexus.hunet.tech/repository/maven-snapshot/") }
+    maven { url = uri("https://nexus.hunet.tech/repository/maven-public/") }
 }
 
 dependencies {
