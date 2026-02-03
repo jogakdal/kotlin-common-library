@@ -3,7 +3,6 @@ package com.hunet.common.tbeg.engine.rendering
 import com.hunet.common.tbeg.ExcelDataProvider
 import com.hunet.common.tbeg.StreamingMode
 import com.hunet.common.lib.VariableProcessor
-import org.slf4j.LoggerFactory
 import java.io.InputStream
 import java.lang.reflect.Field
 import java.lang.reflect.Method
@@ -48,10 +47,6 @@ class TemplateRenderingEngine(
     private val strategy: RenderingStrategy = when (streamingMode) {
         StreamingMode.DISABLED -> XssfRenderingStrategy()
         StreamingMode.ENABLED -> SxssfRenderingStrategy()
-    }
-
-    companion object {
-        private val logger = LoggerFactory.getLogger(TemplateRenderingEngine::class.java)
     }
 
     /**
@@ -114,7 +109,6 @@ class TemplateRenderingEngine(
         val collectionSizes = mutableMapOf<String, Int>()
         requiredNames?.collections?.forEach { name ->
             collectionSizes[name] = getCollectionSize(dataProvider, name)
-            logger.debug("컬렉션 '{}': {} 건", name, collectionSizes[name])
         }
 
         // 단순 변수와 이미지 데이터 수집 (컬렉션 제외)
@@ -161,7 +155,6 @@ class TemplateRenderingEngine(
             // 컬렉션 (List로 변환)
             names.collections.forEach { name ->
                 val iterator = dataProvider.getItems(name) ?: return@forEach
-                logger.debug("컬렉션 '{}': XSSF 모드, List로 변환", name)
                 put(name, iterator.asSequence().toList())
             }
 
