@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Excel 생성 작업의 핸들.
  *
- * 비동기로 실행 중인 작업의 상태를 확인하고, 결과를 대기하거나, 취소할 수 있습니다.
+ * 비동기로 실행 중인 작업의 상태를 확인하고, 결과를 대기하거나, 취소할 수 있다.
  */
 interface GenerationJob {
     /**
@@ -27,14 +27,14 @@ interface GenerationJob {
     val isCancelled: Boolean
 
     /**
-     * 작업을 취소합니다.
+     * 작업을 취소한다.
      *
      * @return 취소 요청이 성공하면 true, 이미 완료되었거나 취소할 수 없으면 false
      */
     fun cancel(): Boolean
 
     /**
-     * 작업 완료를 블로킹 방식으로 대기하고 결과를 반환합니다.
+     * 작업 완료를 블로킹 방식으로 대기하고 결과를 반환한다.
      *
      * @return 생성 결과
      * @throws Exception 작업이 실패한 경우
@@ -43,7 +43,7 @@ interface GenerationJob {
     fun await(): GenerationResult
 
     /**
-     * 작업 완료를 비동기 방식으로 대기하고 결과를 반환합니다.
+     * 작업 완료를 비동기 방식으로 대기하고 결과를 반환한다.
      *
      * @return 생성 결과
      * @throws Exception 작업이 실패한 경우
@@ -52,7 +52,7 @@ interface GenerationJob {
     suspend fun awaitAsync(): GenerationResult
 
     /**
-     * Java에서 사용할 수 있는 CompletableFuture를 반환합니다.
+     * Java에서 사용할 수 있는 CompletableFuture를 반환한다.
      *
      * @return 결과를 담은 CompletableFuture
      */
@@ -89,21 +89,21 @@ internal class DefaultGenerationJob(
         deferred.asCompletableFuture()
 
     /**
-     * 작업을 성공으로 완료합니다. (내부용)
+     * 작업을 성공으로 완료한다. (내부용)
      */
     internal fun complete(result: GenerationResult) {
         deferred.complete(result)
     }
 
     /**
-     * 작업을 실패로 완료합니다. (내부용)
+     * 작업을 실패로 완료한다. (내부용)
      */
     internal fun completeExceptionally(exception: Exception) {
         deferred.completeExceptionally(exception)
     }
 
     /**
-     * 취소 여부를 확인합니다. (내부용)
+     * 취소 여부를 확인한다. (내부용)
      */
     internal fun checkCancelled(): Boolean = cancelled.get()
 }

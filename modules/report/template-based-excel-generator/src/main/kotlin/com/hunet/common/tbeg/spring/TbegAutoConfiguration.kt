@@ -11,10 +11,10 @@ import org.springframework.context.annotation.Bean
 /**
  * TBEG (Template Based Excel Generator) Auto-Configuration.
  *
- * ExcelGenerator 클래스가 클래스패스에 있을 때 자동으로 Bean을 등록합니다.
+ * ExcelGenerator 클래스가 클래스패스에 있을 때 자동으로 Bean을 등록한다.
  *
  * ## 기본 사용법
- * 의존성만 추가하면 자동으로 ExcelGenerator Bean이 등록됩니다:
+ * 의존성만 추가하면 자동으로 ExcelGenerator Bean이 등록된다:
  * ```kotlin
  * @Service
  * class ReportService(
@@ -36,7 +36,7 @@ import org.springframework.context.annotation.Bean
  * ```
  *
  * ## Bean 커스터마이징
- * 직접 Bean을 정의하면 자동 설정이 비활성화됩니다:
+ * 직접 Bean을 정의하면 자동 설정이 비활성화된다:
  * ```kotlin
  * @Configuration
  * class CustomTbegConfig {
@@ -55,7 +55,7 @@ class TbegAutoConfiguration {
     /**
      * ExcelGeneratorConfig Bean.
      *
-     * 프로퍼티 설정을 기반으로 Config를 생성합니다.
+     * 프로퍼티 설정을 기반으로 Config를 생성한다.
      * 사용자가 직접 정의한 Bean이 있으면 이 Bean은 생성되지 않습니다.
      */
     @Bean
@@ -65,7 +65,7 @@ class TbegAutoConfiguration {
     /**
      * ExcelGenerator Bean.
      *
-     * destroyMethod로 close()가 자동 호출되어 리소스가 정리됩니다.
+     * destroyMethod로 close()가 자동 호출되어 리소스가 정리된다.
      * 사용자가 직접 정의한 Bean이 있으면 이 Bean은 생성되지 않습니다.
      */
     @Bean(destroyMethod = "close")

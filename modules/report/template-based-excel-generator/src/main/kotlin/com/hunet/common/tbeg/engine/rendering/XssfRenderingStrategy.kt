@@ -240,7 +240,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
 
     /**
      * 지정된 열 범위 내의 셀만 아래로 이동시킵니다.
-     * 다른 열 범위의 셀은 원래 위치에 유지됩니다.
+     * 다른 열 범위의 셀은 원래 위치에 유지된다.
      */
     private fun shiftRowsInColumnRange(
         sheet: XSSFSheet,

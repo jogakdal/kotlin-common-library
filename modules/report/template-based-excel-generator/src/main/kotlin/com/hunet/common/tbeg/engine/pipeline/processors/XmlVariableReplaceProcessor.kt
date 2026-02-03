@@ -7,8 +7,8 @@ import com.hunet.common.tbeg.engine.pipeline.ProcessingContext
 /**
  * XML 변수 치환 프로세서.
  *
- * Excel 패키지 내 XML 요소의 변수를 치환합니다.
- * TemplateRenderingEngine이 처리하지 못하는 요소들을 처리합니다:
+ * Excel 패키지 내 XML 요소의 변수를 치환한다.
+ * TemplateRenderingEngine이 처리하지 못하는 요소들을 처리한다:
  *
  * - 차트 타이틀 및 레이블
  * - 도형 텍스트
@@ -16,7 +16,7 @@ import com.hunet.common.tbeg.engine.pipeline.ProcessingContext
  * - 텍스트 상자, SmartArt 등
  *
  * 또한 차트 복원 시 사용할 variableResolver를 생성하여
- * context에 저장합니다.
+ * context에 저장한다.
  */
 internal class XmlVariableReplaceProcessor(
     private val xmlVariableProcessor: XmlVariableProcessor

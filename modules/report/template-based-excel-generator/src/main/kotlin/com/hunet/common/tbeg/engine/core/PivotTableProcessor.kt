@@ -190,7 +190,7 @@ internal class PivotTableProcessor(
     /**
      * 피벗 테이블 영역의 셀을 비웁니다.
      * 데이터 반복 처리 시 피벗 테이블 영역의 원본 셀이 함께 확장되어
-     * 잘못된 위치에 나타나는 것을 방지합니다.
+     * 잘못된 위치에 나타나는 것을 방지한다.
      */
     private fun clearPivotTableCells(
         inputBytes: ByteArray,
@@ -523,8 +523,8 @@ internal class PivotTableProcessor(
 
     /**
      * 피벗 테이블 셀을 채웁니다.
-     * 헤더와 총합계 행에는 alignment만 적용하여 피벗 테이블 스타일이 작동하도록 합니다.
-     * 데이터 행에는 원본 스타일을 적용합니다.
+     * 헤더와 총합계 행에는 alignment만 적용하여 피벗 테이블 스타일이 작동하도록 한다.
+     * 데이터 행에는 원본 스타일을 적용한다.
      */
     private fun fillPivotTableCells(ctx: PivotFillContext) {
         if (ctx.rowLabelFields.isEmpty() || ctx.dataFields.isEmpty()) {
@@ -800,8 +800,8 @@ internal class PivotTableProcessor(
     }
 
     /**
-     * styles.xml에 dxf(differential formatting) 스타일이 있는지 확인합니다.
-     * SXSSF 모드에서는 dxf 스타일이 누락될 수 있습니다.
+     * styles.xml에 dxf(differential formatting) 스타일이 있는지 확인한다.
+     * SXSSF 모드에서는 dxf 스타일이 누락될 수 있다.
      */
     private fun hasDxfStyles(pkg: OPCPackage): Boolean =
         pkg.parts.find { it.partName.name == "/xl/styles.xml" }

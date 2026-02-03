@@ -6,7 +6,7 @@ import org.apache.poi.ss.util.CellRangeAddress
 /**
  * 실제 출력 행의 정보
  *
- * 스트리밍 모드에서 각 행이 어떤 유형인지 식별하는 데 사용합니다.
+ * 스트리밍 모드에서 각 행이 어떤 유형인지 식별하는 데 사용한다.
  */
 sealed class RowInfo {
     /**
@@ -31,10 +31,10 @@ sealed class RowInfo {
 }
 
 /**
- * 템플릿 요소의 최종 위치를 계산합니다.
+ * 템플릿 요소의 최종 위치를 계산한다.
  *
  * repeat 확장에 따른 모든 요소의 위치 변화를 추적하고,
- * 각 요소의 최종 행/열 위치를 계산합니다.
+ * 각 요소의 최종 행/열 위치를 계산한다.
  *
  * **핵심 원칙**:
  * - 위치 계산 시 collection의 size만 필요 (lazy loading 호환)
@@ -111,7 +111,7 @@ class PositionCalculator(
     }
 
     /**
-     * 특정 템플릿 위치(행, 열)가 최종적으로 어디로 이동하는지 계산합니다.
+     * 특정 템플릿 위치(행, 열)가 최종적으로 어디로 이동하는지 계산한다.
      *
      * @param templateRow 템플릿 행 인덱스 (0-based)
      * @param templateCol 템플릿 열 인덱스 (0-based)

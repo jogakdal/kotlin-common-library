@@ -10,9 +10,9 @@ import java.util.zip.ZipOutputStream
 /**
  * 차트 프로세서 - SXSSF 스트리밍 모드에서 차트 보존
  *
- * SXSSF로 새 워크북을 생성하면 원본 템플릿의 차트가 손실됩니다.
- * 이 프로세서는 차트와 관련 드로잉을 추출하고 처리 후 복원합니다.
- * 기존 드로잉(이미지 등)에 차트 앵커를 병합하고 드로잉 관계 파일도 병합합니다.
+ * SXSSF로 새 워크북을 생성하면 원본 템플릿의 차트가 손실된다.
+ * 이 프로세서는 차트와 관련 드로잉을 추출하고 처리 후 복원한다.
+ * 기존 드로잉(이미지 등)에 차트 앵커를 병합하고 드로잉 관계 파일도 병합한다.
  */
 internal class ChartProcessor {
 
@@ -487,7 +487,7 @@ internal class ChartProcessor {
      * 차트 파일만 제거 (드로잉은 유지)
      *
      * 차트 파일과 함께 drawing rels의 차트 참조도 제거하여
-     * POI가 워크북을 열 때 "Skipped invalid entry" 경고가 발생하지 않도록 합니다.
+     * POI가 워크북을 열 때 "Skipped invalid entry" 경고가 발생하지 않도록 한다.
      */
     private fun removeChartFilesOnly(inputBytes: ByteArray): ByteArray {
         val output = ByteArrayOutputStream()

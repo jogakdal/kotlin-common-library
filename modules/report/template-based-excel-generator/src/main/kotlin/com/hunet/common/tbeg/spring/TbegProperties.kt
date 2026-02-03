@@ -81,7 +81,7 @@ data class TbegProperties(
     var missingDataBehavior: MissingDataBehaviorProperty = MissingDataBehaviorProperty.WARN
 ) {
     /**
-     * ExcelGeneratorConfig로 변환합니다.
+     * ExcelGeneratorConfig로 변환한다.
      */
     fun toConfig(): ExcelGeneratorConfig = ExcelGeneratorConfig(
         streamingMode = streamingMode.toStreamingMode(),

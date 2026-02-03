@@ -259,7 +259,7 @@ data class RepeatRegionSpec(
  * 열 그룹 - 열 범위가 겹치는 repeat 영역들의 모음
  *
  * 같은 열 그룹 내의 repeat 영역들은 서로 영향을 주지만,
- * 다른 열 그룹의 repeat 영역들과는 독립적으로 확장됩니다.
+ * 다른 열 그룹의 repeat 영역들과는 독립적으로 확장된다.
  */
 data class ColumnGroup(
     val groupId: Int,
@@ -318,7 +318,7 @@ data class ColumnGroup(
 /**
  * 조건부 서식 정보 (SXSSF 모드용)
  *
- * 템플릿의 조건부 서식을 저장하고, 반복 영역 확장 시 복제에 사용됩니다.
+ * 템플릿의 조건부 서식을 저장하고, 반복 영역 확장 시 복제에 사용된다.
  */
 data class ConditionalFormattingSpec(
     val ranges: List<CellRangeAddress>,
@@ -341,7 +341,7 @@ data class ConditionalFormattingRuleSpec(
 /**
  * 템플릿에서 필요로 하는 데이터 이름 목록.
  *
- * 템플릿 분석 결과에서 추출되며, DataProvider에게 필요한 데이터만 요청할 때 사용됩니다.
+ * 템플릿 분석 결과에서 추출되며, DataProvider에게 필요한 데이터만 요청할 때 사용된다.
  */
 data class RequiredNames(
     val variables: Set<String>,

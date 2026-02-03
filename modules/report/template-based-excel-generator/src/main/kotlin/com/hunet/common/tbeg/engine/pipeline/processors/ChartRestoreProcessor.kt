@@ -7,8 +7,8 @@ import com.hunet.common.tbeg.engine.pipeline.ProcessingContext
 /**
  * 차트 복원 프로세서.
  *
- * [ChartExtractProcessor]가 추출한 차트를 다시 Excel 파일에 복원합니다.
- * 복원 시 차트 내 변수도 치환합니다.
+ * [ChartExtractProcessor]가 추출한 차트를 다시 Excel 파일에 복원한다.
+ * 복원 시 차트 내 변수도 치환한다.
  *
  * 처리 내용:
  * - 차트 파일 복원

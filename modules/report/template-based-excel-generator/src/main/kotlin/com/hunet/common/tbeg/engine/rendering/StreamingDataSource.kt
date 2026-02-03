@@ -75,7 +75,7 @@ internal class StreamingDataSource(
 
             if (existingIteratorForCollection && repeatKey.collectionName !in warnedCollections) {
                 LOG.warn(
-                    "컬렉션 '{}'이 여러 repeat 영역에서 사용됩니다. " +
+                    "컬렉션 '{}'이 여러 repeat 영역에서 사용되고 있습니다. " +
                         "DataProvider를 재호출하여 새 Iterator를 생성합니다. (repeat 영역: row={}, col={})",
                     repeatKey.collectionName,
                     repeatKey.startRow,

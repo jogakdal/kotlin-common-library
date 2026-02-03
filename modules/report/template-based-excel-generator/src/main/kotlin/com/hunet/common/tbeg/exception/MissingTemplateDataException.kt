@@ -5,7 +5,7 @@ import com.hunet.common.tbeg.engine.rendering.RequiredNames
 /**
  * 템플릿에 정의된 데이터가 DataProvider에 없을 때 발생하는 예외.
  *
- * [com.hunet.common.tbeg.MissingDataBehavior.THROW] 설정 시 발생합니다.
+ * [com.hunet.common.tbeg.MissingDataBehavior.THROW] 설정 시 발생한다.
  *
  * @property missingVariables 누락된 변수 이름 목록
  * @property missingCollections 누락된 컬렉션 이름 목록
@@ -19,7 +19,7 @@ class MissingTemplateDataException(
 ) : RuntimeException(message) {
 
     /**
-     * 누락된 데이터가 있는지 확인합니다.
+     * 누락된 데이터가 있는지 확인한다.
      */
     val hasMissingData: Boolean
         get() = missingVariables.isNotEmpty() || missingCollections.isNotEmpty() || missingImages.isNotEmpty()
@@ -43,7 +43,7 @@ class MissingTemplateDataException(
         }
 
         /**
-         * RequiredNames와 실제 제공된 데이터를 비교하여 누락된 데이터가 있으면 예외를 생성합니다.
+         * RequiredNames와 실제 제공된 데이터를 비교하여 누락된 데이터가 있으면 예외를 생성한다.
          *
          * @return 누락된 데이터가 없으면 null, 있으면 예외 인스턴스
          */

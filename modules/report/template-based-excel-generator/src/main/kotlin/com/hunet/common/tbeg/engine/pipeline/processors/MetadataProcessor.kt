@@ -11,8 +11,8 @@ import java.util.*
 /**
  * 문서 메타데이터 적용 프로세서.
  *
- * Excel 파일의 문서 속성(제목, 작성자, 키워드 등)을 설정합니다.
- * Excel에서 "파일 > 정보 > 속성"에서 확인할 수 있습니다.
+ * Excel 파일의 문서 속성(제목, 작성자, 키워드 등)을 설정한다.
+ * Excel에서 "파일 > 정보 > 속성"에서 확인할 수 있다.
  */
 internal class MetadataProcessor : ExcelProcessor {
     override val name: String = "Metadata"

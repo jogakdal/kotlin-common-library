@@ -26,13 +26,13 @@ data class ExcelGeneratorConfig(
 ) {
     companion object {
         /**
-         * 기본 설정을 반환합니다.
+         * 기본 설정을 반환한다.
          */
         @JvmStatic
         fun default(): ExcelGeneratorConfig = ExcelGeneratorConfig()
 
         /**
-         * 대용량 처리에 최적화된 설정을 반환합니다.
+         * 대용량 처리에 최적화된 설정을 반환한다.
          */
         @JvmStatic
         fun forLargeData(): ExcelGeneratorConfig = ExcelGeneratorConfig(
@@ -41,7 +41,7 @@ data class ExcelGeneratorConfig(
         )
 
         /**
-         * 소량 데이터 처리에 최적화된 설정을 반환합니다.
+         * 소량 데이터 처리에 최적화된 설정을 반환한다.
          */
         @JvmStatic
         fun forSmallData(): ExcelGeneratorConfig = ExcelGeneratorConfig(
@@ -49,7 +49,7 @@ data class ExcelGeneratorConfig(
         )
 
         /**
-         * Builder를 반환합니다. (Java에서 사용하기 편리)
+         * Builder를 반환한다. (Java에서 사용하기 편리)
          */
         @JvmStatic
         fun builder(): Builder = Builder()
@@ -93,7 +93,7 @@ data class ExcelGeneratorConfig(
     }
 
     /**
-     * 설정을 수정한 새 인스턴스를 반환합니다.
+     * 설정을 수정한 새 인스턴스를 반환한다.
      */
     fun withStreamingMode(mode: StreamingMode): ExcelGeneratorConfig =
         copy(streamingMode = mode)

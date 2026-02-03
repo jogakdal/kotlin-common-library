@@ -12,10 +12,10 @@ import java.io.ByteArrayOutputStream
  *
  * TemplateRenderingEngine은 POI API를 통해 워크시트 셀을 처리하지만,
  * 차트, 도형, 머리글/바닥글 등의 요소는 POI API로 접근하기 어렵습니다.
- * 이 프로세서는 Excel 패키지의 raw XML을 직접 스캔하여 변수를 치환합니다.
+ * 이 프로세서는 Excel 패키지의 raw XML을 직접 스캔하여 변수를 치환한다.
  *
  * Excel 파일(.xlsx)은 ZIP 형식의 XML 파일 모음이므로,
- * 모든 XML 파일에서 변수 패턴을 검색하여 치환합니다.
+ * 모든 XML 파일에서 변수 패턴을 검색하여 치환한다.
  *
  * 처리 대상:
  * - 차트 타이틀 및 레이블 (`xl/charts/\*.xml`)
@@ -29,7 +29,7 @@ import java.io.ByteArrayOutputStream
  * - 문서 속성 (/docProps/)
  * - 워크시트 셀 데이터 (TemplateRenderingEngine이 처리)
  *
- * common-core 모듈의 VariableProcessor를 활용하여 변수 치환을 수행합니다.
+ * common-core 모듈의 VariableProcessor를 활용하여 변수 치환을 수행한다.
  */
 internal class XmlVariableProcessor {
     companion object {
@@ -48,7 +48,7 @@ internal class XmlVariableProcessor {
 
     /**
      * 단순 값 치환용 VariableResolverRegistry 구현.
-     * Map<String, String>의 값을 XML 이스케이프 처리하여 반환합니다.
+     * Map<String, String>의 값을 XML 이스케이프 처리하여 반환한다.
      */
     private class XmlValueRegistry(values: Map<String, String>) : VariableResolverRegistry {
         override val resolvers: Map<String, (List<Any?>) -> Any> =
@@ -56,7 +56,7 @@ internal class XmlVariableProcessor {
     }
 
     /**
-     * Excel 패키지 내 XML의 변수를 치환합니다.
+     * Excel 패키지 내 XML의 변수를 치환한다.
      *
      * @param inputBytes Excel 파일 바이트 배열
      * @param dataProvider 데이터 제공자

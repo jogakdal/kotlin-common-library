@@ -9,10 +9,10 @@ import com.hunet.common.tbeg.engine.pipeline.ProcessingContext
  * 차트 추출 프로세서.
  *
  * 스트리밍 모드(SXSSF)에서 차트가 손실되는 것을 방지하기 위해
- * 템플릿 처리 전에 차트를 추출합니다.
+ * 템플릿 처리 전에 차트를 추출한다.
  *
  * 추출된 차트 정보는 context.chartInfo에 저장되며,
- * 나중에 [ChartRestoreProcessor]가 복원합니다.
+ * 나중에 [ChartRestoreProcessor]가 복원한다.
  */
 internal class ChartExtractProcessor(
     private val chartProcessor: ChartProcessor

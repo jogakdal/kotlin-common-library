@@ -8,7 +8,7 @@ import com.hunet.common.tbeg.engine.pipeline.ProcessingContext
  * 피벗 테이블 재생성 프로세서.
  *
  * [PivotExtractProcessor]가 추출한 피벗 테이블 정보를 바탕으로
- * 확장된 데이터 소스 범위에 맞게 피벗 테이블을 재생성합니다.
+ * 확장된 데이터 소스 범위에 맞게 피벗 테이블을 재생성한다.
  *
  * 처리 내용:
  * - 확장된 데이터 소스 범위 계산

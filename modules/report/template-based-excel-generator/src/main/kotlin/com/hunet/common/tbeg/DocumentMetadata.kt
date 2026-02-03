@@ -5,8 +5,8 @@ import java.time.LocalDateTime
 /**
  * Excel 문서 메타데이터.
  *
- * 생성된 Excel 파일의 문서 속성(제목, 작성자 등)을 설정합니다.
- * Excel에서 "파일 > 정보 > 속성"에서 확인할 수 있습니다.
+ * 생성된 Excel 파일의 문서 속성(제목, 작성자 등)을 설정한다.
+ * Excel에서 "파일 > 정보 > 속성"에서 확인할 수 있다.
  *
  * ## 사용 예시 (Kotlin)
  * ```kotlin
@@ -54,20 +54,20 @@ data class DocumentMetadata(
 ) {
     companion object {
         /**
-         * 빈 메타데이터를 반환합니다.
+         * 빈 메타데이터를 반환한다.
          */
         @JvmStatic
         fun empty(): DocumentMetadata = DocumentMetadata()
 
         /**
-         * Java용 빌더를 반환합니다.
+         * Java용 빌더를 반환한다.
          */
         @JvmStatic
         fun builder(): Builder = Builder()
     }
 
     /**
-     * 메타데이터가 비어있는지 확인합니다.
+     * 메타데이터가 비어있는지 확인한다.
      */
     fun isEmpty(): Boolean =
         title == null && author == null && subject == null &&
@@ -128,7 +128,7 @@ class DocumentMetadataBuilder {
     var created: LocalDateTime? = null
 
     /**
-     * 키워드를 가변 인자로 설정합니다.
+     * 키워드를 가변 인자로 설정한다.
      */
     fun keywords(vararg keywords: String) {
         this.keywords = keywords.toList()

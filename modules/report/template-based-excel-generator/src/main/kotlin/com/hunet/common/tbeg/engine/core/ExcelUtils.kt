@@ -24,7 +24,7 @@ import java.io.OutputStream
 // ========== Excel 열 변환 유틸리티 ==========
 
 /**
- * Excel 열 문자를 0-based 숫자로 변환합니다.
+ * Excel 열 문자를 0-based 숫자로 변환한다.
  * 예: "A" -> 0, "B" -> 1, "Z" -> 25, "AA" -> 26
  */
 internal fun String.toColumnIndex() =
@@ -35,7 +35,7 @@ internal fun String.toColumnIndex() =
 internal fun toColumnIndex(colName: String) = colName.toColumnIndex()
 
 /**
- * 0-based 숫자를 Excel 열 문자로 변환합니다.
+ * 0-based 숫자를 Excel 열 문자로 변환한다.
  * 예: 0 -> "A", 1 -> "B", 25 -> "Z", 26 -> "AA"
  */
 internal fun Int.toColumnLetter(): String = buildString {
@@ -51,7 +51,7 @@ internal fun Int.toColumnLetter(): String = buildString {
 internal fun toColumnLetter(index: Int) = index.toColumnLetter()
 
 /**
- * 셀 참조 문자열을 파싱합니다.
+ * 셀 참조 문자열을 파싱한다.
  * 예: "B5" -> (row=4, col=1)
  *
  * @param ref 셀 참조 문자열 (예: "A1", "B5", "AA100")
@@ -66,13 +66,13 @@ internal fun parseCellRef(ref: String): Pair<Int, Int> {
 }
 
 /**
- * 0-based 행/열 인덱스를 셀 참조 문자열로 변환합니다.
+ * 0-based 행/열 인덱스를 셀 참조 문자열로 변환한다.
  * 예: (row=4, col=1) -> "B5"
  */
 internal fun toCellRef(row: Int, col: Int) = "${col.toColumnLetter()}${row + 1}"
 
 /**
- * 0-based 행/열 인덱스를 범위 참조 문자열로 변환합니다.
+ * 0-based 행/열 인덱스를 범위 참조 문자열로 변환한다.
  * 예: (startRow=0, startCol=0, endRow=4, endCol=2) -> "A1:C5"
  */
 internal fun toRangeRef(startRow: Int, startCol: Int, endRow: Int, endCol: Int) =
@@ -81,7 +81,7 @@ internal fun toRangeRef(startRow: Int, startCol: Int, endRow: Int, endCol: Int) 
 // ========== XML 유틸리티 ==========
 
 /**
- * XML 특수 문자를 이스케이프합니다.
+ * XML 특수 문자를 이스케이프한다.
  */
 internal fun String.escapeXml(): String = this
     .replace("&", "&amp;")
@@ -93,7 +93,7 @@ internal fun String.escapeXml(): String = this
 // ========== POI 확장 함수 ==========
 
 /**
- * XSSFWorkbook을 ByteArray로 변환합니다.
+ * XSSFWorkbook을 ByteArray로 변환한다.
  * absPath 제거: 템플릿의 원본 경로가 저장되어 있으면 Excel이 파일 열 때
  * 경로 불일치로 인해 "수정됨" 상태가 될 수 있음
  */
@@ -107,8 +107,8 @@ private val ALTERNATE_CONTENT_REGEX = Regex(
 )
 
 /**
- * xlsx 바이트 배열에서 workbook.xml의 absPath (원본 파일 경로) 요소를 제거합니다.
- * Excel이 파일을 열 때 경로 불일치로 인해 "수정됨" 상태가 되는 것을 방지합니다.
+ * xlsx 바이트 배열에서 workbook.xml의 absPath (원본 파일 경로) 요소를 제거한다.
+ * Excel이 파일을 열 때 경로 불일치로 인해 "수정됨" 상태가 되는 것을 방지한다.
  */
 internal fun ByteArray.removeAbsPath(): ByteArray {
     return OPCPackage.open(ByteArrayInputStream(this)).use { pkg ->
@@ -125,30 +125,30 @@ internal fun ByteArray.removeAbsPath(): ByteArray {
 }
 
 /**
- * XSSFWorkbook의 모든 시트를 Sequence로 반환합니다.
+ * XSSFWorkbook의 모든 시트를 Sequence로 반환한다.
  */
 internal val XSSFWorkbook.sheets: Sequence<Sheet>
     get() = (0 until numberOfSheets).asSequence().map { getSheetAt(it) }
 
 /**
- * 시트의 모든 셀을 Sequence로 반환합니다.
+ * 시트의 모든 셀을 Sequence로 반환한다.
  */
 internal fun Sheet.cellSequence() = asSequence().flatMap { it.asSequence() }
 
 /**
- * 시트에서 데이터가 있는 마지막 행 인덱스를 반환합니다.
+ * 시트에서 데이터가 있는 마지막 행 인덱스를 반환한다.
  */
 internal val Sheet.lastRowWithData
     get() = cellSequence().filterNot { it.isEmpty }.maxOfOrNull { it.rowIndex } ?: -1
 
 /**
- * 시트에서 데이터가 있는 마지막 열 인덱스를 반환합니다.
+ * 시트에서 데이터가 있는 마지막 열 인덱스를 반환한다.
  */
 internal val Sheet.lastColumnWithData
     get() = cellSequence().filterNot { it.isEmpty }.maxOfOrNull { it.columnIndex } ?: -1
 
 /**
- * 셀이 비어있는지 확인합니다 (코멘트도 없고 내용도 없는 경우).
+ * 셀이 비어있는지 확인한다 (코멘트도 없고 내용도 없는 경우).
  */
 internal val Cell.isEmpty: Boolean
     get() = cellComment == null && when (cellType) {
@@ -166,8 +166,8 @@ internal fun Sheet.findMergedRegion(rowIndex: Int, columnIndex: Int): CellRangeA
         .firstOrNull { it.isInRange(rowIndex, columnIndex) }
 
 /**
- * POI에서 사용하는 이미지 타입 문자열을 반환합니다.
- * GIF는 PNG로, BMP는 DIB로 변환됩니다.
+ * POI에서 사용하는 이미지 타입 문자열을 반환한다.
+ * GIF는 PNG로, BMP는 DIB로 변환된다.
  */
 internal fun ByteArray.detectImageTypeForPoi(): String =
     when (val type = detectImageType()) {
@@ -179,7 +179,7 @@ internal fun ByteArray.detectImageTypeForPoi(): String =
 // ========== Excel 암호화 유틸리티 ==========
 
 /**
- * Excel 파일 데이터를 암호화합니다.
+ * Excel 파일 데이터를 암호화한다.
  *
  * @param password 파일을 열 때 필요한 암호
  * @return 암호화된 Excel 파일 데이터
@@ -220,12 +220,12 @@ internal fun ByteArray.encryptExcelTo(password: String, output: OutputStream) {
 // ========== 워크북 초기 뷰 설정 ==========
 
 /**
- * 워크북이 열릴 때 지정된 시트의 지정된 셀에 포커스가 있도록 설정합니다.
+ * 워크북이 열릴 때 지정된 시트의 지정된 셀에 포커스가 있도록 설정한다.
  *
  * Excel 파일이 처음 열릴 때:
- * - sheetIndex 시트가 활성화됩니다
- * - 모든 시트에서 cellAddress 셀이 선택됩니다
- * - 스크롤 위치가 cellAddress로 설정됩니다
+ * - sheetIndex 시트가 활성화된다
+ * - 모든 시트에서 cellAddress 셀이 선택된다
+ * - 스크롤 위치가 cellAddress로 설정된다
  */
 internal fun Workbook.setInitialView(sheetIndex: Int = 0, cellAddress: String = "A1") {
     if (numberOfSheets == 0) return

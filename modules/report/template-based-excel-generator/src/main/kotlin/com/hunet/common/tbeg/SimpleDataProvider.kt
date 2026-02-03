@@ -6,7 +6,7 @@ import java.util.function.Supplier
  * [ExcelDataProvider]의 기본 구현체.
  *
  * Map 기반으로 데이터를 제공하며, 컬렉션 타입(List, Set 등)은 자동으로
- * [getItems]에서 Iterator로 반환됩니다.
+ * [getItems]에서 Iterator로 반환된다.
  *
  * @param values 단일 값 맵 (Iterable이 아닌 값들)
  * @param collections 컬렉션 제공 함수 맵 (지연 로딩)
@@ -29,10 +29,10 @@ class SimpleDataProvider private constructor(
 
     companion object {
         /**
-         * Map으로부터 SimpleDataProvider를 생성합니다.
+         * Map으로부터 SimpleDataProvider를 생성한다.
          *
-         * Map의 값이 Iterable인 경우 자동으로 컬렉션으로, ByteArray인 경우 이미지로 분류됩니다.
-         * List나 Collection인 경우 자동으로 count가 설정됩니다.
+         * Map의 값이 Iterable인 경우 자동으로 컬렉션으로, ByteArray인 경우 이미지로 분류된다.
+         * List나 Collection인 경우 자동으로 count가 설정된다.
          *
          * ```kotlin
          * val provider = SimpleDataProvider.of(mapOf(
@@ -75,13 +75,13 @@ class SimpleDataProvider private constructor(
         }
 
         /**
-         * 빈 SimpleDataProvider를 반환합니다.
+         * 빈 SimpleDataProvider를 반환한다.
          */
         @JvmStatic
         fun empty(): SimpleDataProvider = SimpleDataProvider(emptyMap(), emptyMap(), emptyMap(), emptyMap(), null)
 
         /**
-         * Builder를 반환합니다. (Java에서 사용하기 편리)
+         * Builder를 반환한다. (Java에서 사용하기 편리)
          */
         @JvmStatic
         fun builder(): Builder = Builder()
@@ -97,16 +97,16 @@ class SimpleDataProvider private constructor(
         private val images = mutableMapOf<String, () -> ByteArray>()
         private var metadata: DocumentMetadata? = null
 
-        /** 단일 값을 추가합니다. */
+        /** 단일 값을 추가한다. */
         fun value(name: String, value: Any) = apply { values[name] = value }
 
-        /** 컬렉션을 추가합니다. (즉시 로딩, count 자동 설정) */
+        /** 컬렉션을 추가한다. (즉시 로딩, count 자동 설정) */
         fun items(name: String, items: List<Any>) = apply {
             collections[name] = { items.iterator() }
             collectionCounts[name] = items.size
         }
 
-        /** 컬렉션을 추가합니다. (즉시 로딩) */
+        /** 컬렉션을 추가한다. (즉시 로딩) */
         fun items(name: String, items: Iterable<Any>) = apply {
             collections[name] = { items.iterator() }
             if (items is Collection<*>) {
@@ -114,15 +114,15 @@ class SimpleDataProvider private constructor(
             }
         }
 
-        /** 컬렉션을 추가합니다. (지연 로딩 - Kotlin) */
+        /** 컬렉션을 추가한다. (지연 로딩 - Kotlin) */
         fun items(name: String, itemsSupplier: () -> Iterator<Any>) = apply {
             collections[name] = itemsSupplier
         }
 
         /**
-         * 컬렉션과 개수를 함께 추가합니다. (지연 로딩 + count 제공)
+         * 컬렉션과 개수를 함께 추가한다. (지연 로딩 + count 제공)
          *
-         * 대용량 데이터 처리 시 count를 제공하면 최적의 성능을 얻을 수 있습니다.
+         * 대용량 데이터 처리 시 count를 제공하면 최적의 성능을 얻을 수 있다.
          *
          * ```kotlin
          * items("employees", employeeCount) {
@@ -135,50 +135,50 @@ class SimpleDataProvider private constructor(
             collectionCounts[name] = count
         }
 
-        /** 컬렉션을 추가합니다. (지연 로딩 - Java Supplier) */
+        /** 컬렉션을 추가한다. (지연 로딩 - Java Supplier) */
         fun itemsFromSupplier(name: String, itemsSupplier: Supplier<Iterator<Any>>) = apply {
             collections[name] = { itemsSupplier.get() }
         }
 
         /**
-         * 컬렉션과 개수를 함께 추가합니다. (지연 로딩 - Java Supplier + count)
+         * 컬렉션과 개수를 함께 추가한다. (지연 로딩 - Java Supplier + count)
          */
         fun itemsFromSupplier(name: String, count: Int, itemsSupplier: Supplier<Iterator<Any>>) = apply {
             collections[name] = { itemsSupplier.get() }
             collectionCounts[name] = count
         }
 
-        /** 이미지를 추가합니다. (즉시 로딩) */
+        /** 이미지를 추가한다. (즉시 로딩) */
         fun image(name: String, imageData: ByteArray) = apply { images[name] = { imageData } }
 
-        /** 이미지를 추가합니다. (지연 로딩 - Kotlin) */
+        /** 이미지를 추가한다. (지연 로딩 - Kotlin) */
         fun image(name: String, imageSupplier: () -> ByteArray) = apply { images[name] = imageSupplier }
 
-        /** 이미지를 추가합니다. (지연 로딩 - Java Supplier) */
+        /** 이미지를 추가한다. (지연 로딩 - Java Supplier) */
         fun imageFromSupplier(name: String, imageSupplier: Supplier<ByteArray>) = apply {
             images[name] = { imageSupplier.get() }
         }
 
-        /** 문서 메타데이터를 설정합니다. (Kotlin DSL) */
+        /** 문서 메타데이터를 설정한다. (Kotlin DSL) */
         fun metadata(block: DocumentMetadataBuilder.() -> Unit) = apply {
             this.metadata = DocumentMetadataBuilder().apply(block).build()
         }
 
-        /** 문서 메타데이터를 설정합니다. (Java Consumer) */
+        /** 문서 메타데이터를 설정한다. (Java Consumer) */
         fun metadata(configurer: java.util.function.Consumer<DocumentMetadata.Builder>) = apply {
             this.metadata = DocumentMetadata.Builder().also { configurer.accept(it) }.build()
         }
 
-        /** 문서 메타데이터를 설정합니다. (직접 설정) */
+        /** 문서 메타데이터를 설정한다. (직접 설정) */
         fun metadata(metadata: DocumentMetadata) = apply { this.metadata = metadata }
 
-        /** SimpleDataProvider를 빌드합니다. */
+        /** SimpleDataProvider를 빌드한다. */
         fun build() = SimpleDataProvider(values, collections, collectionCounts, images, metadata)
     }
 }
 
 /**
- * SimpleDataProvider를 DSL 방식으로 생성합니다.
+ * SimpleDataProvider를 DSL 방식으로 생성한다.
  *
  * ```kotlin
  * val provider = simpleDataProvider {

@@ -48,7 +48,7 @@ private fun MatchResult.toRangeRef() = RangeRef(
  * 수식 참조 조정기 - 반복 처리로 인한 행 오프셋에 따라 수식 내 셀 참조 조정
  *
  * 스트리밍 모드에서는 POI의 shiftRows()를 사용할 수 없으므로
- * 수식 참조를 직접 조정해야 합니다.
+ * 수식 참조를 직접 조정해야 한다.
  */
 object FormulaAdjuster {
     /** 셀 참조 패턴: A1, $A$1, $A1, A$1 등 */
@@ -192,7 +192,7 @@ object FormulaAdjuster {
      * 반복 영역 내 단일 셀 참조를 행 방향(DOWN)으로 범위 확장
      *
      * DOWN 방향 반복 영역 외부의 수식에서 반복 영역 내 셀을 참조하는 경우,
-     * 해당 참조를 행 방향으로 확장된 범위로 변환합니다.
+     * 해당 참조를 행 방향으로 확장된 범위로 변환한다.
      *
      * @param formula 원본 수식
      * @param repeatStartRow 반복 영역 시작 행 (0-based)
@@ -285,7 +285,7 @@ object FormulaAdjuster {
      * 반복 영역 내 단일 셀 참조를 열 방향으로 범위/목록으로 확장
      *
      * RIGHT 방향 반복 영역 외부의 수식에서 반복 영역 내 셀을 참조하는 경우,
-     * 해당 참조를 확장된 범위로 변환합니다.
+     * 해당 참조를 확장된 범위로 변환한다.
      *
      * @param formula 원본 수식
      * @param repeatStartCol 반복 영역 시작 열 (0-based)
@@ -389,10 +389,10 @@ object FormulaAdjuster {
     // ========== PositionCalculator 연동 메서드 ==========
 
     /**
-     * PositionCalculator를 사용하여 수식 내 셀 참조의 위치를 조정합니다.
+     * PositionCalculator를 사용하여 수식 내 셀 참조의 위치를 조정한다.
      *
      * 모든 셀 참조가 PositionCalculator의 getFinalPosition()을 통해
-     * 최종 위치로 변환됩니다.
+     * 최종 위치로 변환된다.
      *
      * @param formula 원본 수식
      * @param calculator 위치 계산기
@@ -453,10 +453,10 @@ object FormulaAdjuster {
     }
 
     /**
-     * repeat 영역 내 셀 참조를 범위로 확장합니다 (PositionCalculator 사용).
+     * repeat 영역 내 셀 참조를 범위로 확장한다 (PositionCalculator 사용).
      *
      * repeat 영역 외부의 수식에서 반복 영역 내 셀을 참조하는 경우,
-     * 해당 참조를 확장된 범위로 변환합니다.
+     * 해당 참조를 확장된 범위로 변환한다.
      *
      * @param formula 원본 수식
      * @param expansion 대상 repeat 확장 정보

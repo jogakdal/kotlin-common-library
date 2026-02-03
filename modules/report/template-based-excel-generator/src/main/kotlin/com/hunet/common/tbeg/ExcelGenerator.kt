@@ -25,7 +25,7 @@ import java.util.concurrent.Executors
 /**
  * 템플릿 기반 Excel 생성기.
  *
- * .xlsx 템플릿에 데이터를 바인딩하고 Excel 파일을 생성합니다.
+ * .xlsx 템플릿에 데이터를 바인딩하고 Excel 파일을 생성한다.
  *
  * ## 기본 사용법
  * ```kotlin
@@ -82,7 +82,7 @@ class ExcelGenerator @JvmOverloads constructor(
     // ========== 동기 API ==========
 
     /**
-     * 템플릿과 데이터 맵으로 Excel을 생성합니다.
+     * 템플릿과 데이터 맵으로 Excel을 생성한다.
      *
      * @param template 템플릿 입력 스트림
      * @param data 바인딩할 데이터 맵
@@ -94,7 +94,7 @@ class ExcelGenerator @JvmOverloads constructor(
         generate(template, SimpleDataProvider.of(data), password)
 
     /**
-     * 템플릿과 DataProvider로 Excel을 생성합니다.
+     * 템플릿과 DataProvider로 Excel을 생성한다.
      *
      * @param template 템플릿 입력 스트림
      * @param dataProvider 데이터 제공자
@@ -111,7 +111,7 @@ class ExcelGenerator @JvmOverloads constructor(
         }
 
     /**
-     * 템플릿 파일과 DataProvider로 Excel을 생성합니다.
+     * 템플릿 파일과 DataProvider로 Excel을 생성한다.
      *
      * @param template 템플릿 파일
      * @param dataProvider 데이터 제공자
@@ -123,9 +123,9 @@ class ExcelGenerator @JvmOverloads constructor(
         template.inputStream().use { generate(it, dataProvider, password) }
 
     /**
-     * Excel을 생성하여 파일로 저장합니다.
+     * Excel을 생성하여 파일로 저장한다.
      *
-     * 파일명에 타임스탬프가 자동으로 추가됩니다.
+     * 파일명에 타임스탬프가 자동으로 추가된다.
      * 예: "report" -> "report_20240106_143052.xlsx"
      *
      * @param template 템플릿 입력 스트림
@@ -145,9 +145,9 @@ class ExcelGenerator @JvmOverloads constructor(
     ): Path = generateToFile(template, SimpleDataProvider.of(data), outputDir, baseFileName, password)
 
     /**
-     * Excel을 생성하여 파일로 저장합니다.
+     * Excel을 생성하여 파일로 저장한다.
      *
-     * 파일명에 타임스탬프가 자동으로 추가됩니다.
+     * 파일명에 타임스탬프가 자동으로 추가된다.
      * 예: "report" -> "report_20240106_143052.xlsx"
      *
      * @param template 템플릿 입력 스트림
@@ -167,8 +167,8 @@ class ExcelGenerator @JvmOverloads constructor(
     ): Path = generateToFileInternal(template, dataProvider, outputDir, baseFileName, password).first
 
     /**
-     * 파일 생성 후 경로와 처리된 행 수를 함께 반환합니다.
-     * 예외 발생 시 생성된 파일을 삭제합니다.
+     * 파일 생성 후 경로와 처리된 행 수를 함께 반환한다.
+     * 예외 발생 시 생성된 파일을 삭제한다.
      */
     private fun generateToFileInternal(
         template: InputStream,
@@ -203,7 +203,7 @@ class ExcelGenerator @JvmOverloads constructor(
     // ========== 비동기 API (Kotlin Coroutines) ==========
 
     /**
-     * 비동기로 Excel을 생성합니다.
+     * 비동기로 Excel을 생성한다.
      *
      * @param template 템플릿 입력 스트림
      * @param data 바인딩할 데이터 맵
@@ -217,7 +217,7 @@ class ExcelGenerator @JvmOverloads constructor(
     ): ByteArray = generateAsync(template, SimpleDataProvider.of(data), password)
 
     /**
-     * 비동기로 Excel을 생성합니다.
+     * 비동기로 Excel을 생성한다.
      *
      * @param template 템플릿 입력 스트림
      * @param dataProvider 데이터 제공자
@@ -231,7 +231,7 @@ class ExcelGenerator @JvmOverloads constructor(
     ): ByteArray = withContext(dispatcher) { generate(template, dataProvider, password) }
 
     /**
-     * 비동기로 Excel을 생성하여 파일로 저장합니다.
+     * 비동기로 Excel을 생성하여 파일로 저장한다.
      *
      * @param template 템플릿 입력 스트림
      * @param data 바인딩할 데이터 맵
@@ -249,7 +249,7 @@ class ExcelGenerator @JvmOverloads constructor(
     ): Path = generateToFileAsync(template, SimpleDataProvider.of(data), outputDir, baseFileName, password)
 
     /**
-     * 비동기로 Excel을 생성하여 파일로 저장합니다.
+     * 비동기로 Excel을 생성하여 파일로 저장한다.
      *
      * @param template 템플릿 입력 스트림
      * @param dataProvider 데이터 제공자
@@ -271,7 +271,7 @@ class ExcelGenerator @JvmOverloads constructor(
     // ========== 비동기 API (Java CompletableFuture) ==========
 
     /**
-     * CompletableFuture로 Excel을 생성합니다.
+     * CompletableFuture로 Excel을 생성한다.
      *
      * @param template 템플릿 입력 스트림
      * @param data 바인딩할 데이터 맵
@@ -283,7 +283,7 @@ class ExcelGenerator @JvmOverloads constructor(
         generateFuture(template, SimpleDataProvider.of(data), password)
 
     /**
-     * CompletableFuture로 Excel을 생성합니다.
+     * CompletableFuture로 Excel을 생성한다.
      *
      * @param template 템플릿 입력 스트림
      * @param dataProvider 데이터 제공자
@@ -295,7 +295,7 @@ class ExcelGenerator @JvmOverloads constructor(
         scope.future { generate(template, dataProvider, password) }
 
     /**
-     * CompletableFuture로 Excel을 생성하여 파일로 저장합니다.
+     * CompletableFuture로 Excel을 생성하여 파일로 저장한다.
      *
      * @param template 템플릿 입력 스트림
      * @param data 바인딩할 데이터 맵
@@ -314,7 +314,7 @@ class ExcelGenerator @JvmOverloads constructor(
     ) = generateToFileFuture(template, SimpleDataProvider.of(data), outputDir, baseFileName, password)
 
     /**
-     * CompletableFuture로 Excel을 생성하여 파일로 저장합니다.
+     * CompletableFuture로 Excel을 생성하여 파일로 저장한다.
      *
      * @param template 템플릿 입력 스트림
      * @param dataProvider 데이터 제공자
@@ -335,8 +335,8 @@ class ExcelGenerator @JvmOverloads constructor(
     // ========== 비동기 API (작업 관리) ==========
 
     /**
-     * 비동기 작업을 제출하고 작업 핸들을 반환합니다.
-     * 완료 시 바이트 배열을 GenerationResult.bytes로 받습니다.
+     * 비동기 작업을 제출하고 작업 핸들을 반환한다.
+     * 완료 시 바이트 배열을 GenerationResult.bytes로 받는다.
      *
      * @param template 템플릿 입력 스트림
      * @param data 바인딩할 데이터 맵
@@ -353,8 +353,8 @@ class ExcelGenerator @JvmOverloads constructor(
     ): GenerationJob = submit(template, SimpleDataProvider.of(data), password, listener)
 
     /**
-     * 비동기 작업을 제출하고 작업 핸들을 반환합니다.
-     * 완료 시 바이트 배열을 GenerationResult.bytes로 받습니다.
+     * 비동기 작업을 제출하고 작업 핸들을 반환한다.
+     * 완료 시 바이트 배열을 GenerationResult.bytes로 받는다.
      *
      * @param template 템플릿 입력 스트림
      * @param dataProvider 데이터 제공자
@@ -402,9 +402,9 @@ class ExcelGenerator @JvmOverloads constructor(
     }
 
     /**
-     * 비동기 작업을 제출하고 파일로 저장합니다.
-     * 완료 시 파일 경로를 GenerationResult.filePath로 받습니다.
-     * 블로킹을 피해야 하는 경우 즉시 응답 후 백그라운드 처리에 적합합니다.
+     * 비동기 작업을 제출하고 파일로 저장한다.
+     * 완료 시 파일 경로를 GenerationResult.filePath로 받는다.
+     * 블로킹을 피해야 하는 경우 즉시 응답 후 백그라운드 처리에 적합하다.
      *
      * @param template 템플릿 입력 스트림
      * @param data 바인딩할 데이터 맵
@@ -425,9 +425,9 @@ class ExcelGenerator @JvmOverloads constructor(
     ): GenerationJob = submitToFile(template, SimpleDataProvider.of(data), outputDir, baseFileName, password, listener)
 
     /**
-     * 비동기 작업을 제출하고 파일로 저장합니다.
-     * 완료 시 파일 경로를 GenerationResult.filePath로 받습니다.
-     * 블로킹을 피해야 하는 경우 즉시 응답 후 백그라운드 처리에 적합합니다.
+     * 비동기 작업을 제출하고 파일로 저장한다.
+     * 완료 시 파일 경로를 GenerationResult.filePath로 받는다.
+     * 블로킹을 피해야 하는 경우 즉시 응답 후 백그라운드 처리에 적합하다.
      *
      * @param template 템플릿 입력 스트림
      * @param dataProvider 데이터 제공자
@@ -520,8 +520,8 @@ class ExcelGenerator @JvmOverloads constructor(
     // ========== 유틸리티 ==========
 
     /**
-     * 출력 파일 경로를 결정합니다.
-     * fileNamingMode에 따라 파일명을 생성하고, fileConflictPolicy에 따라 충돌을 처리합니다.
+     * 출력 파일 경로를 결정한다.
+     * fileNamingMode에 따라 파일명을 생성하고, fileConflictPolicy에 따라 충돌을 처리한다.
      */
     private fun resolveOutputPath(outputDir: Path, baseFileName: String): Path {
         val basePath = outputDir.resolve(generateFileName(baseFileName))
@@ -536,7 +536,7 @@ class ExcelGenerator @JvmOverloads constructor(
     }
 
     /**
-     * 시퀀스 번호를 붙여 사용 가능한 파일 경로를 찾습니다.
+     * 시퀀스 번호를 붙여 사용 가능한 파일 경로를 찾는다.
      */
     private fun findAvailablePathWithSequence(outputDir: Path, baseFileName: String): Path {
         val baseNameWithSuffix = when (config.fileNamingMode) {

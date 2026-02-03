@@ -14,8 +14,8 @@ import java.io.ByteArrayInputStream
 /**
  * 템플릿 렌더링 프로세서.
  *
- * TemplateRenderingEngine을 사용하여 템플릿에 데이터를 바인딩합니다.
- * 스트리밍 모드 설정에 따라 내부적으로 XSSF 또는 SXSSF 전략을 사용합니다.
+ * TemplateRenderingEngine을 사용하여 템플릿에 데이터를 바인딩한다.
+ * 스트리밍 모드 설정에 따라 내부적으로 XSSF 또는 SXSSF 전략을 사용한다.
  *
  * - 반복 영역 확장
  * - 변수 치환
@@ -62,7 +62,7 @@ internal class TemplateRenderProcessor : ExcelProcessor {
     }
 
     /**
-     * 템플릿에 필요한 데이터가 DataProvider에 있는지 검증합니다.
+     * 템플릿에 필요한 데이터가 DataProvider에 있는지 검증한다.
      */
     private fun validateMissingData(context: ProcessingContext, requiredNames: RequiredNames) {
         val dataProvider = context.dataProvider

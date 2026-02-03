@@ -17,7 +17,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook
  */
 internal abstract class AbstractRenderingStrategy : RenderingStrategy {
     /**
-     * 템플릿을 렌더링합니다. (템플릿 메서드)
+     * 템플릿을 렌더링한다. (템플릿 메서드)
      *
      * 알고리즘 골격:
      * 1. 워크북 초기화
@@ -58,8 +58,8 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
     // ========== 추상 메서드 (서브클래스 구현 필수) ==========
 
     /**
-     * 워크북을 생성하고 작업을 수행한 후 정리합니다.
-     * 리소스 관리를 서브클래스에 위임합니다.
+     * 워크북을 생성하고 작업을 수행한 후 정리한다.
+     * 리소스 관리를 서브클래스에 위임한다.
      */
     protected abstract fun <T> withWorkbook(
         templateBytes: ByteArray,
@@ -67,8 +67,8 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
     ): T
 
     /**
-     * 개별 시트를 처리합니다.
-     * XSSF는 shiftRows, SXSSF는 스트리밍 방식으로 구현됩니다.
+     * 개별 시트를 처리한다.
+     * XSSF는 shiftRows, SXSSF는 스트리밍 방식으로 구현된다.
      */
     protected abstract fun processSheet(
         sheet: Sheet,
@@ -80,15 +80,15 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
     )
 
     /**
-     * 워크북을 바이트 배열로 변환합니다.
+     * 워크북을 바이트 배열로 변환한다.
      */
     protected abstract fun finalizeWorkbook(workbook: Workbook): ByteArray
 
     // ========== 훅 메서드 (서브클래스 선택적 오버라이드) ==========
 
     /**
-     * 시트 처리 전 호출됩니다. (훅 메서드)
-     * SXSSF에서 스타일 추출, 시트 내용 클리어 등에 사용됩니다.
+     * 시트 처리 전 호출된다. (훅 메서드)
+     * SXSSF에서 스타일 추출, 시트 내용 클리어 등에 사용된다.
      */
     protected open fun beforeProcessSheets(
         workbook: Workbook,
@@ -98,8 +98,8 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
     ) { }
 
     /**
-     * 시트 처리 후 호출됩니다. (훅 메서드)
-     * 수식 재계산, calcChain 정리, 초기 뷰 설정 등에 사용됩니다.
+     * 시트 처리 후 호출된다. (훅 메서드)
+     * 수식 재계산, calcChain 정리, 초기 뷰 설정 등에 사용된다.
      */
     protected open fun afterProcessSheets(
         workbook: Workbook,
@@ -109,8 +109,8 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
     // ========== 공통 CellContent 처리 ==========
 
     /**
-     * 셀 내용을 처리합니다.
-     * 모든 CellContent 타입에 대한 공통 처리 로직입니다.
+     * 셀 내용을 처리한다.
+     * 모든 CellContent 타입에 대한 공통 처리 로직이다.
      *
      * @return 추가 처리가 필요한 경우 false (서브클래스에서 처리)
      */
@@ -182,8 +182,8 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
     }
 
     /**
-     * 컬렉션 크기 마커를 처리합니다.
-     * ${size(collection)} 또는 =TBEG_SIZE(collection) 패턴을 컬렉션 크기로 치환합니다.
+     * 컬렉션 크기 마커를 처리한다.
+     * ${size(collection)} 또는 =TBEG_SIZE(collection) 패턴을 컬렉션 크기로 치환한다.
      */
     protected fun processSizeMarker(
         cell: Cell,
@@ -223,7 +223,7 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
     }
 
     /**
-     * 이미지 마커를 처리합니다.
+     * 이미지 마커를 처리한다.
      */
     protected fun processImageMarker(
         cell: Cell,
@@ -263,7 +263,7 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
     // ========== 이미지 삽입 ==========
 
     /**
-     * 수집된 이미지 위치에 이미지를 삽입합니다.
+     * 수집된 이미지 위치에 이미지를 삽입한다.
      */
     protected fun insertImages(
         workbook: Workbook,
@@ -293,7 +293,7 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
 
     /**
      * calcChain을 비웁니다.
-     * 반복 확장 후 calcChain이 불일치 상태가 될 수 있어 제거가 필요합니다.
+     * 반복 확장 후 calcChain이 불일치 상태가 될 수 있어 제거가 필요하다.
      */
     protected fun clearCalcChain(workbook: XSSFWorkbook) {
         workbook.calculationChain?.let { chain ->
@@ -307,8 +307,8 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
     // ========== 셀 값 설정 유틸리티 ==========
 
     /**
-     * 셀에 값을 설정합니다.
-     * 값의 타입에 따라 적절한 메서드를 호출합니다.
+     * 셀에 값을 설정한다.
+     * 값의 타입에 따라 적절한 메서드를 호출한다.
      */
     protected fun setCellValue(cell: Cell, value: Any?) {
         when (value) {
@@ -326,7 +326,7 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
     // ========== 위치 조정 유틸리티 ==========
 
     /**
-     * 위치 문자열에 오프셋을 적용합니다.
+     * 위치 문자열에 오프셋을 적용한다.
      *
      * @param position 단일 셀(B5) 또는 범위(B5:D10)
      * @param rowOffset 행 오프셋
@@ -345,7 +345,7 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
     }
 
     /**
-     * 셀 참조에 오프셋을 적용합니다.
+     * 셀 참조에 오프셋을 적용한다.
      * 예: B5 + (2, 1) -> C7
      */
     protected fun adjustCellRef(ref: String, rowOffset: Int, colOffset: Int): String {
@@ -356,7 +356,7 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
     }
 
     /**
-     * 열 인덱스를 열 이름으로 변환합니다.
+     * 열 인덱스를 열 이름으로 변환한다.
      * 예: 0 -> A, 25 -> Z, 26 -> AA
      */
     protected fun toColumnName(colIndex: Int): String {
