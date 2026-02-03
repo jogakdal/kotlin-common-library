@@ -90,6 +90,15 @@ tasks.register<JavaExec>("runMultiRepeatSample") {
     mainClass.set("com.hunet.common.tbeg.MultiRepeatSample")
 }
 
+// 성능 벤치마크 실행 태스크
+tasks.register<JavaExec>("runBenchmark") {
+    group = "application"
+    description = "TBEG 성능 벤치마크 실행"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.hunet.common.tbeg.PerformanceBenchmark")
+    maxHeapSize = "2g"
+}
+
 // 테스트 클래스패스 출력 (java 명령 실행용)
 tasks.register("printTestClasspath") {
     doLast {
