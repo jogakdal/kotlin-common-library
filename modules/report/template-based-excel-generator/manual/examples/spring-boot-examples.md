@@ -94,13 +94,17 @@ class ReportService(
      */
     fun generateEmployeeReport(): Path {
         val template = resourceLoader.getResource("classpath:templates/employees.xlsx")
+
+        // count를 먼저 조회 (SELECT COUNT는 인덱스만 사용하므로 빠름)
         val employeeCount = employeeRepository.count().toInt()
 
         val provider = simpleDataProvider {
             value("title", "직원 현황 보고서")
             value("date", LocalDate.now().toString())
 
-            // count와 함께 지연 로딩 제공 (최적 성능)
+            // count와 함께 지연 로딩 제공
+            // - TBEG가 전체 행 수를 미리 알 수 있어 수식 범위 즉시 계산
+            // - 데이터 이중 순회 방지로 성능 최적화
             items("employees", employeeCount) {
                 employeeRepository.findAll().iterator()
             }
@@ -166,6 +170,8 @@ public class ReportService {
 
     public Path generateEmployeeReport() throws IOException {
         var template = resourceLoader.getResource("classpath:templates/employees.xlsx");
+
+        // count를 먼저 조회 (수식 범위 계산 및 이중 순회 방지)
         int employeeCount = (int) employeeRepository.count();
 
         var provider = SimpleDataProvider.builder()
@@ -490,38 +496,7 @@ class ReportEventHandler(
 
 대용량 데이터를 메모리 효율적으로 처리합니다.
 
-### Repository
-
 ```kotlin
-package com.example.repository
-
-import com.example.entity.Employee
-import org.springframework.data.jpa.repository.JpaRepository
-import org.springframework.data.jpa.repository.Query
-import java.util.stream.Stream
-
-interface EmployeeRepository : JpaRepository<Employee, Long> {
-
-    @Query("SELECT e FROM Employee e")
-    fun streamAll(): Stream<Employee>
-
-    @Query("SELECT e FROM Employee e WHERE e.department.id = :deptId")
-    fun streamByDepartmentId(deptId: Long): Stream<Employee>
-}
-```
-
-### Service
-
-```kotlin
-package com.example.report
-
-import com.hunet.common.tbeg.ExcelGenerator
-import com.hunet.common.tbeg.simpleDataProvider
-import org.springframework.core.io.ResourceLoader
-import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
-import java.nio.file.Path
-
 @Service
 class LargeReportService(
     private val excelGenerator: ExcelGenerator,
@@ -530,9 +505,8 @@ class LargeReportService(
 ) {
     /**
      * 대용량 직원 보고서 생성
-     * @Transactional(readOnly = true) 필수: Stream이 트랜잭션 내에서 유지되어야 함
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true)  // Stream 유지를 위해 필수
     fun generateLargeEmployeeReport(): Path {
         val template = resourceLoader.getResource("classpath:templates/employees.xlsx")
         val employeeCount = employeeRepository.count().toInt()
@@ -540,7 +514,6 @@ class LargeReportService(
         val provider = simpleDataProvider {
             value("title", "전체 직원 현황")
 
-            // JPA Stream을 통한 지연 로딩 + count 제공
             items("employees", employeeCount) {
                 employeeRepository.streamAll().iterator()
             }
@@ -557,6 +530,8 @@ class LargeReportService(
 ```
 
 > **중요**: JPA Stream을 사용할 때는 반드시 `@Transactional` 어노테이션을 사용해야 합니다. Stream은 트랜잭션이 끝나면 닫히므로, Excel 생성이 완료될 때까지 트랜잭션이 유지되어야 합니다.
+
+Repository 인터페이스 정의, 페이징 기반 Iterator 구현, MyBatis 연동 등 상세한 내용은 [고급 예제 - JPA/Spring Data 연동](./advanced-examples.md#13-jpaspring-data-연동)을 참조하세요.
 
 ---
 
@@ -583,10 +558,16 @@ class WebSocketReportListener(
     }
 
     override fun onProgress(jobId: String, progress: ProgressInfo) {
+        // percentage 계산 (totalRows가 있는 경우에만)
+        val percentage = progress.totalRows?.let { total ->
+            if (total > 0) (progress.processedRows * 100.0 / total) else null
+        }
+
         sendMessage(jobId, "progress", mapOf(
             "jobId" to jobId,
             "processedRows" to progress.processedRows,
-            "percentage" to progress.percentage
+            "totalRows" to progress.totalRows,
+            "percentage" to percentage  // null이면 JSON에서 제외됨
         ))
     }
 

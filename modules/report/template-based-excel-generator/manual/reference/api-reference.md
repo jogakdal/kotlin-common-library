@@ -354,13 +354,39 @@ fun itemsFromSupplier(name: String, count: Int, itemsSupplier: Supplier<Iterator
 
 Java Supplier를 사용한 지연 로딩입니다.
 
-#### image
+#### image (즉시 로딩)
 
 ```kotlin
 fun image(name: String, imageData: ByteArray): Builder
 ```
 
-이미지를 추가합니다.
+이미지를 추가합니다. ByteArray가 즉시 메모리에 로드됩니다.
+
+#### image (지연 로딩)
+
+```kotlin
+fun image(name: String, imageSupplier: () -> ByteArray): Builder
+```
+
+지연 로딩 이미지를 추가합니다. 이미지 데이터가 실제로 필요할 때 Lambda가 호출됩니다.
+
+```kotlin
+image("signature") {
+    downloadSignatureImage(userId)
+}
+```
+
+#### imageFromSupplier (Java)
+
+```kotlin
+fun imageFromSupplier(name: String, imageSupplier: Supplier<ByteArray>): Builder
+```
+
+Java Supplier를 사용한 지연 로딩 이미지입니다.
+
+```java
+.imageFromSupplier("signature", () -> downloadSignature())
+```
 
 #### metadata
 
@@ -478,9 +504,14 @@ data class GenerationResult(
 ```kotlin
 data class ProgressInfo(
     val processedRows: Int,
-    val percentage: Double
+    val totalRows: Int? = null
 )
 ```
+
+| 속성 | 타입 | 설명 |
+|-----|------|------|
+| processedRows | Int | 현재 처리된 행 수 |
+| totalRows | Int? | 전체 행 수 (count 미제공 시 null)
 
 ---
 

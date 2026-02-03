@@ -228,6 +228,29 @@ fun main() {
 }
 ```
 
+### 2.4 파일 저장
+
+`generate()`는 바이트 배열을 반환하고, `generateToFile()`은 파일로 직접 저장합니다.
+
+```kotlin
+ExcelGenerator().use { generator ->
+    // 바이트 배열로 받기
+    val bytes = generator.generate(template, data)
+
+    // 파일로 직접 저장
+    val path = generator.generateToFile(template, data, outputDir, "report")
+}
+```
+
+`generateToFile()` 사용 시 파일명은 다음 규칙으로 생성됩니다.
+
+| 설정 | 기본값 | 결과 예시 |
+|------|--------|----------|
+| 파일명 모드 | `TIMESTAMP` | `report_20260115_143052.xlsx` |
+| 충돌 시 | `SEQUENCE` | `report_20260115_143052_1.xlsx` |
+
+파일명 모드, 타임스탬프 형식, 충돌 정책 등 상세 설정은 [설정 옵션 레퍼런스](./reference/configuration.md#filenamemode)를 참조하세요.
+
 ---
 
 ## 3. DataProvider 사용하기

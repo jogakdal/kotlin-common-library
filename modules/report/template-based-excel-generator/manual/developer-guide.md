@@ -58,23 +58,23 @@ com.hunet.common.tbeg/
 
 ```
 템플릿 + 데이터
-    │
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    ExcelPipeline                            │
-├─────────────────────────────────────────────────────────────┤
-│  1. ChartExtractProcessor     - 차트 추출 (SXSSF 손실 방지)   │
-│  2. PivotExtractProcessor     - 피벗 테이블 정보 추출         │
-│  3. TemplateRenderProcessor   - 템플릿 렌더링 (데이터 바인딩)   │
-│  4. NumberFormatProcessor     - 숫자 서식 적용               │
-│  5. XmlVariableReplaceProcessor - XML 내 변수 치환           │
-│  6. PivotRecreateProcessor    - 피벗 테이블 재생성           │
-│  7. ChartRestoreProcessor     - 차트 복원                   │
-│  8. MetadataProcessor         - 문서 메타데이터 적용          │
-└─────────────────────────────────────────────────────────────┘
-    │
-    ▼
-생성된 Excel
+       │
+       ▼
+───────────────────────────────────────────────────────────────
+                       ExcelPipeline
+───────────────────────────────────────────────────────────────
+   1. ChartExtractProcessor       - 차트 추출 (SXSSF 손실 방지)
+   2. PivotExtractProcessor       - 피벗 테이블 정보 추출
+   3. TemplateRenderProcessor     - 템플릿 렌더링 (데이터 바인딩)
+   4. NumberFormatProcessor       - 숫자 서식 적용
+   5. XmlVariableReplaceProcessor - XML 내 변수 치환
+   6. PivotRecreateProcessor      - 피벗 테이블 재생성
+   7. ChartRestoreProcessor       - 차트 복원
+   8. MetadataProcessor           - 문서 메타데이터 적용
+───────────────────────────────────────────────────────────────
+       │
+       ▼
+  생성된 Excel
 ```
 
 ---
@@ -161,12 +161,12 @@ class SxssfRenderingStrategy : RenderingStrategy
 
 ### 3.2 XSSF vs SXSSF
 
-| 특성 | XSSF | SXSSF |
-|------|------|-------|
-| 메모리 | 전체 워크북 메모리 로드 | 윈도우 기반 스트리밍 |
-| 행 삽입 | shiftRows() 지원 | 순차 출력만 가능 |
-| 수식 참조 | 자동 조정 | 수동 조정 필요 |
-| 대용량 | 제한적 | 적합 |
+| 특성    | XSSF           | SXSSF       |
+|-------|----------------|-------------|
+| 메모리   | 전체 워크북 메모리 로드  | 윈도우 기반 스트리밍 |
+| 행 삽입  | shiftRows() 지원 | 순차 출력만 가능   |
+| 수식 참조 | 자동 조정          | 수동 조정 필요    |
+| 대용량   | 제한적            | 적합          |
 
 ### 3.3 AbstractRenderingStrategy
 
@@ -268,10 +268,10 @@ class StreamingDataSource(
 
 ### 5.2 메모리 최적화 원칙
 
-| 모드 | 메모리 정책 |
-|------|------------|
-| SXSSF | 현재 아이템만 메모리 유지 |
-| XSSF | 전체 데이터 메모리 로드 허용 |
+| 모드    | 메모리 정책           |
+|-------|------------------|
+| SXSSF | 현재 아이템만 메모리 유지   |
+| XSSF  | 전체 데이터 메모리 로드 허용 |
 
 ### 5.3 DataProvider 조건
 
@@ -284,11 +284,11 @@ class StreamingDataSource(
 
 ### 6.1 테스트 유형
 
-| 유형 | 위치 | 설명 |
-|------|------|------|
-| 단위 테스트 | `src/test/kotlin` | 개별 클래스/함수 테스트 |
-| 통합 테스트 | `src/test/kotlin` | 전체 파이프라인 테스트 |
-| 샘플 테스트 | `build/samples` | 실제 Excel 파일 생성 |
+| 유형     | 위치                | 설명             |
+|--------|-------------------|----------------|
+| 단위 테스트 | `src/test/kotlin` | 개별 클래스/함수 테스트  |
+| 통합 테스트 | `src/test/kotlin` | 전체 파이프라인 테스트   |
+| 샘플 테스트 | `build/samples`   | 실제 Excel 파일 생성 |
 
 ### 6.2 테스트 템플릿
 

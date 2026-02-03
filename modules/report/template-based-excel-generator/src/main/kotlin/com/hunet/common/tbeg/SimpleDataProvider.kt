@@ -11,19 +11,19 @@ import java.util.function.Supplier
  * @param values 단일 값 맵 (Iterable이 아닌 값들)
  * @param collections 컬렉션 제공 함수 맵 (지연 로딩)
  * @param collectionCounts 컬렉션별 아이템 수 맵 (선택적)
- * @param images 이미지 데이터 맵
+ * @param images 이미지 제공 함수 맵 (지연 로딩)
  * @param metadata 문서 메타데이터
  */
 class SimpleDataProvider private constructor(
     private val values: Map<String, Any>,
     private val collections: Map<String, () -> Iterator<Any>>,
     private val collectionCounts: Map<String, Int>,
-    private val images: Map<String, ByteArray>,
+    private val images: Map<String, () -> ByteArray>,
     private val metadata: DocumentMetadata?
 ) : ExcelDataProvider {
     override fun getValue(name: String): Any? = values[name]
     override fun getItems(name: String): Iterator<Any>? = collections[name]?.invoke()
-    override fun getImage(name: String): ByteArray? = images[name]
+    override fun getImage(name: String): ByteArray? = images[name]?.invoke()
     override fun getMetadata(): DocumentMetadata? = metadata
     override fun getItemCount(name: String): Int? = collectionCounts[name]
 
@@ -50,12 +50,12 @@ class SimpleDataProvider private constructor(
             val values = mutableMapOf<String, Any>()
             val collections = mutableMapOf<String, () -> Iterator<Any>>()
             val collectionCounts = mutableMapOf<String, Int>()
-            val images = mutableMapOf<String, ByteArray>()
+            val images = mutableMapOf<String, () -> ByteArray>()
 
             data.forEach { (key, value) ->
                 @Suppress("UNCHECKED_CAST")
                 when (value) {
-                    is ByteArray -> images[key] = value
+                    is ByteArray -> images[key] = { value }
                     is List<*> -> {
                         collections[key] = { (value as List<Any>).iterator() }
                         collectionCounts[key] = value.size
@@ -94,7 +94,7 @@ class SimpleDataProvider private constructor(
         private val values = mutableMapOf<String, Any>()
         private val collections = mutableMapOf<String, () -> Iterator<Any>>()
         private val collectionCounts = mutableMapOf<String, Int>()
-        private val images = mutableMapOf<String, ByteArray>()
+        private val images = mutableMapOf<String, () -> ByteArray>()
         private var metadata: DocumentMetadata? = null
 
         /** 단일 값을 추가합니다. */
@@ -148,8 +148,16 @@ class SimpleDataProvider private constructor(
             collectionCounts[name] = count
         }
 
-        /** 이미지를 추가합니다. */
-        fun image(name: String, imageData: ByteArray) = apply { images[name] = imageData }
+        /** 이미지를 추가합니다. (즉시 로딩) */
+        fun image(name: String, imageData: ByteArray) = apply { images[name] = { imageData } }
+
+        /** 이미지를 추가합니다. (지연 로딩 - Kotlin) */
+        fun image(name: String, imageSupplier: () -> ByteArray) = apply { images[name] = imageSupplier }
+
+        /** 이미지를 추가합니다. (지연 로딩 - Java Supplier) */
+        fun imageFromSupplier(name: String, imageSupplier: Supplier<ByteArray>) = apply {
+            images[name] = { imageSupplier.get() }
+        }
 
         /** 문서 메타데이터를 설정합니다. (Kotlin DSL) */
         fun metadata(block: DocumentMetadataBuilder.() -> Unit) = apply {
