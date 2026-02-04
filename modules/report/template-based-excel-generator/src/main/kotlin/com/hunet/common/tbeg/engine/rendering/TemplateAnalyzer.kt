@@ -1,8 +1,10 @@
 package com.hunet.common.tbeg.engine.rendering
 
+import com.hunet.common.tbeg.engine.core.extractSheetReference
 import com.hunet.common.tbeg.engine.core.parseCellRef
 import org.apache.poi.ss.usermodel.*
 import org.apache.poi.ss.util.AreaReference
+import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.XSSFSheet
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.InputStream
@@ -22,10 +24,22 @@ private data class CellRange(val start: CellCoord, val end: CellCoord)
  */
 class TemplateAnalyzer {
     companion object {
-        // repeat 마커 패턴
-        // 예: ${repeat(employees, A6:C6, emp)}, ${repeat(employees, DataRange, emp, DOWN)}
+        // 범위 패턴: 시트 참조 + 절대 좌표 지원
+        // 예: A1:C3, $A$1:$C$3, 'Sheet1'!A1:C3, 'Sheet Name'!$A$1:$C$3
+        private const val RANGE_PATTERN = """(?:'[^']+'!)?\$?[A-Za-z]+\$?\d+:\$?[A-Za-z]+\$?\d+"""
+        private const val RANGE_OR_NAME = """$RANGE_PATTERN|\w+"""
+
+        // repeat 마커 패턴 (명시적 파라미터 + empty 지원)
+        // 예: ${repeat(employees, A6:C6, emp)}, ${repeat(employees, DataRange, emp, DOWN, A10:C10)}
+        //     ${repeat(collection=employees, range=A6:C6, var=emp, direction=DOWN, empty='Empty'!A1:C1)}
         private val REPEAT_PATTERN = Regex(
-            """\$\{repeat\s*\(\s*(?:collection\s*=\s*)?["'`]?(\w+)["'`]?\s*,\s*(?:range\s*=\s*)?["'`]?([A-Za-z]+\d+:[A-Za-z]+\d+|\w+)["'`]?\s*(?:,\s*(?:var\s*=\s*)?["'`]?(\w+)["'`]?)?(?:\s*,\s*(?:direction\s*=\s*)?["'`]?(DOWN|RIGHT)["'`]?)?\s*\)}""",
+            """\$\{repeat\s*\(\s*""" +
+            """(?:collection\s*=\s*)?["'`]?(\w+)["'`]?\s*,\s*""" +           // 그룹1: collection
+            """(?:range\s*=\s*)?["'`]?($RANGE_OR_NAME)["'`]?\s*""" +         // 그룹2: range
+            """(?:,\s*(?:var\s*=\s*)?["'`]?(\w+)["'`]?)?\s*""" +             // 그룹3: var (선택)
+            """(?:,\s*(?:direction\s*=\s*)?["'`]?(DOWN|RIGHT)["'`]?)?\s*""" + // 그룹4: direction (선택)
+            """(?:,\s*(?:empty\s*=\s*)?["'`]?($RANGE_OR_NAME)["'`]?)?\s*""" + // 그룹5: empty (선택)
+            """\)}""",
             RegexOption.IGNORE_CASE
         )
 
@@ -41,9 +55,16 @@ class TemplateAnalyzer {
             RegexOption.IGNORE_CASE
         )
 
-        // 수식 형태 repeat 마커: =TBEG_REPEAT(collection, range, var, direction)
+        // 수식 형태 repeat 마커 (명시적 파라미터 + empty 지원)
+        // 예: =TBEG_REPEAT(employees, A6:C6, emp), =TBEG_REPEAT(collection=employees, range=A6:C6, empty=A10:C10)
         private val FORMULA_REPEAT_PATTERN = Regex(
-            """TBEG_REPEAT\s*\(\s*["'`]?(\w+)["'`]?\s*,\s*["'`]?([A-Za-z]+\d+:[A-Za-z]+\d+|\w+)["'`]?\s*(?:,\s*["'`]?(\w+)["'`]?)?(?:\s*,\s*["'`]?(DOWN|RIGHT)["'`]?)?\s*\)""",
+            """TBEG_REPEAT\s*\(\s*""" +
+            """(?:collection\s*=\s*)?["'`]?(\w+)["'`]?\s*,\s*""" +           // 그룹1: collection
+            """(?:range\s*=\s*)?["'`]?($RANGE_OR_NAME)["'`]?\s*""" +         // 그룹2: range
+            """(?:,\s*(?:var\s*=\s*)?["'`]?(\w+)["'`]?)?\s*""" +             // 그룹3: var (선택)
+            """(?:,\s*(?:direction\s*=\s*)?["'`]?(DOWN|RIGHT)["'`]?)?\s*""" + // 그룹4: direction (선택)
+            """(?:,\s*(?:empty\s*=\s*)?["'`]?($RANGE_OR_NAME)["'`]?)?\s*""" + // 그룹5: empty (선택)
+            """\)""",
             RegexOption.IGNORE_CASE
         )
 
@@ -93,7 +114,7 @@ class TemplateAnalyzer {
             SheetSpec(
                 sheetName = sheet.sheetName,
                 sheetIndex = sheetIndex,
-                rows = buildRowSpecs(sheet, repeatRegions),
+                rows = buildRowSpecs(workbook, sheet, repeatRegions),
                 mergedRegions = (0 until sheet.numMergedRegions).map { sheet.getMergedRegion(it) },
                 columnWidths = (0..sheet.maxColumnIndex()).associateWith { sheet.getColumnWidth(it) },
                 defaultRowHeight = sheet.defaultRowHeight,
@@ -261,44 +282,95 @@ class TemplateAnalyzer {
             }
         }
 
-    private fun createRepeatRegionSpec(workbook: Workbook, match: MatchResult) =
-        parseRange(workbook, match.groupValues[2]).let { range ->
-            val collection = match.groupValues[1]
-            RepeatRegionSpec(
-                collection = collection,
-                variable = match.groupValues[3].ifEmpty { collection },
-                startRow = range.start.row,
-                endRow = range.end.row,
-                startCol = range.start.col,
-                endCol = range.end.col,
-                direction = if (match.groupValues[4].uppercase() == "RIGHT") RepeatDirection.RIGHT else RepeatDirection.DOWN
-            )
+    private fun createRepeatRegionSpec(workbook: Workbook, match: MatchResult): RepeatRegionSpec {
+        val range = parseRange(workbook, match.groupValues[2])
+        val collection = match.groupValues[1]
+
+        // 4번째 그룹이 DOWN/RIGHT인지 확인
+        val group4 = match.groupValues[4].uppercase()
+        val isGroup4Direction = group4 == "DOWN" || group4 == "RIGHT"
+
+        // direction과 emptyRange 결정
+        // - 4번째가 DOWN/RIGHT면: direction = 4번째, empty = 5번째
+        // - 4번째가 DOWN/RIGHT가 아니면: direction = DOWN (기본값), empty = 4번째 (하위 호환성)
+        val direction: RepeatDirection
+        val emptyRangeStr: String?
+
+        if (isGroup4Direction) {
+            direction = if (group4 == "RIGHT") RepeatDirection.RIGHT else RepeatDirection.DOWN
+            emptyRangeStr = match.groupValues[5].takeIf { it.isNotEmpty() }
+        } else {
+            direction = RepeatDirection.DOWN
+            // 4번째 그룹이 비어있지 않으면 empty로 취급 (하위 호환성)
+            emptyRangeStr = match.groupValues[4].takeIf { it.isNotEmpty() }
+                ?: match.groupValues[5].takeIf { it.isNotEmpty() }
         }
 
+        // empty 범위 파싱
+        val emptyRange = emptyRangeStr?.let { parseEmptyRangeSpec(workbook, it) }
+
+        return RepeatRegionSpec(
+            collection = collection,
+            variable = match.groupValues[3].ifEmpty { collection },
+            startRow = range.start.row,
+            endRow = range.end.row,
+            startCol = range.start.col,
+            endCol = range.end.col,
+            direction = direction,
+            emptyRange = emptyRange
+        )
+    }
+
     /**
-     * 범위 문자열 파싱
+     * empty 범위 문자열을 EmptyRangeSpec으로 파싱
+     */
+    private fun parseEmptyRangeSpec(workbook: Workbook, rangeStr: String): EmptyRangeSpec {
+        val (sheetName, rangeWithoutSheet) = extractSheetReference(rangeStr)
+        val range = parseRange(workbook, rangeWithoutSheet)
+
+        return EmptyRangeSpec(
+            sheetName = sheetName,
+            startRow = range.start.row,
+            endRow = range.end.row,
+            startCol = range.start.col,
+            endCol = range.end.col
+        )
+    }
+
+    /**
+     * 범위 문자열 파싱 (시트 참조는 미리 제거된 상태)
      *
      * @param workbook Named Range 조회용 워크북
-     * @param range 셀 범위("A6:C8") 또는 Named Range("DataRange")
+     * @param range 셀 범위("A6:C8", "$A$6:$C$8"), 단일 셀("H10"), 또는 Named Range("DataRange")
      * @return CellRange
      */
     private fun parseRange(workbook: Workbook, range: String): CellRange {
-        // 콜론이 있으면 직접 셀 참조
-        if (":" in range) {
-            val (startRef, endRef) = range.split(":")
-            val (startRow, startCol) = parseCellRef(startRef)
+        // 시트 참조가 포함된 경우 제거 (parseEmptyRangeSpec에서 이미 처리하지만 안전을 위해)
+        val (_, rangeWithoutSheet) = extractSheetReference(range)
+
+        // 콜론이 있으면 범위 셀 참조
+        if (":" in rangeWithoutSheet) {
+            val (startRef, endRef) = rangeWithoutSheet.split(":")
+            val (startRow, startCol) = parseCellRef(startRef)  // $ 기호는 parseCellRef에서 무시됨
             val (endRow, endCol) = parseCellRef(endRef)
             return CellRange(CellCoord(startRow, startCol), CellCoord(endRow, endCol))
         }
 
+        // 단일 셀 참조 패턴 체크 (A1, $A$1, H10 등)
+        val singleCellPattern = Regex("""^\$?[A-Za-z]+\$?\d+$""")
+        if (singleCellPattern.matches(rangeWithoutSheet)) {
+            val (row, col) = parseCellRef(rangeWithoutSheet)
+            return CellRange(CellCoord(row, col), CellCoord(row, col))
+        }
+
         // Named Range 조회
-        val namedRange = workbook.getName(range)
-            ?: throw IllegalArgumentException("Named Range를 찾을 수 없습니다: $range")
+        val namedRange = workbook.getName(rangeWithoutSheet)
+            ?: throw IllegalArgumentException("Named Range를 찾을 수 없습니다: $rangeWithoutSheet")
 
         val formula = namedRange.refersToFormula
         // 참조가 깨진 경우(#REF!) 처리
         if (formula.contains("#REF!")) {
-            throw IllegalArgumentException("Named Range '$range'의 참조가 유효하지 않습니다: $formula")
+            throw IllegalArgumentException("Named Range '$rangeWithoutSheet'의 참조가 유효하지 않습니다: $formula")
         }
 
         val areaRef = AreaReference(formula, workbook.spreadsheetVersion)
@@ -311,7 +383,7 @@ class TemplateAnalyzer {
     /**
      * 행별 명세 생성
      */
-    private fun buildRowSpecs(sheet: Sheet, repeatRegions: List<RepeatRegionSpec>): List<RowSpec> {
+    private fun buildRowSpecs(workbook: Workbook, sheet: Sheet, repeatRegions: List<RepeatRegionSpec>): List<RowSpec> {
         val repeatByStartRow = repeatRegions.associateBy { it.startRow }
 
         return buildList {
@@ -320,7 +392,7 @@ class TemplateAnalyzer {
                 if (rowIndex <= skipUntil) continue
 
                 repeatByStartRow[rowIndex]?.let { region ->
-                    add(buildRepeatRow(sheet, rowIndex, region))
+                    add(buildRepeatRow(workbook, sheet, rowIndex, region))
                     (rowIndex + 1..region.endRow).forEach { contRowIndex ->
                         add(buildRepeatContinuationRow(sheet, contRowIndex, rowIndex, region.variable))
                     }
@@ -339,8 +411,13 @@ class TemplateAnalyzer {
             )
         }
 
-    private fun buildRepeatRow(sheet: Sheet, rowIndex: Int, region: RepeatRegionSpec) =
+    private fun buildRepeatRow(workbook: Workbook, sheet: Sheet, rowIndex: Int, region: RepeatRegionSpec) =
         sheet.getRow(rowIndex).let { row ->
+            // emptyRange가 있으면 해당 셀 내용을 미리 읽어둠
+            val emptyRangeContent = region.emptyRange?.let { spec ->
+                readEmptyRangeContent(workbook, sheet, spec)
+            }
+
             RowSpec.RepeatRow(
                 templateRowIndex = rowIndex,
                 height = row?.height,
@@ -350,9 +427,87 @@ class TemplateAnalyzer {
                 repeatEndRowIndex = region.endRow,
                 repeatStartCol = region.startCol,
                 repeatEndCol = region.endCol,
-                direction = region.direction
+                direction = region.direction,
+                emptyRangeSpec = region.emptyRange,
+                emptyRangeContent = emptyRangeContent
             )
         }
+
+    /**
+     * empty 범위의 셀 내용을 미리 읽어 EmptyRangeContent로 반환
+     */
+    private fun readEmptyRangeContent(
+        workbook: Workbook,
+        currentSheet: Sheet,
+        spec: EmptyRangeSpec
+    ): EmptyRangeContent {
+        // 시트 결정: sheetName이 null이면 현재 시트, 아니면 해당 이름의 시트
+        val targetSheet = spec.sheetName?.let { workbook.getSheet(it) } ?: currentSheet
+
+        val cells = mutableListOf<List<CellSnapshot>>()
+        val rowHeights = mutableListOf<Short?>()
+
+        for (rowIdx in spec.startRow..spec.endRow) {
+            val row = targetSheet.getRow(rowIdx)
+            rowHeights.add(row?.height)
+
+            val rowCells = mutableListOf<CellSnapshot>()
+            for (colIdx in spec.startCol..spec.endCol) {
+                val cell = row?.getCell(colIdx)
+                rowCells.add(createCellSnapshot(cell))
+            }
+            cells.add(rowCells)
+        }
+
+        // 병합 영역 수집 (emptyRange 내에 있는 것만, 상대 좌표로 변환)
+        val mergedRegions = (0 until targetSheet.numMergedRegions)
+            .map { targetSheet.getMergedRegion(it) }
+            .filter { region ->
+                region.firstRow >= spec.startRow && region.lastRow <= spec.endRow &&
+                region.firstColumn >= spec.startCol && region.lastColumn <= spec.endCol
+            }
+            .map { region ->
+                // 상대 좌표로 변환 (emptyRange 시작 기준)
+                CellRangeAddress(
+                    region.firstRow - spec.startRow,
+                    region.lastRow - spec.startRow,
+                    region.firstColumn - spec.startCol,
+                    region.lastColumn - spec.startCol
+                )
+            }
+
+        return EmptyRangeContent(cells, mergedRegions, rowHeights)
+    }
+
+    /**
+     * 셀 스냅샷 생성
+     */
+    private fun createCellSnapshot(cell: Cell?): CellSnapshot {
+        if (cell == null) {
+            return CellSnapshot(
+                value = null,
+                cellType = CellType.BLANK,
+                styleIndex = 0,
+                formula = null
+            )
+        }
+
+        val (value, formula) = when (cell.cellType) {
+            CellType.STRING -> cell.stringCellValue to null
+            CellType.NUMERIC -> cell.numericCellValue to null
+            CellType.BOOLEAN -> cell.booleanCellValue to null
+            CellType.FORMULA -> null to cell.cellFormula
+            CellType.BLANK -> null to null
+            else -> null to null
+        }
+
+        return CellSnapshot(
+            value = value,
+            cellType = cell.cellType,
+            styleIndex = cell.cellStyle?.index ?: 0,
+            formula = formula
+        )
+    }
 
     private fun buildRepeatContinuationRow(
         sheet: Sheet,
@@ -398,7 +553,8 @@ class TemplateAnalyzer {
             val variable = match.groupValues[3].ifEmpty { collection }
             val direction = if (match.groupValues[4].uppercase() == "RIGHT")
                 RepeatDirection.RIGHT else RepeatDirection.DOWN
-            return CellContent.RepeatMarker(collection, range, variable, direction)
+            val emptyRange = match.groupValues[5].takeIf { it.isNotEmpty() }
+            return CellContent.RepeatMarker(collection, range, variable, direction, emptyRange)
         }
 
         // TBEG_IMAGE 수식 마커
@@ -435,11 +591,13 @@ class TemplateAnalyzer {
         REPEAT_PATTERN.find(text)?.let { match ->
             val direction = if (match.groupValues[4].uppercase() == "RIGHT")
                 RepeatDirection.RIGHT else RepeatDirection.DOWN
+            val emptyRange = match.groupValues[5].takeIf { it.isNotEmpty() }
             return CellContent.RepeatMarker(
                 collection = match.groupValues[1],
                 range = match.groupValues[2],
                 variable = match.groupValues[3].ifEmpty { match.groupValues[1] },
-                direction = direction
+                direction = direction,
+                emptyRange = emptyRange
             )
         }
 

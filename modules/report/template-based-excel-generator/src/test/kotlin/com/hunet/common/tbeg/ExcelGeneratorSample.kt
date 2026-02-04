@@ -184,6 +184,8 @@ object ExcelGeneratorSample {
                 Department("IT전략기획팀", 8, "801호"),
                 Department("인재경영실", 5, "813호")
             ),
+            // 빈 컬렉션 테스트 (emptyRange 기능)
+            "emptyCollection" to emptyList<Employee>(),
             "logo" to loadImage("hunet_logo.png"),
             "ci" to loadImage("hunet_ci.png")
         ).filterValues { it != null }.mapValues { it.value!! }
@@ -281,6 +283,9 @@ object ExcelGeneratorSample {
                     Department("인재경영실", 5, "813호")
                 ).iterator()
             }
+
+            // 빈 컬렉션 테스트 (emptyRange 기능)
+            items("emptyCollection") { emptyList<Employee>().iterator() }
         }
 
         println("\tDataProvider 생성 완료 (데이터는 아직 로드되지 않음)")
@@ -565,6 +570,9 @@ object ExcelGeneratorSample {
                     Department("인재경영실", 5, "813호")
                 ).iterator()
             }
+
+            // 빈 컬렉션 테스트 (emptyRange 기능)
+            items("emptyCollection") { emptyList<Employee>().iterator() }
         }
 
         println("\tDataProvider 생성 완료 (${dataCount}건 데이터 지연 로딩 예정)")

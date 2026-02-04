@@ -25,6 +25,13 @@ object TestUtils {
             ?: throw IllegalStateException("템플릿 파일을 찾을 수 없습니다")
 
     /**
+     * 빈 컬렉션 테스트용 템플릿 로드
+     */
+    fun loadEmptyCollectionTemplate(): InputStream =
+        TestUtils::class.java.getResourceAsStream("/templates/empty_collection_template.xlsx")
+            ?: throw IllegalStateException("빈 컬렉션 템플릿 파일을 찾을 수 없습니다")
+
+    /**
      * 이미지 파일 로드
      */
     fun loadImage(fileName: String): ByteArray? =

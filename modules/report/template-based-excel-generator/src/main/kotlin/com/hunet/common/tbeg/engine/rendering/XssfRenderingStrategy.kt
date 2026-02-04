@@ -6,6 +6,7 @@ import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.CellType
 import org.apache.poi.ss.usermodel.Sheet
 import org.apache.poi.ss.usermodel.Workbook
+import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.XSSFSheet
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.ByteArrayInputStream
@@ -98,7 +99,8 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
             RepeatRegionSpec(
                 row.collectionName, row.itemVariable,
                 row.templateRowIndex, row.repeatEndRowIndex,
-                row.repeatStartCol, row.repeatEndCol, row.direction
+                row.repeatStartCol, row.repeatEndCol, row.direction,
+                row.emptyRangeSpec
             )
         }
 
@@ -172,6 +174,31 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
             sheet, blueprint, data, rowOffsets, imageLocations, context,
             columnGroups, repeatToColumnGroup, calculator
         )
+
+        // emptyRange 원본 셀 클리어 (같은 시트에 있는 경우만)
+        clearEmptyRangeCells(sheet, repeatRows)
+    }
+
+    /**
+     * emptyRange 원본 셀들의 내용과 스타일을 클리어한다.
+     * emptyRange가 같은 시트를 참조하는 경우에만 해당 범위의 셀들을 빈 셀로 만든다.
+     */
+    private fun clearEmptyRangeCells(sheet: XSSFSheet, repeatRows: List<RowSpec.RepeatRow>) {
+        val defaultStyle = sheet.workbook.getCellStyleAt(0)
+        for (row in repeatRows) {
+            val emptyRange = row.emptyRangeSpec ?: continue
+            // 같은 시트인 경우만 처리 (sheetName이 null이면 같은 시트)
+            if (emptyRange.sheetName != null && emptyRange.sheetName != sheet.sheetName) continue
+
+            for (rowIdx in emptyRange.startRow..emptyRange.endRow) {
+                val sheetRow = sheet.getRow(rowIdx) ?: continue
+                for (colIdx in emptyRange.startCol..emptyRange.endCol) {
+                    val cell = sheetRow.getCell(colIdx) ?: continue
+                    cell.setBlank()
+                    cell.cellStyle = defaultStyle
+                }
+            }
+        }
     }
 
     /**
@@ -352,7 +379,8 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
                 }
 
                 is RowSpec.RepeatRow -> {
-                    val rawItems = data[rowSpec.collectionName] as? Collection<*> ?: continue
+                    val rawItems = data[rowSpec.collectionName] as? Collection<*> ?: emptyList<Any>()
+                    val isEmpty = rawItems.isEmpty()
                     // 빈 컬렉션이면 최소 1개 반복 단위(빈 행/열)를 위해 null 아이템 추가
                     val items: Collection<Any?> = rawItems.ifEmpty { listOf(null) }
                     val templateRowCount = rowSpec.repeatEndRowIndex - rowSpec.templateRowIndex + 1
@@ -371,7 +399,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
                             }
 
                             processDownRepeatWithCalculator(
-                                sheet, rowSpec, items, blueprint, data, sheetIndex,
+                                sheet, rowSpec, items, isEmpty, blueprint, data, sheetIndex,
                                 imageLocations, context, currentOffset, rowOffsets, columnGroup, calculator
                             )
 
@@ -446,6 +474,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         sheet: XSSFSheet,
         rowSpec: RowSpec.RepeatRow,
         items: Collection<*>,
+        isEmpty: Boolean,
         blueprint: SheetSpec,
         data: Map<String, Any>,
         sheetIndex: Int,
@@ -458,6 +487,12 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
     ) {
         val templateRowCount = rowSpec.repeatEndRowIndex - rowSpec.templateRowIndex + 1
         val totalRepeatOffset = rowOffsets[rowSpec.templateRowIndex] ?: 0
+
+        // 빈 컬렉션이고 emptyRangeContent가 있으면 그 내용을 출력
+        if (isEmpty && rowSpec.emptyRangeContent != null) {
+            writeEmptyRangeContent(sheet, rowSpec, currentOffset)
+            return
+        }
 
         items.forEachIndexed { itemIdx, item ->
             val itemData = if (item != null) {
@@ -667,4 +702,87 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
             val (finalRow, finalCol) = calculator.getFinalPosition(row, col)
             toCellRef(finalRow, finalCol)
         }
+
+    // ========== emptyRange 처리 ==========
+
+    /**
+     * 빈 컬렉션일 때 emptyRangeContent를 repeat 영역에 출력한다.
+     */
+    private fun writeEmptyRangeContent(
+        sheet: XSSFSheet,
+        rowSpec: RowSpec.RepeatRow,
+        currentOffset: Int
+    ) {
+        val emptyRangeContent = rowSpec.emptyRangeContent ?: return
+        val workbook = sheet.workbook
+        val templateRowCount = rowSpec.repeatEndRowIndex - rowSpec.templateRowIndex + 1
+        val templateColCount = rowSpec.repeatEndCol - rowSpec.repeatStartCol + 1
+
+        // emptyRangeContent의 행/열 개수
+        val contentRowCount = emptyRangeContent.rowCount
+        val contentColCount = emptyRangeContent.colCount
+
+        // emptyRangeContent가 단일 셀이고 repeat 영역이 더 크면 병합
+        if (emptyRangeContent.isSingleCell && (templateRowCount > 1 || templateColCount > 1)) {
+            val startRow = rowSpec.templateRowIndex + currentOffset
+            val endRow = startRow + templateRowCount - 1
+            val startCol = rowSpec.repeatStartCol
+            val endCol = rowSpec.repeatEndCol
+
+            // 첫 번째 셀에 내용 설정
+            val row = sheet.getRow(startRow) ?: sheet.createRow(startRow)
+            val cell = row.getCell(startCol) ?: row.createCell(startCol)
+            val snapshot = emptyRangeContent.cells[0][0]
+            writeCellFromSnapshot(cell, snapshot, workbook)
+
+            // 병합 영역 추가
+            sheet.addMergedRegion(CellRangeAddress(startRow, endRow, startCol, endCol))
+            return
+        }
+
+        // 실제 출력할 행/열 개수 (repeat 영역과 emptyRange 중 작은 것)
+        val rowsToWrite = minOf(templateRowCount, contentRowCount)
+        val colsToWrite = minOf(templateColCount, contentColCount)
+
+        for (rowOffset in 0 until rowsToWrite) {
+            val actualRowIndex = rowSpec.templateRowIndex + currentOffset + rowOffset
+            val row = sheet.getRow(actualRowIndex) ?: sheet.createRow(actualRowIndex)
+
+            // 행 높이 설정
+            emptyRangeContent.rowHeights.getOrNull(rowOffset)?.let { row.height = it }
+
+            for (colOffset in 0 until colsToWrite) {
+                val colIndex = rowSpec.repeatStartCol + colOffset
+                val snapshot = emptyRangeContent.cells.getOrNull(rowOffset)?.getOrNull(colOffset) ?: continue
+                val cell = row.getCell(colIndex) ?: row.createCell(colIndex)
+                writeCellFromSnapshot(cell, snapshot, workbook)
+            }
+        }
+
+        // emptyRangeContent의 병합 영역 복사 (상대 좌표를 실제 좌표로 변환)
+        for (mergedRegion in emptyRangeContent.mergedRegions) {
+            val actualRegion = CellRangeAddress(
+                mergedRegion.firstRow + rowSpec.templateRowIndex + currentOffset,
+                mergedRegion.lastRow + rowSpec.templateRowIndex + currentOffset,
+                mergedRegion.firstColumn + rowSpec.repeatStartCol,
+                mergedRegion.lastColumn + rowSpec.repeatStartCol
+            )
+            sheet.addMergedRegion(actualRegion)
+        }
+    }
+
+    /**
+     * CellSnapshot 내용을 셀에 쓴다.
+     */
+    private fun writeCellFromSnapshot(cell: Cell, snapshot: CellSnapshot, workbook: Workbook) {
+        workbook.getCellStyleAt(snapshot.styleIndex.toInt())?.let { cell.cellStyle = it }
+        when (snapshot.cellType) {
+            CellType.STRING -> cell.setCellValue(snapshot.value as? String ?: "")
+            CellType.NUMERIC -> cell.setCellValue(snapshot.value as? Double ?: 0.0)
+            CellType.BOOLEAN -> cell.setCellValue(snapshot.value as? Boolean ?: false)
+            CellType.FORMULA -> snapshot.formula?.let { cell.cellFormula = it }
+            CellType.BLANK, CellType._NONE -> cell.setBlank()
+            else -> {}
+        }
+    }
 }

@@ -99,6 +99,14 @@ tasks.register<JavaExec>("runBenchmark") {
     maxHeapSize = "2g"
 }
 
+// 빈 컬렉션 + emptyRange 샘플 실행 태스크
+tasks.register<JavaExec>("runEmptyCollectionSample") {
+    group = "application"
+    description = "빈 컬렉션 + emptyRange 기능 샘플 실행"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.hunet.common.tbeg.EmptyCollectionSample")
+}
+
 // 테스트 클래스패스 출력 (java 명령 실행용)
 tasks.register("printTestClasspath") {
     doLast {

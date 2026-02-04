@@ -858,6 +858,7 @@ class ExcelGeneratorTest {
                 items("employees", listOf(Employee("황용호", "부장", 8000)))
                 items("mergedEmployees", listOf(Employee("황용호", "부장", 8000)))
                 items("departments", listOf(Department("공통플랫폼팀", 15, "814호")))
+                items("emptyCollection", emptyList<Employee>())
                 loadImage("hunet_logo.png")?.let { image("logo", it) }
                 loadImage("hunet_ci.png")?.let { image("ci", it) }
             }

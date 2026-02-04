@@ -14,6 +14,7 @@
 6. [대용량 데이터 처리](#6-대용량-데이터-처리)
 7. [다중 반복 영역](#7-다중-반복-영역)
 8. [오른쪽 방향 반복](#8-오른쪽-방향-반복)
+9. [빈 컬렉션 처리](#9-빈-컬렉션-처리)
 
 ---
 
@@ -1252,6 +1253,89 @@ fun main() {
 |---|----|--------|--------|--------|--------|
 | 1 |    | 1월     | 2월     | 3월     | 4월     |
 | 2 |    | 1,000  | 1,500  | 2,000  | 1,800  |
+
+---
+
+## 9. 빈 컬렉션 처리
+
+컬렉션이 비어있을 때 "데이터가 없습니다" 같은 안내 메시지를 표시할 수 있습니다.
+
+### 템플릿 (empty_collection.xlsx)
+
+|   | A                                              | B               | C             |
+|---|------------------------------------------------|-----------------|---------------|
+| 1 | 직원 현황                                          |                 |               |
+| 2 | ${repeat(employees, A4:C4, emp, DOWN, A7:C7)}  |                 |               |
+| 3 | 이름                                             | 직급              | 연봉            |
+| 4 | ${emp.name}                                    | ${emp.position} | ${emp.salary} |
+| 5 |                                                |                 |               |
+| 6 |                                                |                 |               |
+| 7 | 조회된 직원이 없습니다.                                  |                 |               |
+
+- **A2**: repeat 마커에 `empty` 파라미터로 `A7:C7` 지정
+- **A7:C7**: 빈 컬렉션일 때 표시할 내용 (병합 셀 가능)
+
+### Kotlin 코드
+
+```kotlin
+import com.hunet.common.tbeg.ExcelGenerator
+import com.hunet.common.tbeg.simpleDataProvider
+
+data class Employee(val name: String, val position: String, val salary: Int)
+
+fun main() {
+    // 빈 컬렉션
+    val provider = simpleDataProvider {
+        items("employees", emptyList<Employee>())
+    }
+
+    ExcelGenerator().use { generator ->
+        val template = object {}.javaClass.getResourceAsStream("/templates/empty_collection.xlsx")
+            ?: throw IllegalStateException("템플릿을 찾을 수 없습니다")
+
+        val bytes = generator.generate(template, provider)
+        File("output.xlsx").writeBytes(bytes)
+    }
+}
+```
+
+### 결과 (데이터가 있는 경우)
+
+|   | A    | B    | C     |
+|---|------|------|-------|
+| 1 | 직원 현황 |      |       |
+| 2 |      |      |       |
+| 3 | 이름   | 직급   | 연봉    |
+| 4 | 황용호  | 부장   | 8,000 |
+| 5 | 한용호  | 과장   | 6,500 |
+
+- 7행의 안내 메시지는 결과에서 제거됨
+
+### 결과 (데이터가 없는 경우)
+
+|   | A              | B    | C    |
+|---|----------------|------|------|
+| 1 | 직원 현황          |      |      |
+| 2 |                |      |      |
+| 3 | 이름             | 직급   | 연봉   |
+| 4 | 조회된 직원이 없습니다. |      |      |
+
+- 반복 영역에 `empty` 범위의 내용이 표시됨
+- `empty` 범위가 단일 셀이면 반복 영역 전체를 병합하여 표시
+
+### 명시적 파라미터 형식
+
+```
+${repeat(collection=employees, range=A4:C4, var=emp, direction=DOWN, empty=A7:C7)}
+```
+
+### 수식 형식
+
+```
+=TBEG_REPEAT(collection=employees, range=A4:C4, var=emp, direction=DOWN, empty=A7:C7)
+```
+
+> **참고**: `empty` 범위는 반복 영역과 다른 위치에 있어야 합니다. 같은 시트의 다른 영역 또는 다른 시트에서 참조할 수 있습니다.
 
 ---
 

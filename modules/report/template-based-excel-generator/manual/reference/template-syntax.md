@@ -3,7 +3,9 @@
 ## 목차
 1. [변수 치환](#1-변수-치환)
 2. [반복 처리](#2-반복-처리)
-   - [관련 요소 자동 조정](#26-관련-요소-자동-조정)
+   - [명시적 파라미터 형식](#26-명시적-파라미터-형식)
+   - [빈 컬렉션 처리 (empty)](#27-빈-컬렉션-처리-empty)
+   - [관련 요소 자동 조정](#28-관련-요소-자동-조정)
 3. [이미지 삽입](#3-이미지-삽입)
 4. [컬렉션 크기](#4-컬렉션-크기)
 5. [수식 내 변수](#5-수식-내-변수)
@@ -167,7 +169,101 @@ ${emp.address.city}
 - **Map 키**: Map의 키로 접근
 - **getter 메서드**: `getFieldName()` 형태의 getter
 
-### 2.6 관련 요소 자동 조정
+### 2.6 명시적 파라미터 형식
+
+repeat 마커의 모든 파라미터에 명시적으로 이름을 지정할 수 있습니다.
+
+#### 문법
+
+```
+${repeat(collection=컬렉션, range=범위, var=변수, direction=방향, empty=대체범위)}
+```
+
+#### 예시
+
+```
+${repeat(collection=employees, range=A2:C2, var=emp)}
+${repeat(collection=months, range=B1:B2, var=m, direction=RIGHT)}
+${repeat(collection=items, range=A3:C3, var=item, direction=DOWN, empty=A10:C10)}
+```
+
+#### 수식 형태
+
+```
+=TBEG_REPEAT(collection=employees, range=A2:C2, var=emp)
+=TBEG_REPEAT(collection=items, range=A3:C3, var=item, direction=DOWN, empty=A10:C10)
+```
+
+#### 혼합 사용
+
+위치 기반 파라미터와 명시적 파라미터를 혼합하여 사용할 수 있습니다. 명시적 파라미터는 위치 기반 파라미터 뒤에 와야 합니다.
+
+```
+${repeat(items, A2:C2, item, empty=A10:C10)}         // direction 생략, empty만 명시적
+${repeat(items, A2:C2, var=item, direction=DOWN)}   // collection, range는 위치 기반
+```
+
+> **장점**: 가독성이 좋고, 특정 파라미터만 지정하고 싶을 때 유용합니다. 예를 들어 direction은 기본값(DOWN)을 사용하면서 empty만 지정할 수 있습니다.
+
+### 2.7 빈 컬렉션 처리 (empty)
+
+**문법**: `${repeat(컬렉션, 범위, 변수, 방향, empty=대체범위)}`
+
+컬렉션이 비어있을 때 대체 셀 범위의 내용을 표시합니다.
+
+#### 기본 동작 (empty 미지정)
+
+컬렉션이 비어있으면 반복 영역에 빈 행(또는 열)이 1개 출력됩니다.
+
+#### empty 파라미터 사용
+
+컬렉션이 비어있을 때 지정된 셀 범위의 내용을 대신 표시합니다.
+
+#### 템플릿
+
+|   | A                                            | B               | C             |
+|---|----------------------------------------------|-----------------|---------------|
+| 1 | ${repeat(employees, A2:C2, emp, DOWN, empty=A10:C10)} |            |               |
+| 2 | ${emp.name}                                  | ${emp.position} | ${emp.salary} |
+| ... |                                            |                 |               |
+| 10 | (데이터가 없습니다)                           |                 |               |
+
+#### 데이터 (빈 컬렉션)
+
+```kotlin
+mapOf("employees" to emptyList<Employee>())
+```
+
+#### 결과
+
+|   | A               | B | C |
+|---|-----------------|---|---|
+| 1 |                 |   |   |
+| 2 | (데이터가 없습니다) |   |   |
+
+> **참고**:
+> - A10:C10의 내용과 스타일이 A2:C2 위치에 복사됩니다.
+> - A10:C10 원본 셀은 결과 파일에서 빈 셀로 처리됩니다.
+> - empty 범위가 단일 셀이고 반복 영역이 더 크면 자동으로 셀이 병합됩니다.
+
+#### empty 범위 지정 방식
+
+```
+${repeat(items, A2:C3, item, DOWN, empty=A10:C11)}     // 일반 범위
+${repeat(items, A2:C3, item, DOWN, empty=$A$10:$C$11)} // 절대 좌표 ($ 무시)
+${repeat(items, A2:C3, item, DOWN, empty='Sheet2'!A1:C1)} // 다른 시트 참조
+```
+
+#### 위치 파라미터 방식
+
+명시적 파라미터 이름 없이 5번째 파라미터로 지정할 수도 있습니다.
+
+```
+${repeat(items, A2:C3, item, DOWN, A10:C11)}
+=TBEG_REPEAT(items, A2:C3, item, DOWN, A10:C11)
+```
+
+### 2.8 관련 요소 자동 조정
 
 반복 영역이 확장되면 영향 받는 Excel 요소들의 좌표와 범위가 자동으로 조정됩니다.
 

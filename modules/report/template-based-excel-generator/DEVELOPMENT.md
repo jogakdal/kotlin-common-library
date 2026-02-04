@@ -236,13 +236,21 @@ ${repeat(컬렉션, 범위, 변수, RIGHT)}
 | 범위 | 반복할 셀 범위 | `A2:C2` |
 | 변수 | 각 아이템을 참조할 변수명 | `emp` |
 | 방향 | DOWN (기본) 또는 RIGHT | `DOWN` |
+| empty | 빈 컬렉션 시 대체 범위 (선택) | `A10:C10` |
 
 **예시:**
 ```
 ${repeat(employees, A2:C2, emp)}
+${repeat(employees, A2:C2, emp, DOWN, empty=A10:C10)}
 =TBEG_REPEAT(employees, A2:C2, emp)
+=TBEG_REPEAT(employees, A2:C2, emp, DOWN, A10:C10)
 =TBEG_REPEAT(months, B1:B2, m, RIGHT)
 ```
+
+**empty 범위 지원 형식:**
+- 일반 범위: `A10:C10`
+- 절대 좌표: `$A$10:$C$10` ($ 기호는 파싱 시 무시)
+- 시트 참조: `'Sheet2'!A1:C1`
 
 **마커 위치:** 반복 범위 밖 어디든지 가능 (다른 시트도 가능)
 
@@ -347,6 +355,7 @@ ${size(컬렉션)}
 | 중첩 변수 | 객체 속성 접근 | `TemplateRenderingEngine` |
 | 반복 (DOWN) | 행 방향 확장 | `RenderingStrategy` |
 | 반복 (RIGHT) | 열 방향 확장 | `RenderingStrategy` |
+| 빈 컬렉션 처리 | empty 파라미터로 대체 내용 지정 | `RenderingStrategy` |
 | 이미지 삽입 | 동적 이미지 | `ImageInserter` |
 | 차트 | 데이터 범위 자동 확장 | `ChartProcessor` |
 | 피벗 테이블 | 소스 범위 자동 확장 | `PivotTableProcessor` |
@@ -397,6 +406,34 @@ actualRow 10에서:
 - A-C 열 관점: templateRow = actualRow - employees확장량
 - F-H 열 관점: templateRow = actualRow - department확장량 (해당 열 범위에서만)
 ```
+
+### 1.5 빈 컬렉션 처리 (emptyRange)
+
+컬렉션이 비어있을 때의 동작을 제어합니다.
+
+#### 기본 동작 (empty 미지정)
+빈 컬렉션이면 반복 영역에 빈 행(또는 열)이 1개 출력됩니다.
+
+#### empty 파라미터 지정 시
+- **emptyRangeContent 미리 읽기**: 템플릿 분석 단계에서 empty 범위의 셀 내용/스타일을 `CellSnapshot`으로 저장
+- **빈 컬렉션 렌더링**: 반복 영역 위치에 저장해둔 emptyRangeContent 출력
+- **empty 원본 셀 처리**: 결과 파일에서 빈 셀 + 기본 스타일로 클리어
+
+#### emptyRange 크기 처리
+
+| emptyRange 크기 | 처리 방식 |
+|----------------|----------|
+| 단일 셀 (더 작음) | 반복 영역 전체를 셀 병합 후 내용 삽입 |
+| 다중 셀 (더 작음) | emptyRange만큼만 출력, 나머지는 빈 셀 |
+| 더 큼 | 반복 영역 크기만큼만 출력, 나머지는 버림 |
+
+#### 처리 위치
+
+| 모드 | 처리 함수 |
+|------|----------|
+| XSSF | `XssfRenderingStrategy.writeEmptyRangeContent()` |
+| SXSSF (streaming) | `SxssfRenderingStrategy.writeRepeatCellsForRow()` |
+| SXSSF (pendingRows) | `SxssfRenderingStrategy.collectEmptyRangeContentCells()` |
 
 ### 2. 메모리 관리 원칙 (SXSSF 모드)
 
