@@ -77,6 +77,9 @@ internal class SheetLayoutApplier {
             ?: collectionSizes[overlappingRepeat.collectionName]
             ?: return emptyList()
 
+        // 빈 컬렉션인 경우 건너뜀 (emptyRange 조건부 서식이 별도로 적용됨)
+        if (itemCount == 0) return emptyList()
+
         val templateRowCount = overlappingRepeat.repeatEndRowIndex - overlappingRepeat.templateRowIndex + 1
         val relativeStartRow = range.firstRow - overlappingRepeat.templateRowIndex
         val rowSpan = range.lastRow - range.firstRow
@@ -107,6 +110,56 @@ internal class SheetLayoutApplier {
         }
         rule?.also { if (ruleInfo.dxfId >= 0) setDxfIdViaReflection(it, ruleInfo.dxfId) }
     }.getOrNull()
+
+    /**
+     * 빈 컬렉션의 emptyRange 조건부 서식을 적용한다.
+     *
+     * repeat 영역이 빈 컬렉션인 경우, repeat 영역의 조건부 서식 대신
+     * emptyRange의 조건부 서식을 적용한다.
+     */
+    fun applyEmptyRangeConditionalFormattings(
+        sheet: SXSSFSheet,
+        repeatRegions: Map<Int, RowSpec.RepeatRow>,
+        collectionSizes: Map<String, Int>,
+        calculator: PositionCalculator
+    ) {
+        val xssfSheet = (sheet.workbook as SXSSFWorkbook).xssfWorkbook.getSheetAt(sheet.workbook.getSheetIndex(sheet))
+        val scf = xssfSheet.sheetConditionalFormatting
+
+        for ((_, repeatRow) in repeatRegions) {
+            // 빈 컬렉션이 아니면 건너뜀
+            val itemCount = collectionSizes[repeatRow.collectionName] ?: continue
+            if (itemCount > 0) continue
+
+            // emptyRangeContent가 없거나 조건부 서식이 없으면 건너뜀
+            val emptyRangeContent = repeatRow.emptyRangeContent ?: continue
+            if (emptyRangeContent.conditionalFormattings.isEmpty()) continue
+
+            // repeat 영역의 실제 위치 계산
+            val expansion = calculator.getExpansionForRegion(
+                repeatRow.collectionName, repeatRow.templateRowIndex, repeatRow.repeatStartCol
+            )
+            val actualStartRow = expansion?.finalStartRow ?: repeatRow.templateRowIndex
+
+            // emptyRange 조건부 서식 적용
+            for (cfSpec in emptyRangeContent.conditionalFormattings) {
+                // 상대 좌표를 실제 좌표로 변환
+                val actualRanges = cfSpec.ranges.map { range ->
+                    CellRangeAddress(
+                        range.firstRow + actualStartRow,
+                        range.lastRow + actualStartRow,
+                        range.firstColumn + repeatRow.repeatStartCol,
+                        range.lastColumn + repeatRow.repeatStartCol
+                    )
+                }.toTypedArray()
+
+                val rules = cfSpec.rules.mapNotNull { createConditionalFormattingRule(scf, it) }.toTypedArray()
+                if (rules.isNotEmpty() && actualRanges.isNotEmpty()) {
+                    scf.addConditionalFormatting(actualRanges, rules)
+                }
+            }
+        }
+    }
 
     /** 리플렉션을 통해 dxfId 설정 (POI API 미지원) */
     private fun setDxfIdViaReflection(rule: org.apache.poi.ss.usermodel.ConditionalFormattingRule, dxfId: Int) {

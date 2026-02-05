@@ -9,8 +9,8 @@ package com.hunet.common.tbeg
  * @property fileConflictPolicy 파일명 충돌 시 처리 정책 (기본: SEQUENCE)
  * @property progressReportInterval 진행률 콜백 호출 간격 (행 수, 기본: 100)
  * @property preserveTemplateLayout 반복 영역 확장 시 원본 템플릿의 열 폭과 행 높이를 보존할지 여부 (기본: true)
- * @property pivotIntegerFormatIndex 피벗 테이블 정수 필드에 적용할 Excel 내장 포맷 인덱스 (기본: 37)
- * @property pivotDecimalFormatIndex 피벗 테이블 소수점 필드에 적용할 Excel 내장 포맷 인덱스 (기본: 39)
+ * @property pivotIntegerFormatIndex 숫자 자동 서식의 정수 필드에 적용할 Excel 내장 포맷 인덱스 (기본: 3, "#,##0")
+ * @property pivotDecimalFormatIndex 숫자 자동 서식의 소수점 필드에 적용할 Excel 내장 포맷 인덱스 (기본: 4, "#,##0.00")
  * @property missingDataBehavior 템플릿에 정의된 데이터가 없을 때의 동작 (기본: WARN)
  */
 data class ExcelGeneratorConfig(
@@ -20,8 +20,8 @@ data class ExcelGeneratorConfig(
     val fileConflictPolicy: FileConflictPolicy = FileConflictPolicy.SEQUENCE,
     val progressReportInterval: Int = 100,
     val preserveTemplateLayout: Boolean = true,
-    val pivotIntegerFormatIndex: Short = 37,
-    val pivotDecimalFormatIndex: Short = 39,
+    val pivotIntegerFormatIndex: Short = 3,
+    val pivotDecimalFormatIndex: Short = 4,
     val missingDataBehavior: MissingDataBehavior = MissingDataBehavior.WARN
 ) {
     companion object {
@@ -65,8 +65,8 @@ data class ExcelGeneratorConfig(
         private var fileConflictPolicy: FileConflictPolicy = FileConflictPolicy.SEQUENCE
         private var progressReportInterval: Int = 100
         private var preserveTemplateLayout: Boolean = true
-        private var pivotIntegerFormatIndex: Short = 37
-        private var pivotDecimalFormatIndex: Short = 39
+        private var pivotIntegerFormatIndex: Short = 3
+        private var pivotDecimalFormatIndex: Short = 4
         private var missingDataBehavior: MissingDataBehavior = MissingDataBehavior.WARN
 
         fun streamingMode(mode: StreamingMode) = apply { this.streamingMode = mode }

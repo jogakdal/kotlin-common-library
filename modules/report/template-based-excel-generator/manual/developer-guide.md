@@ -165,7 +165,7 @@ class SxssfRenderingStrategy : RenderingStrategy
 |-------|----------------|-------------|
 | 메모리   | 전체 워크북 메모리 로드  | 윈도우 기반 스트리밍 |
 | 행 삽입  | shiftRows() 지원 | 순차 출력만 가능   |
-| 수식 참조 | 자동 조정          | 수동 조정 필요    |
+| 수식 참조 | 자동 조정          | 자동 조정       |
 | 대용량   | 제한적            | 적합          |
 
 ### 3.3 AbstractRenderingStrategy

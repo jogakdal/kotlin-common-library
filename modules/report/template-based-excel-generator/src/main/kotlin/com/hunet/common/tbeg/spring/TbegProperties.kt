@@ -30,7 +30,7 @@ data class TbegProperties(
     /**
      * 스트리밍 모드 설정.
      * - enabled: SXSSF 스트리밍 사용 (기본값, 대용량 최적화)
-     * - disabled: 항상 XSSF 사용 (아래 행 참조 수식 필요 시)
+     * - disabled: 항상 XSSF 사용
      */
     var streamingMode: StreamingModeProperty = StreamingModeProperty.ENABLED,
 
@@ -64,14 +64,14 @@ data class TbegProperties(
     var preserveTemplateLayout: Boolean = true,
 
     /**
-     * 피벗 테이블 정수 필드에 적용할 Excel 내장 포맷 인덱스.
+     * 숫자 자동 서식의 정수 필드에 적용할 Excel 내장 포맷 인덱스.
      */
-    var pivotIntegerFormatIndex: Short = 37,
+    var pivotIntegerFormatIndex: Short = 3,
 
     /**
-     * 피벗 테이블 소수점 필드에 적용할 Excel 내장 포맷 인덱스.
+     * 숫자 자동 서식의 소수점 필드에 적용할 Excel 내장 포맷 인덱스.
      */
-    var pivotDecimalFormatIndex: Short = 39,
+    var pivotDecimalFormatIndex: Short = 4,
 
     /**
      * 템플릿에 정의된 데이터가 없을 때의 동작.

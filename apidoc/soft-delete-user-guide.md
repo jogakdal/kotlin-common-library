@@ -3,7 +3,7 @@
 ## 최신 버전 정보
 <!-- version-info:start -->
 ```
-Last updated: 2026-01-21 15:04:13 KST
+Last updated: 2026-02-04 18:14:51 KST
 jpa-repository-extension: 1.2.0-SNAPSHOT
 ```
 <!-- version-info:end -->

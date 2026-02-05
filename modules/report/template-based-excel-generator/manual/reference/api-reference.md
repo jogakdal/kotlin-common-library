@@ -49,7 +49,7 @@ fun generate(
 | password | String? | 파일 열기 암호 (선택) |
 | **반환** | ByteArray | 생성된 Excel 파일 바이트 배열 |
 
-#### generate (DataProvider)
+#### generate (DataProvider - InputStream)
 
 ```kotlin
 fun generate(
@@ -59,7 +59,7 @@ fun generate(
 ): ByteArray
 ```
 
-템플릿과 DataProvider로 Excel을 생성합니다.
+템플릿 InputStream과 DataProvider로 Excel을 생성합니다.
 
 | 파라미터 | 타입 | 설명 |
 |---------|------|------|
@@ -68,7 +68,26 @@ fun generate(
 | password | String? | 파일 열기 암호 (선택) |
 | **반환** | ByteArray | 생성된 Excel 파일 바이트 배열 |
 
-#### generateToFile
+#### generate (DataProvider - File)
+
+```kotlin
+fun generate(
+    template: File,
+    dataProvider: ExcelDataProvider,
+    password: String? = null
+): ByteArray
+```
+
+템플릿 파일과 DataProvider로 Excel을 생성합니다.
+
+| 파라미터 | 타입 | 설명 |
+|---------|------|------|
+| template | File | 템플릿 파일 |
+| dataProvider | ExcelDataProvider | 데이터 제공자 |
+| password | String? | 파일 열기 암호 (선택) |
+| **반환** | ByteArray | 생성된 Excel 파일 바이트 배열 |
+
+#### generateToFile (DataProvider)
 
 ```kotlin
 fun generateToFile(
@@ -91,9 +110,32 @@ Excel을 생성하여 파일로 저장합니다.
 | password | String? | 파일 열기 암호 (선택) |
 | **반환** | Path | 생성된 파일의 경로 |
 
+#### generateToFile (Map)
+
+```kotlin
+fun generateToFile(
+    template: InputStream,
+    data: Map<String, Any>,
+    outputDir: Path,
+    baseFileName: String,
+    password: String? = null
+): Path
+```
+
+데이터 맵으로 Excel을 생성하여 파일로 저장합니다.
+
+| 파라미터 | 타입 | 설명 |
+|---------|------|------|
+| template | InputStream | 템플릿 입력 스트림 |
+| data | Map<String, Any> | 바인딩할 데이터 맵 |
+| outputDir | Path | 출력 디렉토리 경로 |
+| baseFileName | String | 기본 파일명 (확장자 제외) |
+| password | String? | 파일 열기 암호 (선택) |
+| **반환** | Path | 생성된 파일의 경로 |
+
 ### 비동기 메서드
 
-#### generateAsync (Coroutines)
+#### generateAsync (Coroutines - DataProvider)
 
 ```kotlin
 suspend fun generateAsync(
@@ -103,7 +145,17 @@ suspend fun generateAsync(
 ): ByteArray
 ```
 
-#### generateToFileAsync (Coroutines)
+#### generateAsync (Coroutines - Map)
+
+```kotlin
+suspend fun generateAsync(
+    template: InputStream,
+    data: Map<String, Any>,
+    password: String? = null
+): ByteArray
+```
+
+#### generateToFileAsync (Coroutines - DataProvider)
 
 ```kotlin
 suspend fun generateToFileAsync(
@@ -115,7 +167,19 @@ suspend fun generateToFileAsync(
 ): Path
 ```
 
-#### generateFuture (CompletableFuture)
+#### generateToFileAsync (Coroutines - Map)
+
+```kotlin
+suspend fun generateToFileAsync(
+    template: InputStream,
+    data: Map<String, Any>,
+    outputDir: Path,
+    baseFileName: String,
+    password: String? = null
+): Path
+```
+
+#### generateFuture (CompletableFuture - DataProvider)
 
 ```kotlin
 fun generateFuture(
@@ -125,7 +189,17 @@ fun generateFuture(
 ): CompletableFuture<ByteArray>
 ```
 
-#### generateToFileFuture (CompletableFuture)
+#### generateFuture (CompletableFuture - Map)
+
+```kotlin
+fun generateFuture(
+    template: InputStream,
+    data: Map<String, Any>,
+    password: String? = null
+): CompletableFuture<ByteArray>
+```
+
+#### generateToFileFuture (CompletableFuture - DataProvider)
 
 ```kotlin
 fun generateToFileFuture(
@@ -137,7 +211,19 @@ fun generateToFileFuture(
 ): CompletableFuture<Path>
 ```
 
-#### submit (백그라운드)
+#### generateToFileFuture (CompletableFuture - Map)
+
+```kotlin
+fun generateToFileFuture(
+    template: InputStream,
+    data: Map<String, Any>,
+    outputDir: Path,
+    baseFileName: String,
+    password: String? = null
+): CompletableFuture<Path>
+```
+
+#### submit (백그라운드 - DataProvider)
 
 ```kotlin
 fun submit(
@@ -148,12 +234,36 @@ fun submit(
 ): GenerationJob
 ```
 
-#### submitToFile (백그라운드)
+#### submit (백그라운드 - Map)
+
+```kotlin
+fun submit(
+    template: InputStream,
+    data: Map<String, Any>,
+    password: String? = null,
+    listener: ExcelGenerationListener? = null
+): GenerationJob
+```
+
+#### submitToFile (백그라운드 - DataProvider)
 
 ```kotlin
 fun submitToFile(
     template: InputStream,
     dataProvider: ExcelDataProvider,
+    outputDir: Path,
+    baseFileName: String,
+    password: String? = null,
+    listener: ExcelGenerationListener? = null
+): GenerationJob
+```
+
+#### submitToFile (백그라운드 - Map)
+
+```kotlin
+fun submitToFile(
+    template: InputStream,
+    data: Map<String, Any>,
     outputDir: Path,
     baseFileName: String,
     password: String? = null,
@@ -416,7 +526,7 @@ com.hunet.common.tbeg.DocumentMetadata
 | title | String? | 문서 제목 | 파일 > 정보 > 제목 |
 | author | String? | 작성자 | 파일 > 정보 > 작성자 |
 | subject | String? | 주제 | 파일 > 정보 > 주제 |
-| keywords | List<String> | 키워드 | 파일 > 정보 > 태그 |
+| keywords | List<String>? | 키워드 | 파일 > 정보 > 태그 |
 | description | String? | 설명 | 파일 > 정보 > 메모 |
 | category | String? | 범주 | 파일 > 정보 > 범주 |
 | company | String? | 회사 | 파일 > 정보 > 회사 |
@@ -463,11 +573,24 @@ SimpleDataProvider provider = SimpleDataProvider.builder()
 ```kotlin
 interface GenerationJob {
     val jobId: String
-    fun cancel()
-    fun isCancelled(): Boolean
-    fun isDone(): Boolean
+    val isCompleted: Boolean
+    val isCancelled: Boolean
+    fun cancel(): Boolean
+    suspend fun await(): GenerationResult
+    suspend fun awaitAsync(): GenerationResult
+    fun toCompletableFuture(): CompletableFuture<GenerationResult>
 }
 ```
+
+| 속성/메서드 | 타입 | 설명 |
+|------------|------|------|
+| jobId | String | 작업 고유 ID |
+| isCompleted | Boolean | 작업 완료 여부 |
+| isCancelled | Boolean | 작업 취소 여부 |
+| cancel() | Boolean | 작업 취소 시도, 성공 여부 반환 |
+| await() | GenerationResult | (suspend) 작업 완료 대기 |
+| awaitAsync() | GenerationResult | (suspend) await()의 별칭 |
+| toCompletableFuture() | CompletableFuture | Java용 Future 변환 |
 
 ### ExcelGenerationListener
 
@@ -493,9 +616,19 @@ data class GenerationResult(
     val filePath: Path? = null,      // submitToFile인 경우
     val bytes: ByteArray? = null,    // submit인 경우
     val rowsProcessed: Int = 0,
-    val durationMs: Long = 0
+    val durationMs: Long = 0,
+    val completedAt: Instant = Instant.now()
 )
 ```
+
+| 속성 | 타입 | 설명 |
+|-----|------|------|
+| jobId | String | 작업 고유 ID |
+| filePath | Path? | 생성된 파일 경로 (submitToFile인 경우) |
+| bytes | ByteArray? | 생성된 파일 바이트 (submit인 경우) |
+| rowsProcessed | Int | 처리된 행 수 |
+| durationMs | Long | 처리 소요 시간 (밀리초) |
+| completedAt | Instant | 작업 완료 시각 |
 
 ### ProgressInfo
 

@@ -83,6 +83,6 @@ object EmptyCollectionSample {
 
     private fun createEmptyCollectionProvider() = simpleDataProvider {
         // emptyCollection: 빈 컬렉션 -> emptyRange 내용이 출력됨
-        items("emptyCollection", emptyList<Any>())
+        items("emptyCollection", emptyList())
     }
 }

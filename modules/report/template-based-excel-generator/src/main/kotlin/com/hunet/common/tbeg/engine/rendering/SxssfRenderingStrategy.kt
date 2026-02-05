@@ -46,12 +46,10 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         // dxfs 스타일 유지를 위해 템플릿 워크북을 닫지 않고 재사용
         val templateWorkbook = XSSFWorkbook(ByteArrayInputStream(templateBytes))
 
-        try {
+        templateWorkbook.use { templateWorkbook ->
             return SXSSFWorkbook(templateWorkbook, 100).use { workbook ->
                 block(workbook, templateWorkbook)
             }
-        } finally {
-            templateWorkbook.close()
         }
     }
 
@@ -207,8 +205,10 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
             buildRightRepeatData(data, repeatRegions, context)
         } else data
 
+        val sxssfWorkbook = sheet.workbook as SXSSFWorkbook
+        val xssfWorkbook = sxssfWorkbook.xssfWorkbook
         val ctx = RowWriteContext(
-            sheet, sheetIndex, blueprint, effectiveData, styleMap, repeatRegionsMap, imageLocations, context, calculator
+            sheet, sheetIndex, blueprint, effectiveData, styleMap, repeatRegionsMap, imageLocations, context, calculator, xssfWorkbook
         )
 
         if (context.streamingDataSource != null && !hasRightRepeat) {
@@ -228,6 +228,11 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         // 조건부 서식 적용
         context.sheetLayoutApplier.applyConditionalFormattings(
             sheet, blueprint.conditionalFormattings, repeatRegionsMap, data, maxRowOffset, collectionSizes
+        )
+
+        // 빈 컬렉션의 emptyRange 조건부 서식 적용
+        context.sheetLayoutApplier.applyEmptyRangeConditionalFormattings(
+            sheet, repeatRegionsMap, collectionSizes, calculator
         )
     }
 
@@ -288,6 +293,9 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         val totalRepeatOffset = expansion?.rowExpansion ?: ((items.size * templateRowCount) - templateRowCount)
         val repeatColRange = repeatRow.repeatStartCol..repeatRow.repeatEndCol
 
+        // repeat 범위 밖의 셀을 먼저 수집 (이미지 마커 등)
+        collectNonRepeatCells(ctx, repeatRow, repeatColRange, pendingRows)
+
         // 빈 컬렉션이고 emptyRangeContent가 있으면 그 내용을 수집
         if (items.isEmpty() && repeatRow.emptyRangeContent != null) {
             collectEmptyRangeContentCells(ctx, repeatRow, pendingRows)
@@ -308,8 +316,9 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                     ctx.calculator.getRowForRepeatItem(it, itemIdx, templateOffset)
                 } ?: (repeatRow.templateRowIndex + (itemIdx * templateRowCount) + templateOffset)
 
+                // repeat 범위 내 셀만 수집 (범위 밖은 이미 collectNonRepeatCells에서 수집됨)
                 currentRowBp.cells
-                    .filter { itemIdx == 0 || it.columnIndex in repeatColRange }
+                    .filter { it.columnIndex in repeatColRange }
                     .forEach { cellSpec ->
                         pendingRows.getOrPut(actualRow) { mutableListOf() }.add(
                             PendingCell(
@@ -328,6 +337,43 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                         )
                     }
             }
+        }
+    }
+
+    /** repeat 범위 밖의 셀을 pendingRows에 수집한다 (이미지 마커 등) */
+    private fun collectNonRepeatCells(
+        ctx: RowWriteContext,
+        repeatRow: RowSpec.RepeatRow,
+        repeatColRange: IntRange,
+        pendingRows: MutableMap<Int, MutableList<PendingCell>>
+    ) {
+        val templateRowCount = repeatRow.repeatEndRowIndex - repeatRow.templateRowIndex + 1
+
+        for (templateOffset in 0 until templateRowCount) {
+            val templateRowIdx = repeatRow.templateRowIndex + templateOffset
+            val currentRowBp = ctx.blueprint.rows.find { it.templateRowIndex == templateRowIdx } ?: continue
+
+            val actualRow = ctx.calculator.getFinalPosition(templateRowIdx, 0).first
+
+            currentRowBp.cells
+                .filter { it.columnIndex !in repeatColRange }
+                .forEach { cellSpec ->
+                    pendingRows.getOrPut(actualRow) { mutableListOf() }.add(
+                        PendingCell(
+                            columnIndex = cellSpec.columnIndex,
+                            styleIndex = cellSpec.styleIndex,
+                            content = cellSpec.content,
+                            height = currentRowBp.height,
+                            templateRowIndex = currentRowBp.templateRowIndex,
+                            rowSpec = currentRowBp,
+                            itemData = ctx.data,
+                            repeatIndex = 0,
+                            repeatItemIndex = 0,
+                            totalRowOffset = 0,
+                            repeatRow = null
+                        )
+                    )
+                }
         }
     }
 
@@ -476,44 +522,10 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
             // expansion.itemCount는 최소 1이므로, 원래 컬렉션 크기를 직접 확인
             val originalItemCount = ctx.context.collectionSizes[repeatRow.collectionName] ?: 0
             if (originalItemCount == 0 && repeatRow.emptyRangeContent != null) {
-                val emptyRangeContent = repeatRow.emptyRangeContent!!
-                val templateColCount = repeatRow.repeatEndCol - repeatRow.repeatStartCol + 1
-
-                // 단일 셀이고 repeat 영역이 더 크면 병합
-                if (emptyRangeContent.isSingleCell && (templateRowCount > 1 || templateColCount > 1)) {
-                    // 첫 번째 행에서만 처리
-                    if (actualRow == repeatStartRow) {
-                        val snapshot = emptyRangeContent.cells[0][0]
-                        val cell = row.createCellWithStyle(repeatRow.repeatStartCol, snapshot.styleIndex)
-                        writeCellFromSnapshot(cell, snapshot)
-
-                        // 병합 영역 추가
-                        val endRow = repeatStartRow + templateRowCount - 1
-                        ctx.sheet.addMergedRegion(CellRangeAddress(
-                            repeatStartRow, endRow,
-                            repeatRow.repeatStartCol, repeatRow.repeatEndCol
-                        ))
-                    }
-                    continue
-                }
-
-                val rowsToWrite = minOf(templateRowCount, emptyRangeContent.rowCount)
-
-                if (actualRow !in repeatStartRow until (repeatStartRow + rowsToWrite)) continue
-
-                val rowOffset = actualRow - repeatStartRow
-                val colsToWrite = minOf(templateColCount, emptyRangeContent.colCount)
-
-                emptyRangeContent.rowHeights.getOrNull(rowOffset)?.let { h ->
-                    rowHeight = maxOf(rowHeight ?: 0, h)
-                }
-
-                for (colOffset in 0 until colsToWrite) {
-                    val colIndex = repeatRow.repeatStartCol + colOffset
-                    val snapshot = emptyRangeContent.cells.getOrNull(rowOffset)?.getOrNull(colOffset) ?: continue
-                    val cell = row.createCellWithStyle(colIndex, snapshot.styleIndex)
-                    writeCellFromSnapshot(cell, snapshot)
-                }
+                val result = writeEmptyRangeForStreaming(
+                    ctx, row, actualRow, repeatRow, repeatStartRow, templateRowCount, rowHeight
+                )
+                rowHeight = result.rowHeight
                 continue
             }
 
@@ -543,6 +555,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                 itemIndex = itemIndex
             )
 
+            // repeat 범위 내 셀 처리
             rowSpec.cells
                 .filter { it.columnIndex in repeatColRange }
                 .forEach { cellSpec ->
@@ -551,19 +564,145 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                         ctx, cell, cellSpec.content, itemData, repeatInfo, rowSpec, cellSpec.columnIndex, actualRow
                     )
                 }
+
+            // repeat 범위 밖의 셀은 첫 번째 아이템의 첫 번째 행에서만 처리 (이미지 마커 등)
+            if (itemIndex == 0 && templateRowOffset == 0) {
+                rowSpec.cells
+                    .filter { it.columnIndex !in repeatColRange }
+                    .forEach { cellSpec ->
+                        val cell = row.createCellWithStyle(cellSpec.columnIndex, cellSpec.styleIndex)
+                        processCellContentSxssfWithCalculator(
+                            ctx, cell, cellSpec.content, ctx.data, RepeatInfo.NONE, rowSpec, cellSpec.columnIndex, actualRow
+                        )
+                    }
+            }
         }
 
         return rowHeight
     }
 
-    /** CellSnapshot 내용을 셀에 작성한다 */
-    private fun writeCellFromSnapshot(cell: Cell, snapshot: CellSnapshot) {
+    /** 스트리밍 모드에서 빈 컬렉션의 emptyRange 처리 결과 */
+    private data class EmptyRangeResult(
+        val shouldContinue: Boolean,
+        val rowHeight: Short?
+    )
+
+    /** 스트리밍 모드에서 빈 컬렉션의 emptyRange 내용을 작성한다 */
+    private fun writeEmptyRangeForStreaming(
+        ctx: RowWriteContext,
+        row: Row,
+        actualRow: Int,
+        repeatRow: RowSpec.RepeatRow,
+        repeatStartRow: Int,
+        templateRowCount: Int,
+        currentRowHeight: Short?
+    ): EmptyRangeResult {
+        val emptyRangeContent = repeatRow.emptyRangeContent ?: return EmptyRangeResult(true, currentRowHeight)
+        val templateColCount = repeatRow.repeatEndCol - repeatRow.repeatStartCol + 1
+        val repeatColRange = repeatRow.repeatStartCol..repeatRow.repeatEndCol
+        var rowHeight = currentRowHeight
+
+        // 첫 번째 행에서 repeat 범위 밖의 셀 처리 (이미지 마커 등)
+        if (actualRow == repeatStartRow) {
+            ctx.blueprint.rows.find { it.templateRowIndex == repeatRow.templateRowIndex }
+                ?.cells
+                ?.filter { it.columnIndex !in repeatColRange }
+                ?.forEach { cellSpec ->
+                    val cell = row.createCellWithStyle(cellSpec.columnIndex, cellSpec.styleIndex)
+                    processCellContentSxssfWithCalculator(
+                        ctx, cell, cellSpec.content, ctx.data, RepeatInfo.NONE,
+                        ctx.blueprint.rows.find { it.templateRowIndex == repeatRow.templateRowIndex }!!,
+                        cellSpec.columnIndex, actualRow
+                    )
+                }
+        }
+
+        // 단일 셀이고 repeat 영역이 더 크면 병합
+        if (emptyRangeContent.isSingleCell && (templateRowCount > 1 || templateColCount > 1)) {
+            if (actualRow == repeatStartRow) {
+                val snapshot = emptyRangeContent.cells[0][0]
+                val cell = row.createCellWithStyle(repeatRow.repeatStartCol, snapshot.styleIndex)
+                writeCellFromSnapshot(cell, snapshot, ctx.xssfWorkbook)
+
+                ctx.sheet.addMergedRegion(CellRangeAddress(
+                    repeatStartRow, repeatStartRow + templateRowCount - 1,
+                    repeatRow.repeatStartCol, repeatRow.repeatEndCol
+                ))
+            }
+            return EmptyRangeResult(true, rowHeight)
+        }
+
+        val rowsToWrite = minOf(templateRowCount, emptyRangeContent.rowCount)
+        if (actualRow !in repeatStartRow until (repeatStartRow + rowsToWrite)) {
+            return EmptyRangeResult(true, rowHeight)
+        }
+
+        val rowOffset = actualRow - repeatStartRow
+        val colsToWrite = minOf(templateColCount, emptyRangeContent.colCount)
+
+        emptyRangeContent.rowHeights.getOrNull(rowOffset)?.let { h ->
+            rowHeight = maxOf(rowHeight ?: 0, h)
+        }
+
+        for (colOffset in 0 until colsToWrite) {
+            val colIndex = repeatRow.repeatStartCol + colOffset
+            val snapshot = emptyRangeContent.cells.getOrNull(rowOffset)?.getOrNull(colOffset) ?: continue
+            val cell = row.createCellWithStyle(colIndex, snapshot.styleIndex)
+            writeCellFromSnapshot(cell, snapshot, ctx.xssfWorkbook)
+        }
+
+        return EmptyRangeResult(true, rowHeight)
+    }
+
+    companion object {
+        // Excel 내장 숫자 형식 인덱스
+        private const val NUMBER_FORMAT_INTEGER: Short = 3  // #,##0
+        private const val NUMBER_FORMAT_DECIMAL: Short = 4  // #,##0.00
+    }
+
+    // 숫자 형식 스타일 캐시 (emptyRange 숫자 셀용)
+    private val numberStyleCache = mutableMapOf<String, XSSFCellStyle>()
+
+    /**
+     * CellSnapshot 내용을 셀에 작성한다.
+     * 숫자 셀이고 원본 스타일의 dataFormat=0(General)인 경우,
+     * Excel 내장 숫자 형식(인덱스 3 또는 4)을 적용한다.
+     */
+    private fun writeCellFromSnapshot(cell: Cell, snapshot: CellSnapshot, xssfWorkbook: XSSFWorkbook) {
+        // 숫자 셀이고 원본 스타일의 dataFormat=0인 경우 숫자 형식 적용
+        if (snapshot.cellType == CellType.NUMERIC) {
+            val originalStyle = styleMap[snapshot.styleIndex] as? XSSFCellStyle
+            if (originalStyle != null && originalStyle.dataFormat.toInt() == 0) {
+                val value = snapshot.value as? Double ?: 0.0
+                val isInteger = value == value.toLong().toDouble()
+                cell.cellStyle = getOrCreateNumberStyle(xssfWorkbook, originalStyle, isInteger)
+            }
+        }
+
         when (snapshot.cellType) {
             CellType.STRING -> cell.setCellValue(snapshot.value as? String ?: "")
             CellType.NUMERIC -> cell.setCellValue(snapshot.value as? Double ?: 0.0)
             CellType.BOOLEAN -> cell.setCellValue(snapshot.value as? Boolean ?: false)
             CellType.FORMULA -> snapshot.formula?.let { cell.cellFormula = it }
             else -> cell.setBlank()
+        }
+    }
+
+    /**
+     * 원본 스타일을 복제하고 Excel 내장 숫자 형식을 적용한 스타일을 반환한다.
+     * 정수는 인덱스 3 (#,##0), 소수는 인덱스 4 (#,##0.00)를 사용한다.
+     */
+    private fun getOrCreateNumberStyle(
+        workbook: XSSFWorkbook,
+        originalStyle: XSSFCellStyle,
+        isInteger: Boolean
+    ): XSSFCellStyle {
+        val cacheKey = "${originalStyle.index}_${if (isInteger) "int" else "dec"}"
+        return numberStyleCache.getOrPut(cacheKey) {
+            workbook.createCellStyle().apply {
+                cloneStyleFrom(originalStyle)
+                dataFormat = if (isInteger) NUMBER_FORMAT_INTEGER else NUMBER_FORMAT_DECIMAL
+            }
         }
     }
 
@@ -654,6 +793,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         val imageLocations: MutableList<ImageLocation>,
         val context: RenderingContext,
         val calculator: PositionCalculator,
+        val xssfWorkbook: XSSFWorkbook,
         val emptyRangeMergedRegions: MutableList<CellRangeAddress> = mutableListOf()
     )
 

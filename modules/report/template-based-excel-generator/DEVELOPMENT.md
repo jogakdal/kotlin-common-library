@@ -117,7 +117,12 @@ src/main/kotlin/com/hunet/common/tbeg/
 │       ├── XssfRenderingStrategy.kt        # XSSF (비스트리밍)
 │       ├── SxssfRenderingStrategy.kt       # SXSSF (스트리밍)
 │       ├── TemplateRenderingEngine.kt      # 렌더링 엔진
-│       ├── TemplateAnalyzer.kt             # 템플릿 분석기 (마커 파싱)
+│       ├── TemplateAnalyzer.kt             # 템플릿 분석기
+│       ├── parser/                         # 마커 파서 (통합)
+│       │   ├── MarkerDefinition.kt         #   마커 정의
+│       │   ├── ParameterParser.kt          #   파라미터 파싱
+│       │   ├── ParsedMarker.kt             #   파싱 결과
+│       │   └── UnifiedMarkerParser.kt      #   통합 파서
 │       ├── WorkbookSpec.kt                 # 워크북/시트/셀 명세
 │       ├── PositionCalculator.kt           # 반복 확장 위치 계산
 │       ├── StreamingDataSource.kt          # 스트리밍 데이터 소스
@@ -241,7 +246,7 @@ ${repeat(컬렉션, 범위, 변수, RIGHT)}
 **예시:**
 ```
 ${repeat(employees, A2:C2, emp)}
-${repeat(employees, A2:C2, emp, DOWN, empty=A10:C10)}
+${repeat(employees, A2:C2, emp, DOWN, A10:C10)}
 =TBEG_REPEAT(employees, A2:C2, emp)
 =TBEG_REPEAT(employees, A2:C2, emp, DOWN, A10:C10)
 =TBEG_REPEAT(months, B1:B2, m, RIGHT)
@@ -328,20 +333,44 @@ ${size(컬렉션)}
 작성자: ${author} (${department})
 ```
 
-### 마커 정규식 정의 위치
+### 마커 파서 구조
 
-모든 마커 정규식은 `TemplateAnalyzer.kt`에 정의되어 있습니다:
+마커 파싱은 `engine/rendering/parser/` 패키지의 **통합 마커 파서**에서 처리합니다:
 
-| 마커 | 상수명 | 라인 |
-|------|--------|------|
-| `${변수}` | `VARIABLE_PATTERN` | 36 |
-| `${객체.필드}` | `ITEM_FIELD_PATTERN` | 37 |
-| `${repeat(...)}` | `REPEAT_PATTERN` | 38-43 |
-| `${image(...)}` | `IMAGE_PATTERN` | 44-47 |
-| `${size(...)}` | `SIZE_PATTERN` | 48 |
-| `=TBEG_REPEAT(...)` | `FORMULA_REPEAT_PATTERN` | 50-53 |
-| `=TBEG_IMAGE(...)` | `FORMULA_IMAGE_PATTERN` | 55-59 |
-| `=TBEG_SIZE(...)` | `FORMULA_SIZE_PATTERN` | 61-64 |
+```
+parser/
+├── MarkerDefinition.kt       # 마커별 파라미터 스키마 정의
+├── ParameterParser.kt        # 공통 파라미터 파싱 로직
+├── ParsedMarker.kt           # 파싱 결과 데이터
+└── UnifiedMarkerParser.kt    # 통합 파서 (진입점)
+```
+
+| 클래스 | 역할 |
+|--------|------|
+| `MarkerDefinition` | 마커별 파라미터 정의 (이름, 필수 여부, 기본값, 별칭) |
+| `ParameterParser` | 위치 기반 + 명시적 파라미터 파싱 |
+| `ParsedMarker` | 파싱 결과 (파라미터 Map) |
+| `UnifiedMarkerParser` | 텍스트/수식 마커 감지 및 `CellContent` 변환 |
+
+**지원 마커:**
+
+| 마커 | 파라미터 |
+|------|----------|
+| `repeat` | `collection`, `range`, `var`, `direction`, `empty` |
+| `image` | `name`, `position`, `size` |
+| `size` | `collection` |
+
+**파라미터 형식:**
+- 위치 기반: `${repeat(employees, A2:C2, emp)}`
+- 위치 기반 (중간 생략): `${repeat(employees, A2:C2, , , A10:C10)}`
+- 명시적: `${repeat(collection=employees, range=A2:C2, var=emp)}`
+
+> **주의**: 위치 기반과 명시적 파라미터는 혼합할 수 없습니다.
+
+**새 마커 추가 시:**
+1. `MarkerDefinition.kt`에 마커 정의 추가
+2. `CellContent` sealed class에 새 타입 추가
+3. `UnifiedMarkerParser.convertToContent()`에 변환 로직 추가
 
 ---
 
@@ -469,6 +498,21 @@ repeat 영역에 포함된 수식과 범위 참조는 확장량만큼 자동 조
 예시: =SUM(C6) -> =SUM(C6:C105) (100개 아이템 확장 시)
 ```
 
+**참조 유형별 처리:**
+
+| 참조 유형 | 처리 방식 |
+|----------|----------|
+| 상대 참조 (`B3`) | repeat 확장에 따라 범위로 확장 |
+| 절대 참조 (`$B$3`) | 확장하지 않음 (고정 위치) |
+| 행 절대 (`B$3`) | DOWN 방향 확장 안 함 |
+| 열 절대 (`$B3`) | RIGHT 방향 확장 안 함 |
+| 다른 시트 (`Sheet2!B3`) | 해당 시트의 repeat 확장 정보로 처리 |
+
+**다른 시트 참조 처리:**
+- `expandToRangeWithCalculator()`에 `otherSheetExpansions` 파라미터로 다른 시트의 확장 정보 전달
+- `SheetExpansionInfo`에 시트별 `expansions`와 `collectionSizes` 포함
+- 시트 이름 추출: `Sheet1!` → `"Sheet1"`, `'Sheet Name'!` → `"Sheet Name"`
+
 #### 3.2 정적 요소 위치 이동
 repeat 확장에 영향받는 정적 요소(수식, 병합 셀, 조건부 서식 등)는 확장량만큼 밀립니다.
 
@@ -483,8 +527,8 @@ repeat 확장에 영향받는 정적 요소(수식, 병합 셀, 조건부 서식
 #### 4.1 자동 숫자 서식 지정 조건
 라이브러리에 의해 자동 생성된 값이 숫자 타입이고, 해당 셀의 "표시 형식"이 없거나 "일반"인 경우 자동으로 숫자 서식을 적용합니다.
 
-- 정수: `pivotIntegerFormatIndex` (기본값 37)
-- 소수: `pivotDecimalFormatIndex` (기본값 39)
+- 정수: `pivotIntegerFormatIndex` (기본값 3, `#,##0`)
+- 소수: `pivotDecimalFormatIndex` (기본값 4, `#,##0.00`)
 
 #### 4.2 자동 정렬 지정 조건
 라이브러리에 의해 자동 생성된 값이 숫자 타입이고, 해당 셀의 정렬이 "일반"인 경우 자동으로 오른쪽 정렬을 적용합니다.
@@ -528,8 +572,8 @@ repeat 확장에 영향받는 정적 요소(수식, 병합 셀, 조건부 서식
 | `fileConflictPolicy` | `SEQUENCE` | SEQUENCE / ERROR |
 | `progressReportInterval` | `100` | 진행률 보고 간격 (행 수) |
 | `preserveTemplateLayout` | `true` | 템플릿 레이아웃 보존 |
-| `pivotIntegerFormatIndex` | `37` | 정수 포맷 인덱스 |
-| `pivotDecimalFormatIndex` | `39` | 소수 포맷 인덱스 |
+| `pivotIntegerFormatIndex` | `3` | 정수 포맷 인덱스 (`#,##0`) |
+| `pivotDecimalFormatIndex` | `4` | 소수 포맷 인덱스 (`#,##0.00`) |
 | `missingDataBehavior` | `WARN` | WARN / THROW |
 
 ### 프리셋 설정
@@ -566,7 +610,7 @@ hunet:
 
 | 항목 | 지원 여부 | 비고 |
 |------|----------|------|
-| 아래 행 참조 수식 | ❌ | 1행에서 2행 이하 참조 불가 |
+| 아래 행 참조 수식 | ✅ | repeat 영역 참조 시 자동 확장 |
 | 위쪽 행 참조 수식 | ✅ | 자동 조정됨 |
 | 자동 확장 수식 (SUM 등) | ✅ | 범위 자동 확장 |
 | 차트 | ✅ | Extract/Restore 프로세서로 처리 |
@@ -648,11 +692,21 @@ class MyProcessor : ExcelProcessor {
 
 ### 새 템플릿 문법 추가
 
-1. `TemplateAnalyzer`에 정규식 추가
-2. `WorkbookSpec`에 새 명세 타입 추가
-3. 렌더링 전략에서 새 명세 처리
+1. `MarkerDefinition.kt`에 마커 정의 추가 (파라미터 스키마)
+2. `CellContent` sealed class에 새 타입 추가
+3. `UnifiedMarkerParser.convertToContent()`에 변환 로직 추가
+4. 렌더링 전략에서 새 명세 처리
 
-**정규식 정의 위치:** `TemplateAnalyzer.kt` 라인 36-64
+**마커 정의 위치:** `parser/MarkerDefinition.kt`
+
+```kotlin
+// 새 마커 추가 예시
+val NEW_MARKER = MarkerDefinition("newmarker", listOf(
+    ParameterDef("param1", required = true),
+    ParameterDef("param2", aliases = setOf("p2", "alt")),
+    ParameterDef("param3", defaultValue = "default")
+))
+```
 
 ---
 

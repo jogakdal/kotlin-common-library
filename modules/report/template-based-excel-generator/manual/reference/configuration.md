@@ -17,15 +17,17 @@ com.hunet.common.tbeg.ExcelGeneratorConfig
 
 ### 전체 옵션
 
-| 옵션                        | 타입                    | 기본값                 | 설명                     |
-|---------------------------|-----------------------|---------------------|------------------------|
-| `streamingMode`           | `StreamingMode`       | `ENABLED`           | 스트리밍 모드 설정             |
-| `fileNamingMode`          | `FileNamingMode`      | `TIMESTAMP`         | 파일명 생성 모드              |
-| `timestampFormat`         | `String`              | `"yyyyMMdd_HHmmss"` | 파일명 타임스탬프 형식           |
-| `fileConflictPolicy`      | `FileConflictPolicy`  | `SEQUENCE`          | 파일명 충돌 시 처리 정책         |
-| `progressReportInterval`  | `Int`                 | `100`               | 진행률 콜백 호출 간격 (행 수)     |
-| `preserveTemplateLayout`  | `Boolean`             | `true`              | 템플릿 레이아웃(열 폭, 행 높이) 보존 |
-| `missingDataBehavior`     | `MissingDataBehavior` | `WARN`              | 데이터 누락 시 동작            |
+| 옵션                        | 타입                    | 기본값                 | 설명                       |
+|---------------------------|-----------------------|---------------------|--------------------------|
+| `streamingMode`           | `StreamingMode`       | `ENABLED`           | 스트리밍 모드 설정               |
+| `fileNamingMode`          | `FileNamingMode`      | `TIMESTAMP`         | 파일명 생성 모드                |
+| `timestampFormat`         | `String`              | `"yyyyMMdd_HHmmss"` | 파일명 타임스탬프 형식             |
+| `fileConflictPolicy`      | `FileConflictPolicy`  | `SEQUENCE`          | 파일명 충돌 시 처리 정책           |
+| `progressReportInterval`  | `Int`                 | `100`               | 진행률 콜백 호출 간격 (행 수)       |
+| `preserveTemplateLayout`  | `Boolean`             | `true`              | 템플릿 레이아웃(열 폭, 행 높이) 보존   |
+| `pivotIntegerFormatIndex` | `Short`               | `3`                 | 정수 숫자 서식 인덱스 (`#,##0`)   |
+| `pivotDecimalFormatIndex` | `Short`               | `4`                 | 소수 숫자 서식 인덱스 (`#,##0.00`) |
+| `missingDataBehavior`     | `MissingDataBehavior` | `WARN`              | 데이터 누락 시 동작              |
 
 ---
 
@@ -97,6 +99,24 @@ ExcelGeneratorConfig(progressReportInterval = 500)  // 500행마다 콜백
 ExcelGeneratorConfig(preserveTemplateLayout = true)
 ```
 
+#### pivotIntegerFormatIndex / pivotDecimalFormatIndex
+
+자동 숫자 서식에 사용할 Excel 내장 포맷 인덱스입니다. 라이브러리가 생성한 숫자 셀의 표시 형식이 "일반"인 경우 자동으로 적용됩니다.
+
+| 옵션                        | 기본값 | 형식           | 예시 출력      |
+|---------------------------|-----|--------------|------------|
+| `pivotIntegerFormatIndex` | `3` | `#,##0`      | `1,234`    |
+| `pivotDecimalFormatIndex` | `4` | `#,##0.00`   | `1,234.56` |
+
+```kotlin
+ExcelGeneratorConfig(
+    pivotIntegerFormatIndex = 3,   // 정수: #,##0
+    pivotDecimalFormatIndex = 4    // 소수: #,##0.00
+)
+```
+
+> **참고**: Excel 내장 포맷 인덱스는 [Microsoft 문서](https://docs.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.numberingformat)를 참조하세요.
+
 #### missingDataBehavior
 
 템플릿에 정의된 변수/컬렉션에 대응하는 데이터가 없을 때의 동작입니다.
@@ -167,21 +187,29 @@ hunet:
     # 템플릿 레이아웃 보존
     preserve-template-layout: true
 
+    # 정수 숫자 서식 인덱스 (기본: 3, #,##0)
+    pivot-integer-format-index: 3
+
+    # 소수 숫자 서식 인덱스 (기본: 4, #,##0.00)
+    pivot-decimal-format-index: 4
+
     # 데이터 누락 시 동작: warn, throw
     missing-data-behavior: warn
 ```
 
 ### 프로퍼티 매핑
 
-| application.yml 키            | ExcelGeneratorConfig 속성   |
-|------------------------------|---------------------------|
-| `streaming-mode`             | `streamingMode`           |
-| `file-naming-mode`           | `fileNamingMode`          |
-| `timestamp-format`           | `timestampFormat`         |
-| `file-conflict-policy`       | `fileConflictPolicy`      |
-| `progress-report-interval`   | `progressReportInterval`  |
-| `preserve-template-layout`   | `preserveTemplateLayout`  |
-| `missing-data-behavior`      | `missingDataBehavior`     |
+| application.yml 키             | ExcelGeneratorConfig 속성    |
+|-------------------------------|----------------------------|
+| `streaming-mode`              | `streamingMode`            |
+| `file-naming-mode`            | `fileNamingMode`           |
+| `timestamp-format`            | `timestampFormat`          |
+| `file-conflict-policy`        | `fileConflictPolicy`       |
+| `progress-report-interval`    | `progressReportInterval`   |
+| `preserve-template-layout`    | `preserveTemplateLayout`   |
+| `pivot-integer-format-index`  | `pivotIntegerFormatIndex`  |
+| `pivot-decimal-format-index`  | `pivotDecimalFormatIndex`  |
+| `missing-data-behavior`       | `missingDataBehavior`      |
 
 ---
 

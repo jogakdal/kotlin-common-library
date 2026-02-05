@@ -407,11 +407,13 @@ data class EmptyRangeSpec(
  * @property cells 행/열 순서로 저장된 셀 스냅샷 (rows[rowIndex][colIndex])
  * @property mergedRegions 병합 영역 목록 (상대 좌표: emptyRange 시작 기준)
  * @property rowHeights 행 높이 목록
+ * @property conditionalFormattings 조건부 서식 목록 (상대 좌표: emptyRange 시작 기준)
  */
 data class EmptyRangeContent(
     val cells: List<List<CellSnapshot>>,
     val mergedRegions: List<CellRangeAddress>,
-    val rowHeights: List<Short?>
+    val rowHeights: List<Short?>,
+    val conditionalFormattings: List<ConditionalFormattingSpec> = emptyList()
 ) {
     /** 행 개수 */
     val rowCount: Int get() = cells.size
