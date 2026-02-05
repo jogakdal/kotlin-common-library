@@ -1,7 +1,7 @@
 package com.hunet.common.tbeg.spring
 
 import com.hunet.common.tbeg.ExcelGenerator
-import com.hunet.common.tbeg.ExcelGeneratorConfig
+import com.hunet.common.tbeg.TbegConfig
 import com.hunet.common.tbeg.SimpleDataProvider
 import com.hunet.common.tbeg.StreamingMode
 import org.junit.jupiter.api.Assertions.*
@@ -26,12 +26,12 @@ class TbegAutoConfigurationTest {
     fun `default configuration should create ExcelGenerator bean`() {
         contextRunner.run { context ->
             assertTrue(context.containsBean("excelGenerator"))
-            assertTrue(context.containsBean("excelGeneratorConfig"))
+            assertTrue(context.containsBean("tbegConfig"))
 
             val generator = context.getBean(ExcelGenerator::class.java)
             assertNotNull(generator)
 
-            val config = context.getBean(ExcelGeneratorConfig::class.java)
+            val config = context.getBean(TbegConfig::class.java)
             assertEquals(StreamingMode.ENABLED, config.streamingMode)
 
             generator.close()
@@ -47,7 +47,7 @@ class TbegAutoConfigurationTest {
                 "hunet.tbeg.progress-report-interval=200"
             )
             .run { context ->
-                val config = context.getBean(ExcelGeneratorConfig::class.java)
+                val config = context.getBean(TbegConfig::class.java)
 
                 assertEquals(StreamingMode.ENABLED, config.streamingMode)
                 assertEquals("yyyy-MM-dd", config.timestampFormat)
@@ -60,9 +60,9 @@ class TbegAutoConfigurationTest {
     @Test
     fun `custom bean should override auto-configuration`() {
         contextRunner
-            .withUserConfiguration(CustomExcelGeneratorConfig::class.java)
+            .withUserConfiguration(CustomTbegConfig::class.java)
             .run { context ->
-                val config = context.getBean(ExcelGeneratorConfig::class.java)
+                val config = context.getBean(TbegConfig::class.java)
 
                 // 커스텀 설정이 적용되어야 함
                 assertEquals(StreamingMode.ENABLED, config.streamingMode)
@@ -118,9 +118,9 @@ class TbegAutoConfigurationTest {
     }
 
     @Configuration
-    class CustomExcelGeneratorConfig {
+    class CustomTbegConfig {
         @Bean
-        fun excelGeneratorConfig(): ExcelGeneratorConfig = ExcelGeneratorConfig(
+        fun tbegConfig(): TbegConfig = TbegConfig(
             streamingMode = StreamingMode.ENABLED,
             progressReportInterval = 500
         )

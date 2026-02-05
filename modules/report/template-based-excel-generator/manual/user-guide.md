@@ -29,7 +29,12 @@ repositories {
 
 // 2. 의존성 추가
 dependencies {
-    implementation("com.hunet.common:tbeg:1.0.0-SNAPSHOT")
+    // BOM 사용 (권장) - 버전 자동 관리
+    implementation(platform("com.hunet.common:common-bom:2026.1.0-SNAPSHOT"))
+    implementation("com.hunet.common:tbeg")
+
+    // 또는 직접 버전 지정
+    // implementation("com.hunet.common:tbeg:1.1.0-SNAPSHOT")
 }
 ```
 
@@ -49,7 +54,12 @@ repositories {
 
 // 2. 의존성 추가
 dependencies {
-    implementation 'com.hunet.common:tbeg:1.0.0-SNAPSHOT'
+    // BOM 사용 (권장) - 버전 자동 관리
+    implementation platform('com.hunet.common:common-bom:2026.1.0-SNAPSHOT')
+    implementation 'com.hunet.common:tbeg'
+
+    // 또는 직접 버전 지정
+    // implementation 'com.hunet.common:tbeg:1.1.0-SNAPSHOT'
 }
 ```
 
@@ -67,12 +77,24 @@ dependencies {
     </repository>
 </repositories>
 
-<!-- 2. 의존성 추가 -->
+<!-- 2. BOM 임포트 (권장) - 버전 자동 관리 -->
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>com.hunet.common</groupId>
+            <artifactId>common-bom</artifactId>
+            <version>2026.1.0-SNAPSHOT</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
+<!-- 3. 의존성 추가 (버전 생략 가능) -->
 <dependencies>
     <dependency>
         <groupId>com.hunet.common</groupId>
         <artifactId>tbeg</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
     </dependency>
 </dependencies>
 ```
@@ -198,6 +220,8 @@ fun main() {
 | 4 | 홍용호 | 대리 | 4,500 |
 
 > **관련 요소 자동 조정**: 반복 영역이 확장되면 수식 참조, 차트, 피벗 테이블 등 영향 받는 요소들의 좌표와 범위가 자동으로 조정됩니다. 자세한 내용은 [템플릿 문법 레퍼런스](./reference/template-syntax.md#26-관련-요소-자동-조정)를 참조하세요.
+
+> **빈 컬렉션 처리**: 컬렉션이 비어있을 때 대체 내용을 표시할 수 있습니다. `empty` 파라미터로 지정된 범위의 내용이 출력됩니다. 자세한 내용은 [템플릿 문법 레퍼런스](./reference/template-syntax.md#27-빈-컬렉션-처리-empty)를 참조하세요.
 
 ### 2.3 이미지 삽입
 
@@ -436,16 +460,16 @@ TBEG은 기본적으로 스트리밍 모드(SXSSF)를 사용하여 대용량 데
 
 ```kotlin
 import com.hunet.common.tbeg.ExcelGenerator
-import com.hunet.common.tbeg.ExcelGeneratorConfig
+import com.hunet.common.tbeg.TbegConfig
 import com.hunet.common.tbeg.StreamingMode
 
 // 스트리밍 모드 (기본값)
-val config = ExcelGeneratorConfig(
+val config = TbegConfig(
     streamingMode = StreamingMode.ENABLED
 )
 
 // 비스트리밍 모드 (소량 데이터, 복잡한 수식)
-val configNonStreaming = ExcelGeneratorConfig(
+val configNonStreaming = TbegConfig(
     streamingMode = StreamingMode.DISABLED
 )
 ```
@@ -532,7 +556,7 @@ class ReportService(
 ### 5.5 대용량 처리 권장 설정
 
 ```kotlin
-val config = ExcelGeneratorConfig(
+val config = TbegConfig(
     streamingMode = StreamingMode.ENABLED,    // 스트리밍 모드 활성화
     progressReportInterval = 1000              // 1000행마다 진행률 보고
 )

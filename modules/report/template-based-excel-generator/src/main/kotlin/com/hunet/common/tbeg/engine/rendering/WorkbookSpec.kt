@@ -1,5 +1,6 @@
 package com.hunet.common.tbeg.engine.rendering
 
+import org.apache.poi.ss.usermodel.CellType
 import org.apache.poi.ss.usermodel.ConditionType
 import org.apache.poi.ss.util.CellRangeAddress
 
@@ -125,7 +126,9 @@ sealed class RowSpec {
         val repeatEndRowIndex: Int,
         val repeatStartCol: Int = 0,
         val repeatEndCol: Int = Int.MAX_VALUE,
-        val direction: RepeatDirection = RepeatDirection.DOWN
+        val direction: RepeatDirection = RepeatDirection.DOWN,
+        val emptyRangeSpec: EmptyRangeSpec? = null,        // 컬렉션이 비어있을 때 표시할 범위 명세
+        val emptyRangeContent: EmptyRangeContent? = null   // 컬렉션이 비어있을 때 표시할 내용 (미리 읽음)
     ) : RowSpec()
 
     /** 반복 영역 내부 행 (첫 행 제외) - RepeatRow에 포함되어 처리됨 */
@@ -198,7 +201,8 @@ sealed class CellContent {
         val collection: String,
         val range: String,
         val variable: String,
-        val direction: RepeatDirection = RepeatDirection.DOWN
+        val direction: RepeatDirection = RepeatDirection.DOWN,
+        val emptyRange: String? = null  // 컬렉션이 비어있을 때 표시할 범위
     ) : CellContent()
 
     /**
@@ -230,7 +234,8 @@ data class RepeatRegionSpec(
     val endRow: Int,
     val startCol: Int,
     val endCol: Int,
-    val direction: RepeatDirection = RepeatDirection.DOWN
+    val direction: RepeatDirection = RepeatDirection.DOWN,
+    val emptyRange: EmptyRangeSpec? = null  // 컬렉션이 비어있을 때 표시할 범위
 ) {
     /**
      * 다른 repeat 영역과 열 범위가 겹치는지 확인
@@ -367,5 +372,74 @@ data class ImageSizeSpec(
         /** 원본 크기 */
         val ORIGINAL = ImageSizeSpec(-1, -1)
     }
+}
+
+// ========== Empty Range 관련 데이터 구조 ==========
+
+/**
+ * 빈 컬렉션일 때 표시할 범위 명세
+ *
+ * @property sheetName 시트 이름 (null이면 같은 시트)
+ * @property startRow 시작 행 (0-based)
+ * @property endRow 종료 행 (0-based)
+ * @property startCol 시작 열 (0-based)
+ * @property endCol 종료 열 (0-based)
+ */
+data class EmptyRangeSpec(
+    val sheetName: String?,
+    val startRow: Int,
+    val endRow: Int,
+    val startCol: Int,
+    val endCol: Int
+)
+
+/**
+ * 빈 컬렉션일 때 표시할 셀 내용 (미리 읽어둔 스냅샷)
+ *
+ * @property cells 행/열 순서로 저장된 셀 스냅샷 (rows[rowIndex][colIndex])
+ * @property mergedRegions 병합 영역 목록 (상대 좌표: emptyRange 시작 기준)
+ * @property rowHeights 행 높이 목록
+ * @property conditionalFormattings 조건부 서식 목록 (상대 좌표: emptyRange 시작 기준)
+ */
+data class EmptyRangeContent(
+    val cells: List<List<CellSnapshot>>,
+    val mergedRegions: List<CellRangeAddress>,
+    val rowHeights: List<Short?>,
+    val conditionalFormattings: List<ConditionalFormattingSpec> = emptyList()
+) {
+    /** 행 개수 */
+    val rowCount: Int get() = cells.size
+
+    /** 열 개수 */
+    val colCount: Int get() = cells.firstOrNull()?.size ?: 0
+
+    /** 단일 셀인지 여부 */
+    val isSingleCell: Boolean get() = rowCount == 1 && colCount == 1
+}
+
+/**
+ * 셀 스냅샷 - 셀의 값과 스타일을 저장
+ *
+ * @property value 셀 값 (String, Double, Boolean, null)
+ * @property cellType 셀 타입
+ * @property styleIndex 스타일 인덱스
+ * @property formula 수식 (수식 셀인 경우)
+ */
+data class CellSnapshot(
+    val value: Any?,
+    val cellType: CellType,
+    val styleIndex: Short,
+    val formula: String?
+)
+
+/**
+ * CellSnapshot을 CellContent로 변환한다.
+ */
+fun CellSnapshot.toContent(): CellContent = when (cellType) {
+    CellType.STRING -> CellContent.StaticString(value as? String ?: "")
+    CellType.NUMERIC -> CellContent.StaticNumber(value as? Double ?: 0.0)
+    CellType.BOOLEAN -> CellContent.StaticBoolean(value as? Boolean ?: false)
+    CellType.FORMULA -> CellContent.Formula(formula ?: "")
+    else -> CellContent.Empty
 }
 

@@ -6,9 +6,10 @@
 1. [아키텍처 개요](#1-아키텍처-개요)
 2. [파이프라인 패턴](#2-파이프라인-패턴)
 3. [렌더링 전략](#3-렌더링-전략)
-4. [위치 계산](#4-위치-계산)
-5. [스트리밍 데이터 처리](#5-스트리밍-데이터-처리)
-6. [테스트 작성 가이드](#6-테스트-작성-가이드)
+4. [마커 파서](#4-마커-파서)
+5. [위치 계산](#5-위치-계산)
+6. [스트리밍 데이터 처리](#6-스트리밍-데이터-처리)
+7. [테스트 및 샘플](#7-테스트-작성-가이드)
 
 ---
 
@@ -18,29 +19,29 @@
 
 ```
 com.hunet.common.tbeg/
-├── ExcelGenerator.kt          # 메인 진입점
-├── ExcelGeneratorConfig.kt    # 설정 클래스
-├── ExcelDataProvider.kt       # 데이터 제공 인터페이스
-├── SimpleDataProvider.kt      # 기본 데이터 제공자 구현
-├── DocumentMetadata.kt        # 문서 메타데이터
-├── Enums.kt                   # 열거형 정의
-├── async/                     # 비동기 처리
+├── ExcelGenerator.kt                   # 메인 진입점
+├── TbegConfig.kt                       # 설정 클래스
+├── ExcelDataProvider.kt                # 데이터 제공 인터페이스
+├── SimpleDataProvider.kt               # 기본 데이터 제공자 구현
+├── DocumentMetadata.kt                 # 문서 메타데이터
+├── Enums.kt                            # 열거형 정의
+├── async/                              # 비동기 처리
 │   ├── GenerationJob.kt
 │   ├── GenerationResult.kt
 │   ├── ExcelGenerationListener.kt
 │   └── ProgressInfo.kt
 ├── engine/
-│   ├── core/                  # 핵심 유틸리티
+│   ├── core/                           # 핵심 유틸리티
 │   │   ├── ExcelUtils.kt
 │   │   ├── ChartProcessor.kt
 │   │   ├── PivotTableProcessor.kt
 │   │   └── XmlVariableProcessor.kt
-│   ├── pipeline/              # 파이프라인 패턴
-│   │   ├── ExcelPipeline.kt
+│   ├── pipeline/                       # 파이프라인 패턴
+│   │   ├── TbegPipeline.kt
 │   │   ├── ExcelProcessor.kt
 │   │   ├── ProcessingContext.kt
-│   │   └── processors/        # 개별 프로세서
-│   └── rendering/             # 렌더링 엔진
+│   │   └── processors/                 # 개별 프로세서
+│   └── rendering/                      # 렌더링 엔진
 │       ├── RenderingStrategy.kt
 │       ├── AbstractRenderingStrategy.kt
 │       ├── XssfRenderingStrategy.kt
@@ -49,9 +50,14 @@ com.hunet.common.tbeg/
 │       ├── TemplateAnalyzer.kt
 │       ├── PositionCalculator.kt
 │       ├── StreamingDataSource.kt
-│       └── WorkbookSpec.kt
-├── exception/                 # 예외 클래스
-└── spring/                    # Spring Boot 자동 설정
+│       ├── WorkbookSpec.kt
+│       └── parser/                     # 마커 파서
+│           ├── MarkerDefinition.kt     # 마커 정의
+│           ├── UnifiedMarkerParser.kt  # 통합 파서
+│           ├── ParameterParser.kt      # 파라미터 파서
+│           └── ParsedMarker.kt         # 파싱 결과
+├── exception/                          # 예외 클래스
+└── spring/                             # Spring Boot 자동 설정
 ```
 
 ### 1.2 처리 흐름
@@ -61,7 +67,7 @@ com.hunet.common.tbeg/
        │
        ▼
 ───────────────────────────────────────────────────────────────
-                       ExcelPipeline
+                       TbegPipeline
 ───────────────────────────────────────────────────────────────
    1. ChartExtractProcessor       - 차트 추출 (SXSSF 손실 방지)
    2. PivotExtractProcessor       - 피벗 테이블 정보 추출
@@ -81,12 +87,12 @@ com.hunet.common.tbeg/
 
 ## 2. 파이프라인 패턴
 
-### 2.1 ExcelPipeline
+### 2.1 TbegPipeline
 
 파이프라인은 여러 프로세서를 순차적으로 실행합니다.
 
 ```kotlin
-class ExcelPipeline(vararg processors: ExcelProcessor) {
+class TbegPipeline(vararg processors: ExcelProcessor) {
     fun execute(context: ProcessingContext): ProcessingContext
 }
 ```
@@ -109,7 +115,7 @@ interface ExcelProcessor {
 data class ProcessingContext(
     val templateBytes: ByteArray,
     val dataProvider: ExcelDataProvider,
-    val config: ExcelGeneratorConfig,
+    val config: TbegConfig,
     val metadata: DocumentMetadata? = null,
     var resultBytes: ByteArray = ByteArray(0),
     var processedRowCount: Int = 0,
@@ -165,7 +171,7 @@ class SxssfRenderingStrategy : RenderingStrategy
 |-------|----------------|-------------|
 | 메모리   | 전체 워크북 메모리 로드  | 윈도우 기반 스트리밍 |
 | 행 삽입  | shiftRows() 지원 | 순차 출력만 가능   |
-| 수식 참조 | 자동 조정          | 수동 조정 필요    |
+| 수식 참조 | 자동 조정          | 자동 조정       |
 | 대용량   | 제한적            | 적합          |
 
 ### 3.3 AbstractRenderingStrategy
@@ -186,9 +192,62 @@ abstract class AbstractRenderingStrategy : RenderingStrategy {
 
 ---
 
-## 4. 위치 계산
+## 4. 마커 파서
 
-### 4.1 PositionCalculator
+### 4.1 개요
+
+템플릿 마커(`${...}`)를 파싱하는 전용 파서입니다. 선언적 정의로 마커를 쉽게 추가하고 관리합니다.
+
+```
+${repeat(employees, A3:C3, emp, DOWN)}
+         │          │       │    │
+         │          │       │    └─ direction (선택)
+         │          │       └─ alias (선택)
+         │          └─ range (필수)
+         └─ collection (필수)
+```
+
+### 4.2 구성 요소
+
+| 클래스                   | 역할              |
+|-----------------------|-----------------|
+| `MarkerDefinition`    | 마커별 이름과 파라미터 정의 |
+| `UnifiedMarkerParser` | 마커 문자열 파싱       |
+| `ParameterParser`     | 파라미터 값 파싱 및 변환  |
+| `ParsedMarker`        | 파싱 결과 저장 및 접근   |
+
+### 4.3 사용 예시
+
+```kotlin
+// 마커 파싱
+val marker = UnifiedMarkerParser.parse("repeat(employees, A3:C3, emp, DOWN)")
+
+// 파라미터 접근
+val collection = marker["collection"]     // "employees"
+val range = marker.getRange("range")      // CellRangeAddress
+val direction = marker.getDirection("direction")  // RepeatDirection.DOWN
+
+// 선택 파라미터 확인
+if (marker.has("alias")) {
+    val alias = marker["alias"]
+}
+```
+
+### 4.4 지원 마커
+
+| 마커             | 용도          | 필수 파라미터           |
+|----------------|-------------|-------------------|
+| `repeat`       | 반복 데이터 확장   | collection, range |
+| `image`        | 이미지 삽입      | name              |
+| `formulaRange` | 수식 범위 지정    | range             |
+| `emptyRange`   | 빈 범위 처리     | range, direction  |
+| `akzj`         | 빈 범위 처리(별칭) | range, direction  |
+
+---
+
+## 5. 위치 계산
+
+### 5.1 PositionCalculator
 
 다중 repeat 영역의 위치를 계산합니다.
 
@@ -215,7 +274,7 @@ class PositionCalculator(
 }
 ```
 
-### 4.2 RepeatExpansion
+### 5.2 RepeatExpansion
 
 ```kotlin
 data class RepeatExpansion(
@@ -228,13 +287,13 @@ data class RepeatExpansion(
 )
 ```
 
-### 4.3 위치 계산 규칙
+### 5.3 위치 계산 규칙
 
 1. **독립 요소**: 어느 repeat에도 영향받지 않으면 템플릿 위치 유지
 2. **단일 영향**: 하나의 repeat에만 영향받으면 해당 확장량만큼 이동
 3. **다중 영향**: 여러 repeat에 영향받으면 최대 오프셋 적용
 
-### 4.4 열 그룹
+### 5.4 열 그룹
 
 같은 열 범위의 repeat는 서로 영향을 주고, 다른 열 그룹의 repeat는 독립적으로 확장됩니다.
 
@@ -249,9 +308,9 @@ data class ColumnGroup(
 
 ---
 
-## 5. 스트리밍 데이터 처리
+## 6. 스트리밍 데이터 처리
 
-### 5.1 StreamingDataSource
+### 6.1 StreamingDataSource
 
 SXSSF 모드에서 Iterator를 순차적으로 소비합니다.
 
@@ -266,35 +325,26 @@ class StreamingDataSource(
 }
 ```
 
-### 5.2 메모리 최적화 원칙
+### 6.2 메모리 최적화 원칙
 
 | 모드    | 메모리 정책           |
 |-------|------------------|
 | SXSSF | 현재 아이템만 메모리 유지   |
 | XSSF  | 전체 데이터 메모리 로드 허용 |
 
-### 5.3 DataProvider 조건
+### 6.3 DataProvider 조건
 
 - `getItems()`는 같은 데이터를 다시 제공할 수 있어야 함
 - 같은 컬렉션이 여러 repeat에서 사용되면 `getItems()` 재호출
 
 ---
 
-## 6. 테스트 작성 가이드
+## 7. 테스트 작성 가이드
 
-### 6.1 테스트 유형
-
-| 유형     | 위치                | 설명             |
-|--------|-------------------|----------------|
-| 단위 테스트 | `src/test/kotlin` | 개별 클래스/함수 테스트  |
-| 통합 테스트 | `src/test/kotlin` | 전체 파이프라인 테스트   |
-| 샘플 테스트 | `build/samples`   | 실제 Excel 파일 생성 |
-
-### 6.2 테스트 템플릿
-
+테스트 코드는 `src/test/kotlin/com/hunet/common/tbeg/`에 위치합니다.
 테스트용 템플릿은 `src/test/resources/templates/`에 위치합니다.
 
-### 6.3 단위 테스트 예시
+### 7.1 테스트 예시
 
 ```kotlin
 class PositionCalculatorTest {
@@ -314,7 +364,7 @@ class PositionCalculatorTest {
 }
 ```
 
-### 6.4 통합 테스트 예시
+### 7.2 통합 테스트 예시
 
 ```kotlin
 class ExcelGeneratorIntegrationTest {
@@ -341,7 +391,7 @@ class ExcelGeneratorIntegrationTest {
 }
 ```
 
-### 6.5 테스트 실행
+### 7.3 테스트 실행
 
 ```bash
 # 전체 테스트
@@ -349,6 +399,41 @@ class ExcelGeneratorIntegrationTest {
 
 # 특정 테스트
 ./gradlew :tbeg:test --tests "*PositionCalculator*"
+```
+
+### 7.4 샘플 및 벤치마크
+
+테스트 코드와 별도로 실행 가능한 샘플 및 벤치마크 코드는 독립된 디렉토리에 관리됩니다.
+
+```
+src/test/
+├── kotlin/com/hunet/common/tbeg/
+│   ├── samples/                            # 샘플 코드 (Kotlin)
+│   │   ├── TbegSample.kt
+│   │   ├── EmptyCollectionSample.kt
+│   │   ├── TbegSpringBootSample.kt
+│   │   └── TemplateRenderingEngineSample.kt
+│   ├── benchmark/                          # 벤치마크 코드
+│   │   ├── PerformanceBenchmark.kt         # 대용량 벤치마크
+│   │   └── PerformanceBenchmarkTest.kt     # XSSF vs SXSSF 비교
+│   └── ...                                 # 테스트 코드
+├── java/com/hunet/common/tbeg/samples/     # 샘플 코드 (Java)
+│   ├── TbegJavaSample.java
+│   └── TbegSpringBootJavaSample.java
+```
+
+```bash
+# Kotlin 샘플 실행 (출력: build/samples/)
+./gradlew :tbeg:runSample
+
+# Java 샘플 실행 (출력: build/samples-java/)
+./gradlew :tbeg:runJavaSample
+
+# Spring Boot 샘플 실행 (출력: build/samples-spring/)
+./gradlew :tbeg:runSpringBootSample
+
+# 성능 벤치마크 실행
+./gradlew :tbeg:runBenchmark
 ```
 
 ---

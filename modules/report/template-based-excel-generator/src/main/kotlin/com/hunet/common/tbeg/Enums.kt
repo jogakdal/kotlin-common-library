@@ -11,7 +11,6 @@ enum class StreamingMode {
      *
      * 항상 XSSFWorkbook을 사용한다.
      * 모든 Excel 기능을 완전히 지원하며, 수식 참조가 자동으로 조정된다.
-     * 아래 행 참조 수식이 있는 템플릿에서 사용한다.
      */
     DISABLED,
 
@@ -19,9 +18,7 @@ enum class StreamingMode {
      * 스트리밍 모드 활성화 (기본값).
      *
      * SXSSFWorkbook을 사용하여 대용량 데이터의 메모리 사용량을 줄인다.
-     *
-     * 제한사항:
-     * - 아래 행 참조 수식 사용 불가 (예: 1행에서 2행 이하 참조)
+     * 수식 참조는 자동으로 확장된다 (아래 행 참조 수식 포함).
      */
     ENABLED
 }

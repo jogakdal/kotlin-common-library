@@ -15,9 +15,21 @@ Excel 템플릿에 데이터를 바인딩하여 보고서를 생성하는 라이
 
 ## 의존성 추가
 
+### BOM 사용 (권장)
+
 ```kotlin
 // build.gradle.kts
-implementation("com.hunet.common:tbeg:1.0.0-SNAPSHOT")
+dependencies {
+    implementation(platform("com.hunet.common:common-bom:2026.1.0-SNAPSHOT"))
+    implementation("com.hunet.common:tbeg")  // 버전 자동 적용
+}
+```
+
+### 직접 버전 지정
+
+```kotlin
+// build.gradle.kts
+implementation("com.hunet.common:tbeg:1.1.0-SNAPSHOT")
 ```
 
 ## 빠른 시작
@@ -100,11 +112,11 @@ ${image(logo, B5, 100:50)}
 
 | 데이터 크기   | disabled | enabled | 속도 향상    |
 |----------|----------|---------|----------|
-| 1,000행   | 178ms    | 146ms   | 1.2배     |
-| 10,000행  | 2,081ms  | 578ms   | **3.6배** |
-| 30,000행  | -        | 1,104ms | -        |
-| 50,000행  | -        | 1,239ms | -        |
-| 100,000행 | -        | 2,713ms | -        |
+| 1,000행   | 172ms    | 147ms   | 1.2배     |
+| 10,000행  | 1,801ms  | 663ms   | **2.7배** |
+| 30,000행  | -        | 1,057ms | -        |
+| 50,000행  | -        | 1,202ms | -        |
+| 100,000행 | -        | 3,154ms | -        |
 
 ### 타 라이브러리와 비교 (30,000행)
 
@@ -132,7 +144,7 @@ src/main/kotlin/com/hunet/common/tbeg/
 ├── ExcelGenerator.kt                       # 메인 진입점 (Public API)
 ├── ExcelDataProvider.kt                    # 데이터 제공 인터페이스
 ├── SimpleDataProvider.kt                   # 간단한 DataProvider 구현
-├── ExcelGeneratorConfig.kt                 # 설정 클래스
+├── TbegConfig.kt                           # 설정 클래스
 ├── DocumentMetadata.kt                     # 문서 메타데이터
 ├── Enums.kt                                # StreamingMode, FileNamingMode 등 열거형
 │
@@ -150,7 +162,7 @@ src/main/kotlin/com/hunet/common/tbeg/
 │   │   └── ExcelUtils.kt                   # 유틸리티 함수
 │   │
 │   ├── pipeline/                           # 처리 파이프라인
-│   │   ├── ExcelPipeline.kt                # 파이프라인 정의
+│   │   ├── TbegPipeline.kt                 # 파이프라인 정의
 │   │   ├── ExcelProcessor.kt               # 프로세서 인터페이스
 │   │   ├── ProcessingContext.kt            # 처리 컨텍스트
 │   │   └── processors/                     # 개별 프로세서
@@ -176,7 +188,12 @@ src/main/kotlin/com/hunet/common/tbeg/
 │       ├── ImageInserter.kt                # 이미지 삽입
 │       ├── FormulaAdjuster.kt              # 수식 조정
 │       ├── RepeatExpansionProcessor.kt     # 반복 영역 확장
-│       └── SheetLayoutApplier.kt           # 레이아웃 적용
+│       ├── SheetLayoutApplier.kt           # 레이아웃 적용
+│       └── parser/                         # 마커 파서 (내부)
+│           ├── MarkerDefinition.kt         # 마커 정의 및 파라미터 스펙
+│           ├── UnifiedMarkerParser.kt      # 통합 마커 파서
+│           ├── ParameterParser.kt          # 파라미터 값 파서
+│           └── ParsedMarker.kt             # 파싱된 마커 결과
 │
 ├── exception/                              # 예외 클래스
 │   ├── TemplateProcessingException.kt
@@ -197,7 +214,7 @@ src/main/kotlin/com/hunet/common/tbeg/
 └─────────────────────────┬───────────────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────────────┐
-│                      ExcelPipeline                          │
+│                      TbegPipeline                           │
 │                                                             │
 │  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐     │
 │  │ChartExtract  │ → │PivotExtract  │ → │TemplateRender│     │

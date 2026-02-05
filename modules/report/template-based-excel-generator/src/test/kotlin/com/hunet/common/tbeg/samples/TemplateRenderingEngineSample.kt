@@ -1,5 +1,10 @@
-package com.hunet.common.tbeg
+package com.hunet.common.tbeg.samples
 
+import com.hunet.common.tbeg.ExcelGenerator
+import com.hunet.common.tbeg.TbegConfig
+import com.hunet.common.tbeg.SimpleDataProvider
+import com.hunet.common.tbeg.StreamingMode
+import com.hunet.common.tbeg.simpleDataProvider
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
@@ -27,7 +32,7 @@ import java.time.LocalDate
  * class ExcelConfig {
  *     @Bean
  *     fun excelGenerator(): ExcelGenerator {
- *         val config = ExcelGeneratorConfig(
+ *         val config = TbegConfig(
  *             streamingMode = StreamingMode.ENABLED
  *         )
  *         return ExcelGenerator(config)
@@ -77,7 +82,7 @@ object TemplateRenderingEngineSample {
         println("\n[1] 비스트리밍 모드 (XSSF)")
         println("-".repeat(40))
 
-        val config = ExcelGeneratorConfig(
+        val config = TbegConfig(
             streamingMode = StreamingMode.DISABLED
         )
 
@@ -123,7 +128,7 @@ object TemplateRenderingEngineSample {
         println("\n[2] 스트리밍 모드 (SXSSF)")
         println("-".repeat(40))
 
-        val config = ExcelGeneratorConfig(
+        val config = TbegConfig(
             streamingMode = StreamingMode.ENABLED
         )
 
@@ -172,7 +177,7 @@ object TemplateRenderingEngineSample {
         println("\n[3] 대용량 스트리밍 테스트")
         println("-".repeat(40))
 
-        val config = ExcelGeneratorConfig(
+        val config = TbegConfig(
             streamingMode = StreamingMode.ENABLED
         )
 

@@ -29,7 +29,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.hunet.common:tbeg:1.0.0-SNAPSHOT")
+    implementation("com.hunet.common:tbeg:1.1.0-SNAPSHOT")
 }
 ```
 
@@ -68,7 +68,7 @@ fun main() {
 ### 레퍼런스
 - [템플릿 문법](./reference/template-syntax.md) - 템플릿에서 사용할 수 있는 문법
 - [API 레퍼런스](./reference/api-reference.md) - 클래스 및 메서드 상세
-- [설정 옵션](./reference/configuration.md) - ExcelGeneratorConfig 옵션
+- [설정 옵션](./reference/configuration.md) - TbegConfig 옵션
 
 ### 예제
 - [기본 예제](./examples/basic-examples.md) - 간단한 사용 예제

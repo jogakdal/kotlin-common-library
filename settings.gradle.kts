@@ -20,6 +20,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "hunet-common-libs"
 include(
+    ":common-bom",
     ":common-core",
     ":standard-api-response",
     ":apidoc-core",
@@ -29,6 +30,7 @@ include(
     ":tbeg"
 )
 
+project(":common-bom").projectDir = file("modules/bom/common-bom")
 project(":common-core").projectDir = file("modules/core/common-core")
 project(":standard-api-response").projectDir = file("modules/response/standard-api-response")
 project(":apidoc-core").projectDir = file("modules/apidoc/apidoc-core")

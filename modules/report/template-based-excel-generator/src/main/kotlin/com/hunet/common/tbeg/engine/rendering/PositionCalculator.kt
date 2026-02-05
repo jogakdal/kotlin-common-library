@@ -67,10 +67,7 @@ class PositionCalculator(
         val rowExpansion: Int,
         val colExpansion: Int,
         val itemCount: Int
-    ) {
-        /** 이 repeat의 확장된 최종 끝 행 */
-        val finalEndRow: Int get() = finalStartRow + (region.endRow - region.startRow) + rowExpansion
-    }
+    )
 
     private val expansions = mutableListOf<RepeatExpansion>()
     private var calculated = false
@@ -236,6 +233,27 @@ class PositionCalculator(
      * 모든 확장 정보를 반환한다.
      */
     fun getExpansions(): List<RepeatExpansion> = expansions.also { if (!calculated) calculate() }.toList()
+
+    /**
+     * 특정 템플릿 셀이 emptyRange 영역에 속하는지 확인한다.
+     *
+     * emptyRange는 셀 범위이므로 행 전체가 아닌 특정 셀만 확인한다.
+     *
+     * @param templateRow 템플릿 행 인덱스 (0-based)
+     * @param templateCol 템플릿 열 인덱스 (0-based)
+     * @return emptyRange 영역에 속하면 true
+     */
+    fun isInEmptyRange(templateRow: Int, templateCol: Int): Boolean {
+        if (!calculated) calculate()
+
+        return repeatRegions
+            .mapNotNull { it.emptyRange }
+            .filter { it.sheetName == null }  // 같은 시트의 emptyRange만
+            .any { range ->
+                templateRow in range.startRow..range.endRow &&
+                templateCol in range.startCol..range.endCol
+            }
+    }
 
     /**
      * 전체 출력 행 수를 계산한다.

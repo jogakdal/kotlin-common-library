@@ -1,4 +1,4 @@
-package com.hunet.common.tbeg.spring;
+package com.hunet.common.tbeg.samples;
 
 import com.hunet.common.tbeg.ExcelGenerator;
 import com.hunet.common.tbeg.SimpleDataProvider;
@@ -6,6 +6,7 @@ import com.hunet.common.tbeg.async.ExcelGenerationListener;
 import com.hunet.common.tbeg.async.GenerationJob;
 import com.hunet.common.tbeg.async.GenerationResult;
 import com.hunet.common.tbeg.async.ProgressInfo;
+import com.hunet.common.tbeg.spring.TbegAutoConfiguration;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfigurations;

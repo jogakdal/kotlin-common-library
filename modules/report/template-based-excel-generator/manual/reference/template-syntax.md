@@ -3,7 +3,9 @@
 ## 목차
 1. [변수 치환](#1-변수-치환)
 2. [반복 처리](#2-반복-처리)
-   - [관련 요소 자동 조정](#26-관련-요소-자동-조정)
+   - [명시적 파라미터 형식](#26-명시적-파라미터-형식)
+   - [빈 컬렉션 처리 (empty)](#27-빈-컬렉션-처리-empty)
+   - [관련 요소 자동 조정](#28-관련-요소-자동-조정)
 3. [이미지 삽입](#3-이미지-삽입)
 4. [컬렉션 크기](#4-컬렉션-크기)
 5. [수식 내 변수](#5-수식-내-변수)
@@ -167,7 +169,157 @@ ${emp.address.city}
 - **Map 키**: Map의 키로 접근
 - **getter 메서드**: `getFieldName()` 형태의 getter
 
-### 2.6 관련 요소 자동 조정
+### 2.6 명시적 파라미터 형식
+
+repeat 마커의 모든 파라미터에 명시적으로 이름을 지정할 수 있습니다.
+
+#### 문법
+
+```
+${repeat(collection=컬렉션, range=범위, var=변수, direction=방향, empty=대체범위)}
+```
+
+#### 예시
+
+```
+${repeat(collection=employees, range=A2:C2, var=emp)}
+${repeat(collection=months, range=B1:B2, var=m, direction=RIGHT)}
+${repeat(collection=items, range=A3:C3, var=item, direction=DOWN, empty=A10:C10)}
+```
+
+#### 수식 형태
+
+```
+=TBEG_REPEAT(collection=employees, range=A2:C2, var=emp)
+=TBEG_REPEAT(collection=items, range=A3:C3, var=item, direction=DOWN, empty=A10:C10)
+```
+
+#### 파라미터 생략
+
+명시적 형식에서 선택적 파라미터는 생략하거나, `NULL` 또는 빈 값으로 지정할 수 있습니다. 아래 세 가지는 모두 동일합니다.
+
+```
+${repeat(collection=items, range=A2:C2, empty=A10:C10)}           // var 생략
+${repeat(collection=items, range=A2:C2, var=NULL, empty=A10:C10)} // var=NULL
+${repeat(collection=items, range=A2:C2, var=, empty=A10:C10)}     // var= (빈 값)
+```
+
+#### 혼합 사용 불가
+
+위치 기반과 명시적 파라미터는 혼합할 수 없습니다. 하나의 파라미터라도 이름을 명시하면 모든 파라미터에 이름을 명시해야 합니다.
+
+```
+// 올바른 예
+${repeat(items, A2:C2, item, DOWN, A10:C10)}                                    // 모두 위치 기반
+${repeat(collection=items, range=A2:C2, var=item, direction=DOWN, empty=A10:C10)} // 모두 명시적
+
+// 잘못된 예 (오류 발생)
+${repeat(items, A2:C2, item, empty=A10:C10)}         // 혼합 불가
+${repeat(items, A2:C2, var=item, direction=DOWN)}   // 혼합 불가
+```
+
+#### 위치 기반 파라미터 생략
+
+위치 기반 형식에서 중간 파라미터를 생략하려면 빈 값으로 두면 됩니다.
+
+```
+// direction(4번째)을 생략하고 empty(5번째)만 지정
+${repeat(items, A2:C2, item, , A10:C10)}
+
+// var(3번째)와 direction(4번째)을 생략
+${repeat(items, A2:C2, , , A10:C10)}
+
+// image에서 position(2번째)을 생략하고 size(3번째)만 지정
+${image(logo, , 200:150)}
+```
+
+### 2.7 빈 컬렉션 처리 (empty)
+
+**문법**: `${repeat(컬렉션, 범위, 변수, 방향, 대체범위)}`
+
+컬렉션이 비어있을 때 대체 셀 범위의 내용을 표시합니다.
+
+#### 기본 동작 (empty 미지정)
+
+컬렉션이 비어있고 `empty` 파라미터가 없으면, 반복 영역 크기에 맞는 빈 행(DOWN 모드) 또는 빈 열(RIGHT 모드)이 1개 출력됩니다.
+
+- **빈 행/열의 범위**: 엑셀 전체 행이 아닌 반복 영역(range)에 해당하는 셀들만 빈 값으로 출력됩니다.
+- **예**: `range=A2:C2`인 경우 A, B, C 열의 셀만 빈 값이 되며, D열 이후는 영향받지 않습니다.
+
+#### empty 파라미터 사용
+
+컬렉션이 비어있을 때 지정된 셀 범위의 내용을 대신 표시합니다.
+
+#### 템플릿
+
+|     | A                                               | B               | C             |
+|-----|-------------------------------------------------|-----------------|---------------|
+| 1   | ${repeat(employees, A2:C2, emp, DOWN, A10:C10)} |                 |               |
+| 2   | ${emp.name}                                     | ${emp.position} | ${emp.salary} |
+| ... |                                                 |                 |               |
+| 10  | (데이터가 없습니다)                                     |                 |               |
+
+#### 데이터 (빈 컬렉션)
+
+```kotlin
+mapOf("employees" to emptyList<Employee>())
+```
+
+#### 결과
+
+|   | A           | B | C |
+|---|-------------|---|---|
+| 1 |             |   |   |
+| 2 | (데이터가 없습니다) |   |   |
+
+> **참고**:
+> - A10:C10의 내용과 스타일이 A2:C2 위치에 복사됩니다.
+> - A10:C10 원본 셀은 결과 파일에서 빈 셀로 처리됩니다.
+> - empty 범위가 단일 셀이고 반복 영역이 더 크면 자동으로 셀이 병합됩니다.
+
+#### 단일 셀 병합 예제
+
+empty 범위가 단일 셀이면 반복 영역 전체를 병합하여 해당 내용을 표시합니다.
+
+**템플릿**
+
+|     | A                                           | B               | C             |
+|-----|---------------------------------------------|-----------------|---------------|
+| 1   | ${repeat(employees, A2:C2, emp, DOWN, A10)} |                 |               |
+| 2   | ${emp.name}                                 | ${emp.position} | ${emp.salary} |
+| ... |                                             |                 |               |
+| 10  | 데이터가 없습니다                                   |                 |               |
+
+- **A10**: 단일 셀에 메시지 작성 (A10:C10이 아닌 A10만 지정)
+
+**결과 (빈 컬렉션)**
+
+<table>
+  <tr><th></th><th>A</th><th>B</th><th>C</th></tr>
+  <tr><td>1</td><td></td><td></td><td></td></tr>
+  <tr><td>2</td><td colspan="3" style="text-align:center">데이터가 없습니다</td></tr>
+</table>
+
+- A2:C2 영역이 자동으로 병합되고 A10의 내용이 표시됩니다.
+
+#### empty 범위 지정 방식
+
+```
+${repeat(items, A2:C3, item, DOWN, A10:C11)}     // 일반 범위
+${repeat(items, A2:C3, item, DOWN, $A$10:$C$11)} // 절대 좌표 ($ 무시)
+${repeat(items, A2:C3, item, DOWN, 'Sheet2'!A1:C1)} // 다른 시트 참조
+```
+
+#### 위치 파라미터 방식
+
+명시적 파라미터 이름 없이 5번째 파라미터로 지정할 수도 있습니다.
+
+```
+${repeat(items, A2:C3, item, DOWN, A10:C11)}
+=TBEG_REPEAT(items, A2:C3, item, DOWN, A10:C11)
+```
+
+### 2.8 관련 요소 자동 조정
 
 반복 영역이 확장되면 영향 받는 Excel 요소들의 좌표와 범위가 자동으로 조정됩니다.
 
@@ -206,6 +358,33 @@ ${emp.address.city}
 | 5 | 합계  | =SUM(B2:B4) |
 
 > 3행에 있던 합계 행이 5행으로 이동하고, 수식 `=SUM(B2:B2)`도 확장된 범위 `=SUM(B2:B4)`를 참조합니다.
+
+#### 수식 참조 유형별 동작
+
+| 참조 유형 | 예시 | 확장 동작 |
+|----------|------|----------|
+| 상대 참조 | `B3:B3` | 확장됨 (`B3:B5`) |
+| 절대 참조 | `$B$3:$B$3` | 유지됨 (확장 안 함) |
+| 행 절대 참조 | `B$3:B$3` | 유지됨 (DOWN 방향 확장 안 함) |
+| 열 절대 참조 | `$B3:$B3` | 확장됨 (DOWN 방향 `$B3:$B5`) |
+| 다른 시트 참조 | `Sheet2!B3:B3` | 해당 시트의 repeat 확장이 반영됨 |
+
+**예시: 절대 참조로 확장 제어**
+
+```
+=SUM(B3:B3)      -> =SUM(B3:B5)     // 상대 참조: 확장됨
+=SUM($B$3:$B$3)  -> =SUM($B$3:$B$3) // 절대 참조: 그대로 유지
+=SUM($B3:$B3)    -> =SUM($B3:$B5)   // 열만 절대: 행 방향 확장됨
+```
+
+**예시: 다른 시트의 repeat 영역 참조**
+
+Sheet2에 repeat 영역이 있고 3개의 항목으로 확장되면, Sheet1에서 Sheet2를 참조하는 수식도 함께 확장됩니다.
+
+```
+=SUM(Sheet2!B3:B3)       -> =SUM(Sheet2!B3:B5)
+=SUM('Data Sheet'!B3:B3) -> =SUM('Data Sheet'!B3:B5)
+```
 
 ---
 
@@ -267,11 +446,28 @@ ${image(logo, B2, original)}  // 원본 크기
 ${image(logo, B2, 200:150)}   // 200×150 픽셀
 ```
 
+### 3.4 명시적 파라미터 형식
+
+모든 파라미터에 이름을 명시적으로 지정할 수 있습니다.
+
+```
+${image(name=logo)}
+${image(name=logo, position=B2)}
+${image(name=logo, position=B2:D4, size=fit)}
+${image(name=logo, size=200:150)}  // position 생략
+```
+
+수식 형태:
+```
+=TBEG_IMAGE(name=logo)
+=TBEG_IMAGE(name=logo, position=B2, size=original)
+```
+
 ---
 
 ## 4. 컬렉션 크기
 
-**문법**: `${size(컬렉션)}`
+**문법**: `${size(컬렉션)}` 또는 `${size(collection=컬렉션)}`
 
 컬렉션의 아이템 수를 표시합니다.
 
@@ -390,5 +586,5 @@ mapOf("startRow" to 5, "endRow" to 10)
 ## 다음 단계
 
 - [API 레퍼런스](./api-reference.md) - 클래스 및 메서드 상세
-- [설정 옵션](./configuration.md) - ExcelGeneratorConfig 옵션
+- [설정 옵션](./configuration.md) - TbegConfig 옵션
 - [기본 예제](../examples/basic-examples.md) - 다양한 사용 예제

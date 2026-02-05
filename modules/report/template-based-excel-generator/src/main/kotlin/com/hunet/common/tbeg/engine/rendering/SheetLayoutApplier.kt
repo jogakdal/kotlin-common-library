@@ -1,13 +1,14 @@
 package com.hunet.common.tbeg.engine.rendering
 
+import com.hunet.common.tbeg.engine.core.ConditionalFormattingUtils
+import org.apache.poi.ss.usermodel.ConditionalFormattingRule
 import org.apache.poi.ss.usermodel.ConditionType
 import org.apache.poi.ss.usermodel.Footer
 import org.apache.poi.ss.usermodel.Header
+import org.apache.poi.ss.usermodel.SheetConditionalFormatting
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.streaming.SXSSFSheet
 import org.apache.poi.xssf.streaming.SXSSFWorkbook
-import org.apache.poi.xssf.usermodel.XSSFConditionalFormattingRule
-import org.openxmlformats.schemas.spreadsheetml.x2006.main.CTCfRule
 
 /**
  * 시트 레이아웃 적용을 담당하는 프로세서.
@@ -77,25 +78,29 @@ internal class SheetLayoutApplier {
             ?: collectionSizes[overlappingRepeat.collectionName]
             ?: return emptyList()
 
+        // 빈 컬렉션인 경우 건너뜀 (emptyRange 조건부 서식이 별도로 적용됨)
+        if (itemCount == 0) return emptyList()
+
         val templateRowCount = overlappingRepeat.repeatEndRowIndex - overlappingRepeat.templateRowIndex + 1
         val relativeStartRow = range.firstRow - overlappingRepeat.templateRowIndex
         val rowSpan = range.lastRow - range.firstRow
 
         return (0 until itemCount).map { itemIdx ->
-            val newFirstRow = overlappingRepeat.templateRowIndex + (itemIdx * templateRowCount) + relativeStartRow
-            CellRangeAddress(newFirstRow, newFirstRow + rowSpan, range.firstColumn, range.lastColumn)
+            (overlappingRepeat.templateRowIndex + (itemIdx * templateRowCount) + relativeStartRow).let { newFirstRow ->
+                CellRangeAddress(newFirstRow, newFirstRow + rowSpan, range.firstColumn, range.lastColumn)
+            }
         }
     }
 
     /** 반복 영역 외부 범위에 오프셋 적용 */
-    private fun calculateOffsetRange(range: CellRangeAddress, totalRowOffset: Int, maxRepeatEndRow: Int): CellRangeAddress {
-        val offset = if (range.firstRow > maxRepeatEndRow) totalRowOffset else 0
-        return CellRangeAddress(range.firstRow + offset, range.lastRow + offset, range.firstColumn, range.lastColumn)
-    }
+    private fun calculateOffsetRange(range: CellRangeAddress, totalRowOffset: Int, maxRepeatEndRow: Int) =
+        (if (range.firstRow > maxRepeatEndRow) totalRowOffset else 0).let { offset ->
+            CellRangeAddress(range.firstRow + offset, range.lastRow + offset, range.firstColumn, range.lastColumn)
+        }
 
     /** 조건부 서식 규칙 생성 (dxfId 설정 포함) */
     private fun createConditionalFormattingRule(
-        scf: org.apache.poi.ss.usermodel.SheetConditionalFormatting,
+        scf: SheetConditionalFormatting,
         ruleInfo: ConditionalFormattingRuleSpec
     ) = runCatching {
         val rule = when (ruleInfo.conditionType) {
@@ -108,15 +113,59 @@ internal class SheetLayoutApplier {
         rule?.also { if (ruleInfo.dxfId >= 0) setDxfIdViaReflection(it, ruleInfo.dxfId) }
     }.getOrNull()
 
-    /** 리플렉션을 통해 dxfId 설정 (POI API 미지원) */
-    private fun setDxfIdViaReflection(rule: org.apache.poi.ss.usermodel.ConditionalFormattingRule, dxfId: Int) {
-        runCatching {
-            val xssfRule = rule as? XSSFConditionalFormattingRule ?: return
-            val cfRuleField = xssfRule.javaClass.getDeclaredField("_cfRule")
-            cfRuleField.isAccessible = true
-            (cfRuleField.get(xssfRule) as CTCfRule).dxfId = dxfId.toLong()
+    /**
+     * 빈 컬렉션의 emptyRange 조건부 서식을 적용한다.
+     *
+     * repeat 영역이 빈 컬렉션인 경우, repeat 영역의 조건부 서식 대신
+     * emptyRange의 조건부 서식을 적용한다.
+     */
+    fun applyEmptyRangeConditionalFormattings(
+        sheet: SXSSFSheet,
+        repeatRegions: Map<Int, RowSpec.RepeatRow>,
+        collectionSizes: Map<String, Int>,
+        calculator: PositionCalculator
+    ) {
+        val xssfSheet = (sheet.workbook as SXSSFWorkbook).xssfWorkbook.getSheetAt(sheet.workbook.getSheetIndex(sheet))
+        val scf = xssfSheet.sheetConditionalFormatting
+
+        for ((_, repeatRow) in repeatRegions) {
+            // 빈 컬렉션이 아니면 건너뜀
+            val itemCount = collectionSizes[repeatRow.collectionName] ?: continue
+            if (itemCount > 0) continue
+
+            // emptyRangeContent가 없거나 조건부 서식이 없으면 건너뜀
+            val emptyRangeContent = repeatRow.emptyRangeContent ?: continue
+            if (emptyRangeContent.conditionalFormattings.isEmpty()) continue
+
+            // repeat 영역의 실제 위치 계산
+            val expansion = calculator.getExpansionForRegion(
+                repeatRow.collectionName, repeatRow.templateRowIndex, repeatRow.repeatStartCol
+            )
+            val actualStartRow = expansion?.finalStartRow ?: repeatRow.templateRowIndex
+
+            // emptyRange 조건부 서식 적용
+            for (cfSpec in emptyRangeContent.conditionalFormattings) {
+                // 상대 좌표를 실제 좌표로 변환
+                val actualRanges = cfSpec.ranges.map { range ->
+                    CellRangeAddress(
+                        range.firstRow + actualStartRow,
+                        range.lastRow + actualStartRow,
+                        range.firstColumn + repeatRow.repeatStartCol,
+                        range.lastColumn + repeatRow.repeatStartCol
+                    )
+                }.toTypedArray()
+
+                val rules = cfSpec.rules.mapNotNull { createConditionalFormattingRule(scf, it) }.toTypedArray()
+                if (rules.isNotEmpty() && actualRanges.isNotEmpty()) {
+                    scf.addConditionalFormatting(actualRanges, rules)
+                }
+            }
         }
     }
+
+    /** dxfId 설정 (ConditionalFormattingUtils 위임) */
+    private fun setDxfIdViaReflection(rule: ConditionalFormattingRule, dxfId: Int) =
+        ConditionalFormattingUtils.setDxfId(rule, dxfId)
 
     /**
      * 헤더/푸터 설정 적용 (SXSSF 모드용)
@@ -182,7 +231,7 @@ internal class SheetLayoutApplier {
     }
 
     /**
-     * 헤더/푸터 부분 적용 (중복 코드 제거용 헬퍼)
+     * 헤더/푸터 부분 적용
      */
     private fun applyHeaderFooterParts(
         header: Header,
@@ -203,29 +252,26 @@ internal class SheetLayoutApplier {
     /**
      * 헤더/푸터 문자열 조합 (Excel 형식: &L...&C...&R...)
      */
-    private fun buildHeaderFooterString(left: String?, center: String?, right: String?): String? {
-        if (left == null && center == null && right == null) return null
-        val sb = StringBuilder()
-        left?.let { sb.append("&L").append(it) }
-        center?.let { sb.append("&C").append(it) }
-        right?.let { sb.append("&R").append(it) }
-        return sb.toString().takeIf { it.isNotEmpty() }
-    }
+    private fun buildHeaderFooterString(left: String?, center: String?, right: String?) =
+        listOfNotNull(
+            left?.let { "&L$it" },
+            center?.let { "&C$it" },
+            right?.let { "&R$it" }
+        ).takeIf { it.isNotEmpty() }?.joinToString("")
 
     /**
      * 인쇄 설정 적용 (SXSSF 모드용)
      */
-    fun applyPrintSetup(sheet: SXSSFSheet, printSetup: PrintSetupSpec?) {
-        if (printSetup == null) return
-
-        val ps = sheet.printSetup
-        ps.paperSize = printSetup.paperSize
-        ps.landscape = printSetup.landscape
-        ps.fitWidth = printSetup.fitWidth
-        ps.fitHeight = printSetup.fitHeight
-        ps.scale = printSetup.scale
-        ps.headerMargin = printSetup.headerMargin
-        ps.footerMargin = printSetup.footerMargin
+    fun applyPrintSetup(sheet: SXSSFSheet, printSetup: PrintSetupSpec?) = printSetup?.let { setup ->
+        sheet.printSetup.apply {
+            paperSize = setup.paperSize
+            landscape = setup.landscape
+            fitWidth = setup.fitWidth
+            fitHeight = setup.fitHeight
+            scale = setup.scale
+            headerMargin = setup.headerMargin
+            footerMargin = setup.footerMargin
+        }
     }
 
     // ========== PositionCalculator 연동 메서드 ==========

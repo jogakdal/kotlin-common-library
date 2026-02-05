@@ -1,31 +1,33 @@
 # TBEG 설정 옵션 레퍼런스
 
 ## 목차
-1. [ExcelGeneratorConfig](#1-excelgeneratorconfig)
+1. [TbegConfig](#1-excelgeneratorconfig)
 2. [Spring Boot 프로퍼티](#2-spring-boot-프로퍼티)
 3. [Enum 타입](#3-enum-타입)
 4. [프리셋 설정](#4-프리셋-설정)
 
 ---
 
-## 1. ExcelGeneratorConfig
+## 1. TbegConfig
 
 ### 패키지
 ```kotlin
-com.hunet.common.tbeg.ExcelGeneratorConfig
+com.hunet.common.tbeg.TbegConfig
 ```
 
 ### 전체 옵션
 
-| 옵션                        | 타입                    | 기본값                 | 설명                     |
-|---------------------------|-----------------------|---------------------|------------------------|
-| `streamingMode`           | `StreamingMode`       | `ENABLED`           | 스트리밍 모드 설정             |
-| `fileNamingMode`          | `FileNamingMode`      | `TIMESTAMP`         | 파일명 생성 모드              |
-| `timestampFormat`         | `String`              | `"yyyyMMdd_HHmmss"` | 파일명 타임스탬프 형식           |
-| `fileConflictPolicy`      | `FileConflictPolicy`  | `SEQUENCE`          | 파일명 충돌 시 처리 정책         |
-| `progressReportInterval`  | `Int`                 | `100`               | 진행률 콜백 호출 간격 (행 수)     |
-| `preserveTemplateLayout`  | `Boolean`             | `true`              | 템플릿 레이아웃(열 폭, 행 높이) 보존 |
-| `missingDataBehavior`     | `MissingDataBehavior` | `WARN`              | 데이터 누락 시 동작            |
+| 옵션                        | 타입                    | 기본값                 | 설명                       |
+|---------------------------|-----------------------|---------------------|--------------------------|
+| `streamingMode`           | `StreamingMode`       | `ENABLED`           | 스트리밍 모드 설정               |
+| `fileNamingMode`          | `FileNamingMode`      | `TIMESTAMP`         | 파일명 생성 모드                |
+| `timestampFormat`         | `String`              | `"yyyyMMdd_HHmmss"` | 파일명 타임스탬프 형식             |
+| `fileConflictPolicy`      | `FileConflictPolicy`  | `SEQUENCE`          | 파일명 충돌 시 처리 정책           |
+| `progressReportInterval`  | `Int`                 | `100`               | 진행률 콜백 호출 간격 (행 수)       |
+| `preserveTemplateLayout`  | `Boolean`             | `true`              | 템플릿 레이아웃(열 폭, 행 높이) 보존   |
+| `pivotIntegerFormatIndex` | `Short`               | `3`                 | 정수 숫자 서식 인덱스 (`#,##0`)   |
+| `pivotDecimalFormatIndex` | `Short`               | `4`                 | 소수 숫자 서식 인덱스 (`#,##0.00`) |
+| `missingDataBehavior`     | `MissingDataBehavior` | `WARN`              | 데이터 누락 시 동작              |
 
 ---
 
@@ -41,7 +43,7 @@ com.hunet.common.tbeg.ExcelGeneratorConfig
 | `DISABLED` | POI 원본 API 사용, shiftRows 기반 행 삽입 |
 
 ```kotlin
-ExcelGeneratorConfig(streamingMode = StreamingMode.ENABLED)
+TbegConfig(streamingMode = StreamingMode.ENABLED)
 ```
 
 #### fileNamingMode
@@ -54,7 +56,7 @@ ExcelGeneratorConfig(streamingMode = StreamingMode.ENABLED)
 | `TIMESTAMP` | `report_20260115_143052.xlsx` (기본값) |
 
 ```kotlin
-ExcelGeneratorConfig(fileNamingMode = FileNamingMode.NONE)
+TbegConfig(fileNamingMode = FileNamingMode.NONE)
 ```
 
 #### timestampFormat
@@ -62,7 +64,7 @@ ExcelGeneratorConfig(fileNamingMode = FileNamingMode.NONE)
 `fileNamingMode = TIMESTAMP`일 때 사용되는 타임스탬프 형식입니다.
 
 ```kotlin
-ExcelGeneratorConfig(
+TbegConfig(
     fileNamingMode = FileNamingMode.TIMESTAMP,
     timestampFormat = "yyyy-MM-dd_HH-mm"  // report_2026-01-15_14-30.xlsx
 )
@@ -78,7 +80,7 @@ ExcelGeneratorConfig(
 | `SEQUENCE` | 시퀀스 번호 추가: `report_1.xlsx`, `report_2.xlsx` (기본값) |
 
 ```kotlin
-ExcelGeneratorConfig(fileConflictPolicy = FileConflictPolicy.ERROR)
+TbegConfig(fileConflictPolicy = FileConflictPolicy.ERROR)
 ```
 
 #### progressReportInterval
@@ -86,7 +88,7 @@ ExcelGeneratorConfig(fileConflictPolicy = FileConflictPolicy.ERROR)
 비동기 작업에서 `onProgress` 콜백이 호출되는 간격 (행 수)입니다.
 
 ```kotlin
-ExcelGeneratorConfig(progressReportInterval = 500)  // 500행마다 콜백
+TbegConfig(progressReportInterval = 500)  // 500행마다 콜백
 ```
 
 #### preserveTemplateLayout
@@ -94,8 +96,26 @@ ExcelGeneratorConfig(progressReportInterval = 500)  // 500행마다 콜백
 `${repeat(...)}`으로 행이 확장될 때 원본 템플릿의 열 폭과 행 높이를 보존할지 여부입니다.
 
 ```kotlin
-ExcelGeneratorConfig(preserveTemplateLayout = true)
+TbegConfig(preserveTemplateLayout = true)
 ```
+
+#### pivotIntegerFormatIndex / pivotDecimalFormatIndex
+
+자동 숫자 서식에 사용할 Excel 내장 포맷 인덱스입니다. 라이브러리가 생성한 숫자 셀의 표시 형식이 "일반"인 경우 자동으로 적용됩니다.
+
+| 옵션                        | 기본값 | 형식           | 예시 출력      |
+|---------------------------|-----|--------------|------------|
+| `pivotIntegerFormatIndex` | `3` | `#,##0`      | `1,234`    |
+| `pivotDecimalFormatIndex` | `4` | `#,##0.00`   | `1,234.56` |
+
+```kotlin
+TbegConfig(
+    pivotIntegerFormatIndex = 3,   // 정수: #,##0
+    pivotDecimalFormatIndex = 4    // 소수: #,##0.00
+)
+```
+
+> **참고**: Excel 내장 포맷 인덱스는 [Microsoft 문서](https://docs.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.numberingformat)를 참조하세요.
 
 #### missingDataBehavior
 
@@ -107,7 +127,7 @@ ExcelGeneratorConfig(preserveTemplateLayout = true)
 | `THROW` | `MissingTemplateDataException` 예외 발생 |
 
 ```kotlin
-ExcelGeneratorConfig(missingDataBehavior = MissingDataBehavior.THROW)
+TbegConfig(missingDataBehavior = MissingDataBehavior.THROW)
 ```
 
 ---
@@ -117,7 +137,7 @@ ExcelGeneratorConfig(missingDataBehavior = MissingDataBehavior.THROW)
 #### Kotlin - 직접 생성
 
 ```kotlin
-val config = ExcelGeneratorConfig(
+val config = TbegConfig(
     streamingMode = StreamingMode.ENABLED,
     progressReportInterval = 500
 )
@@ -127,7 +147,7 @@ val generator = ExcelGenerator(config)
 #### Java - Builder 사용
 
 ```java
-ExcelGeneratorConfig config = ExcelGeneratorConfig.builder()
+TbegConfig config = TbegConfig.builder()
     .streamingMode(StreamingMode.ENABLED)
     .progressReportInterval(500)
     .build();
@@ -167,21 +187,29 @@ hunet:
     # 템플릿 레이아웃 보존
     preserve-template-layout: true
 
+    # 정수 숫자 서식 인덱스 (기본: 3, #,##0)
+    pivot-integer-format-index: 3
+
+    # 소수 숫자 서식 인덱스 (기본: 4, #,##0.00)
+    pivot-decimal-format-index: 4
+
     # 데이터 누락 시 동작: warn, throw
     missing-data-behavior: warn
 ```
 
 ### 프로퍼티 매핑
 
-| application.yml 키            | ExcelGeneratorConfig 속성   |
-|------------------------------|---------------------------|
-| `streaming-mode`             | `streamingMode`           |
-| `file-naming-mode`           | `fileNamingMode`          |
-| `timestamp-format`           | `timestampFormat`         |
-| `file-conflict-policy`       | `fileConflictPolicy`      |
-| `progress-report-interval`   | `progressReportInterval`  |
-| `preserve-template-layout`   | `preserveTemplateLayout`  |
-| `missing-data-behavior`      | `missingDataBehavior`     |
+| application.yml 키             | TbegConfig 속성    |
+|-------------------------------|----------------------------|
+| `streaming-mode`              | `streamingMode`            |
+| `file-naming-mode`            | `fileNamingMode`           |
+| `timestamp-format`            | `timestampFormat`          |
+| `file-conflict-policy`        | `fileConflictPolicy`       |
+| `progress-report-interval`    | `progressReportInterval`   |
+| `preserve-template-layout`    | `preserveTemplateLayout`   |
+| `pivot-integer-format-index`  | `pivotIntegerFormatIndex`  |
+| `pivot-decimal-format-index`  | `pivotDecimalFormatIndex`  |
+| `missing-data-behavior`       | `missingDataBehavior`      |
 
 ---
 
@@ -252,9 +280,9 @@ enum class MissingDataBehavior {
 기본 설정을 반환합니다.
 
 ```kotlin
-val config = ExcelGeneratorConfig.default()
+val config = TbegConfig.default()
 // 또는
-val config = ExcelGeneratorConfig()
+val config = TbegConfig()
 ```
 
 ### forLargeData()
@@ -262,7 +290,7 @@ val config = ExcelGeneratorConfig()
 대용량 데이터 처리에 최적화된 설정입니다.
 
 ```kotlin
-val config = ExcelGeneratorConfig.forLargeData()
+val config = TbegConfig.forLargeData()
 // streamingMode = ENABLED
 // progressReportInterval = 500
 ```
@@ -272,7 +300,7 @@ val config = ExcelGeneratorConfig.forLargeData()
 소량 데이터 처리에 최적화된 설정입니다.
 
 ```kotlin
-val config = ExcelGeneratorConfig.forSmallData()
+val config = TbegConfig.forSmallData()
 // streamingMode = DISABLED
 ```
 
@@ -283,7 +311,7 @@ val config = ExcelGeneratorConfig.forSmallData()
 ### 대용량 보고서 생성
 
 ```kotlin
-val config = ExcelGeneratorConfig(
+val config = TbegConfig(
     streamingMode = StreamingMode.ENABLED,
     progressReportInterval = 1000
 )
@@ -292,7 +320,7 @@ val config = ExcelGeneratorConfig(
 ### 파일 중복 방지 (오류 발생)
 
 ```kotlin
-val config = ExcelGeneratorConfig(
+val config = TbegConfig(
     fileNamingMode = FileNamingMode.NONE,
     fileConflictPolicy = FileConflictPolicy.ERROR
 )
@@ -301,7 +329,7 @@ val config = ExcelGeneratorConfig(
 ### 커스텀 타임스탬프 형식
 
 ```kotlin
-val config = ExcelGeneratorConfig(
+val config = TbegConfig(
     fileNamingMode = FileNamingMode.TIMESTAMP,
     timestampFormat = "yyyy-MM-dd"  // report_2026-01-15.xlsx
 )
@@ -310,7 +338,7 @@ val config = ExcelGeneratorConfig(
 ### 데이터 누락 시 예외 발생
 
 ```kotlin
-val config = ExcelGeneratorConfig(
+val config = TbegConfig(
     missingDataBehavior = MissingDataBehavior.THROW
 )
 ```

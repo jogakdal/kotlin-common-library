@@ -2,7 +2,7 @@ package com.hunet.common.tbeg.engine.pipeline
 
 import com.hunet.common.tbeg.DocumentMetadata
 import com.hunet.common.tbeg.ExcelDataProvider
-import com.hunet.common.tbeg.ExcelGeneratorConfig
+import com.hunet.common.tbeg.TbegConfig
 import com.hunet.common.tbeg.engine.core.ChartProcessor
 import com.hunet.common.tbeg.engine.core.PivotTableProcessor
 import com.hunet.common.tbeg.engine.rendering.RequiredNames
@@ -21,7 +21,7 @@ import com.hunet.common.tbeg.engine.rendering.RequiredNames
 internal class ProcessingContext(
     val templateBytes: ByteArray,
     val dataProvider: ExcelDataProvider,
-    val config: ExcelGeneratorConfig,
+    val config: TbegConfig,
     val metadata: DocumentMetadata?
 ) {
     /**

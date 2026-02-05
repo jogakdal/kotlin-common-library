@@ -1,6 +1,6 @@
 package com.hunet.common.tbeg.engine.pipeline.processors
 
-import com.hunet.common.tbeg.ExcelGeneratorConfig
+import com.hunet.common.tbeg.TbegConfig
 import com.hunet.common.tbeg.engine.pipeline.ExcelProcessor
 import com.hunet.common.tbeg.engine.pipeline.ProcessingContext
 import com.hunet.common.tbeg.engine.core.toByteArray
@@ -29,7 +29,7 @@ internal class NumberFormatProcessor : ExcelProcessor {
         return context
     }
 
-    private fun applyNumberFormatToNumericCells(bytes: ByteArray, config: ExcelGeneratorConfig): ByteArray {
+    private fun applyNumberFormatToNumericCells(bytes: ByteArray, config: TbegConfig): ByteArray {
         return XSSFWorkbook(ByteArrayInputStream(bytes)).use { workbook ->
             workbook.forEach { sheet ->
                 sheet.forEach { row ->
@@ -62,7 +62,7 @@ internal class NumberFormatProcessor : ExcelProcessor {
         isInteger: Boolean,
         applyNumberFormat: Boolean,
         applyAlignment: Boolean,
-        config: ExcelGeneratorConfig
+        config: TbegConfig
     ): XSSFCellStyle {
         val formatSuffix = when {
             applyNumberFormat -> if (isInteger) "int" else "dec"
@@ -85,7 +85,7 @@ internal class NumberFormatProcessor : ExcelProcessor {
                     }
                 }
                 if (applyAlignment) {
-                    setAlignment(HorizontalAlignment.RIGHT)
+                    alignment = HorizontalAlignment.RIGHT
                 }
             }
         }
