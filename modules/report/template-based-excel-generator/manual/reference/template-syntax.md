@@ -561,5 +561,5 @@ mapOf("startRow" to 5, "endRow" to 10)
 ## 다음 단계
 
 - [API 레퍼런스](./api-reference.md) - 클래스 및 메서드 상세
-- [설정 옵션](./configuration.md) - ExcelGeneratorConfig 옵션
+- [설정 옵션](./configuration.md) - TbegConfig 옵션
 - [기본 예제](../examples/basic-examples.md) - 다양한 사용 예제

@@ -1053,14 +1053,14 @@ fun main() {
 
 ```kotlin
 import com.hunet.common.tbeg.ExcelGenerator
-import com.hunet.common.tbeg.ExcelGeneratorConfig
+import com.hunet.common.tbeg.TbegConfig
 import com.hunet.common.tbeg.StreamingMode
 import com.hunet.common.tbeg.simpleDataProvider
 import java.nio.file.Path
 
 fun main() {
     // 대용량 데이터용 설정
-    val config = ExcelGeneratorConfig(
+    val config = TbegConfig(
         streamingMode = StreamingMode.ENABLED,  // 스트리밍 모드 활성화
         progressReportInterval = 1000           // 1000행마다 진행률 보고
     )

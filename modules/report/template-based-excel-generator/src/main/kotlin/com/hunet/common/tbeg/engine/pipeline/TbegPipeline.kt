@@ -1,14 +1,14 @@
 package com.hunet.common.tbeg.engine.pipeline
 
 /**
- * Excel 처리 파이프라인.
+ * TBEG 처리 파이프라인.
  *
  * 여러 프로세서를 순차적으로 실행하여 Excel 파일을 처리한다.
  * 각 프로세서는 shouldProcess() 결과에 따라 조건부로 실행된다.
  *
  * ## 사용 예시
  * ```kotlin
- * val pipeline = ExcelPipeline(
+ * val pipeline = TbegPipeline(
  *     ChartExtractProcessor(chartProcessor),
  *     PivotExtractProcessor(pivotTableProcessor),
  *     TemplateRenderProcessor(config),
@@ -26,7 +26,7 @@ package com.hunet.common.tbeg.engine.pipeline
  *
  * @property processors 실행할 프로세서 목록 (순서대로 실행)
  */
-internal class ExcelPipeline(private val processors: List<ExcelProcessor>) {
+internal class TbegPipeline(private val processors: List<ExcelProcessor>) {
 
     /**
      * 프로세서들을 가변 인자로 받는 생성자.
@@ -52,8 +52,8 @@ internal class ExcelPipeline(private val processors: List<ExcelProcessor>) {
      * @param processor 추가할 프로세서
      * @return 새 파이프라인
      */
-    fun addProcessor(processor: ExcelProcessor): ExcelPipeline =
-        ExcelPipeline(processors + processor)
+    fun addProcessor(processor: ExcelProcessor): TbegPipeline =
+        TbegPipeline(processors + processor)
 
     /**
      * 파이프라인에 여러 프로세서를 추가한 새 파이프라인을 반환한다.
@@ -61,8 +61,8 @@ internal class ExcelPipeline(private val processors: List<ExcelProcessor>) {
      * @param processors 추가할 프로세서들
      * @return 새 파이프라인
      */
-    fun addProcessors(vararg processors: ExcelProcessor): ExcelPipeline =
-        ExcelPipeline(this.processors + processors.toList())
+    fun addProcessors(vararg processors: ExcelProcessor): TbegPipeline =
+        TbegPipeline(this.processors + processors.toList())
 
     /**
      * 특정 이름의 프로세서를 제외한 새 파이프라인을 반환한다.
@@ -70,6 +70,10 @@ internal class ExcelPipeline(private val processors: List<ExcelProcessor>) {
      * @param name 제외할 프로세서 이름
      * @return 새 파이프라인
      */
-    fun excludeProcessor(name: String): ExcelPipeline =
-        ExcelPipeline(processors.filter { it.name != name })
+    fun excludeProcessor(name: String): TbegPipeline =
+        TbegPipeline(processors.filter { it.name != name })
 }
+
+/** 하위 호환성을 위한 타입 별칭 */
+@Deprecated("TbegPipeline으로 이름이 변경되었습니다.", ReplaceWith("TbegPipeline"))
+internal typealias ExcelPipeline = TbegPipeline

@@ -1,5 +1,9 @@
-package com.hunet.common.tbeg
+package com.hunet.common.tbeg.benchmark
 
+import com.hunet.common.tbeg.ExcelGenerator
+import com.hunet.common.tbeg.TbegConfig
+import com.hunet.common.tbeg.StreamingMode
+import com.hunet.common.tbeg.simpleDataProvider
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -52,7 +56,7 @@ object PerformanceBenchmark {
         println("XSSF (비스트리밍) 모드 - 메모리 제한으로 10,000행까지만")
         println("=" .repeat(60))
 
-        val xssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.DISABLED)
+        val xssfConfig = TbegConfig(streamingMode = StreamingMode.DISABLED)
         ExcelGenerator(xssfConfig).use { generator ->
             for (count in rowCounts.filter { it <= 10_000 }) {
                 runBenchmark(generator, templateBytes, outputDir, count)

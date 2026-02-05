@@ -398,7 +398,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                 PendingCell(
                     columnIndex = repeatRow.repeatStartCol,
                     styleIndex = snapshot.styleIndex,
-                    content = snapshotToContent(snapshot),
+                    content = snapshot.toContent(),
                     height = emptyRangeContent.rowHeights.getOrNull(0),
                     templateRowIndex = repeatRow.templateRowIndex,
                     rowSpec = RowSpec.StaticRow(repeatRow.templateRowIndex, null, emptyList()),
@@ -428,7 +428,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                     PendingCell(
                         columnIndex = colIndex,
                         styleIndex = snapshot.styleIndex,
-                        content = snapshotToContent(snapshot),
+                        content = snapshot.toContent(),
                         height = rowHeight,
                         templateRowIndex = repeatRow.templateRowIndex + rowOffset,
                         rowSpec = RowSpec.StaticRow(repeatRow.templateRowIndex + rowOffset, rowHeight, emptyList()),
@@ -439,14 +439,6 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         }
     }
 
-    /** CellSnapshot을 CellContent로 변환한다 */
-    private fun snapshotToContent(snapshot: CellSnapshot): CellContent = when (snapshot.cellType) {
-        CellType.STRING -> CellContent.StaticString(snapshot.value as? String ?: "")
-        CellType.NUMERIC -> CellContent.StaticNumber(snapshot.value as? Double ?: 0.0)
-        CellType.BOOLEAN -> CellContent.StaticBoolean(snapshot.value as? Boolean ?: false)
-        CellType.FORMULA -> CellContent.Formula(snapshot.formula ?: "")
-        else -> CellContent.Empty
-    }
 
     /** 수집된 pendingRows를 행 순서대로 작성한다 */
     private fun writePendingCells(ctx: RowWriteContext, pendingRows: Map<Int, List<PendingCell>>) {
@@ -654,12 +646,6 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         return EmptyRangeResult(true, rowHeight)
     }
 
-    companion object {
-        // Excel 내장 숫자 형식 인덱스
-        private const val NUMBER_FORMAT_INTEGER: Short = 3  // #,##0
-        private const val NUMBER_FORMAT_DECIMAL: Short = 4  // #,##0.00
-    }
-
     // 숫자 형식 스타일 캐시 (emptyRange 숫자 셀용)
     private val numberStyleCache = mutableMapOf<String, XSSFCellStyle>()
 
@@ -690,21 +676,12 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
 
     /**
      * 원본 스타일을 복제하고 Excel 내장 숫자 형식을 적용한 스타일을 반환한다.
-     * 정수는 인덱스 3 (#,##0), 소수는 인덱스 4 (#,##0.00)를 사용한다.
      */
     private fun getOrCreateNumberStyle(
         workbook: XSSFWorkbook,
         originalStyle: XSSFCellStyle,
         isInteger: Boolean
-    ): XSSFCellStyle {
-        val cacheKey = "${originalStyle.index}_${if (isInteger) "int" else "dec"}"
-        return numberStyleCache.getOrPut(cacheKey) {
-            workbook.createCellStyle().apply {
-                cloneStyleFrom(originalStyle)
-                dataFormat = if (isInteger) NUMBER_FORMAT_INTEGER else NUMBER_FORMAT_DECIMAL
-            }
-        }
-    }
+    ) = getOrCreateNumberStyle(numberStyleCache, workbook, originalStyle, isInteger)
 
     /** 정적 행의 셀을 현재 행에 작성하고 행 높이 반환 */
     private fun writeStaticCellsForRow(

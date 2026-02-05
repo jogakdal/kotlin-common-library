@@ -85,6 +85,7 @@ internal fun toRangeRef(startRow: Int, startCol: Int, endRow: Int, endCol: Int) 
  * 예: "'Sheet1'!A1:C3" -> ("Sheet1", "A1:C3")
  *     "A1:C3" -> (null, "A1:C3")
  *     "'시트 이름'!$A$1:$C$3" -> ("시트 이름", "$A$1:$C$3")
+ *     "빈범위!A1:B2" -> ("빈범위", "A1:B2")
  *
  * @param range 범위 문자열 (시트 참조 포함 가능)
  * @return Pair(시트 이름 또는 null, 시트 참조 제거된 범위)
@@ -96,8 +97,8 @@ internal fun extractSheetReference(range: String): Pair<String?, String> {
         return it.groupValues[1] to it.groupValues[2]
     }
 
-    // 따옴표 없는 시트명!범위 형식 (시트명에 공백/특수문자 없는 경우)
-    val unquotedPattern = Regex("""^(\w+)!(.+)$""")
+    // 따옴표 없는 시트명!범위 형식 (한글 포함 다양한 문자 지원)
+    val unquotedPattern = Regex("""^([^'!]+)!(.+)$""")
     unquotedPattern.find(range)?.let {
         return it.groupValues[1] to it.groupValues[2]
     }

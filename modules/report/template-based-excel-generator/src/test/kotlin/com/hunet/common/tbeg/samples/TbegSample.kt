@@ -1,8 +1,13 @@
-package com.hunet.common.tbeg
+package com.hunet.common.tbeg.samples
 
+import com.hunet.common.tbeg.ExcelGenerator
+import com.hunet.common.tbeg.TbegConfig
+import com.hunet.common.tbeg.SimpleDataProvider
+import com.hunet.common.tbeg.StreamingMode
 import com.hunet.common.tbeg.async.ExcelGenerationListener
 import com.hunet.common.tbeg.async.GenerationResult
 import com.hunet.common.tbeg.exception.FormulaExpansionException
+import com.hunet.common.tbeg.simpleDataProvider
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
@@ -57,7 +62,7 @@ import java.util.concurrent.TimeUnit
  *     timestamp-format: yyyyMMdd_HHmmss
  * ```
  */
-object ExcelGeneratorSample {
+object TbegSample {
 
     // 샘플 데이터 클래스
     data class Employee(val name: String, val position: String, val salary: Int)
@@ -106,7 +111,7 @@ object ExcelGeneratorSample {
         println("XSSF (비스트리밍) 모드")
         println("=" .repeat(60))
 
-        val xssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.DISABLED)
+        val xssfConfig = TbegConfig(streamingMode = StreamingMode.DISABLED)
         ExcelGenerator(xssfConfig).use { generator ->
             // 1. 기본 사용 (Map 기반) - XSSF
             runBasicExample(generator, outputDir, "basic_example_xssf")
@@ -904,14 +909,14 @@ object ExcelGeneratorSample {
     // ==================== 유틸리티 메서드 ====================
 
     private fun loadTemplate() =
-        ExcelGeneratorSample::class.java.getResourceAsStream("/templates/template.xlsx")
+        TbegSample::class.java.getResourceAsStream("/templates/template.xlsx")
             ?: throw IllegalStateException("템플릿 파일을 찾을 수 없습니다: /templates/template.xlsx")
 
     private fun loadImage(fileName: String): ByteArray? =
-        ExcelGeneratorSample::class.java.getResourceAsStream("/$fileName")?.use { it.readBytes() }
+        TbegSample::class.java.getResourceAsStream("/$fileName")?.use { it.readBytes() }
 
     private fun findModuleDir(): Path {
-        val classLocation = ExcelGeneratorSample::class.java.protectionDomain.codeSource?.location
+        val classLocation = TbegSample::class.java.protectionDomain.codeSource?.location
         if (classLocation != null) {
             val classPath = Path.of(classLocation.toURI())
             var current = classPath

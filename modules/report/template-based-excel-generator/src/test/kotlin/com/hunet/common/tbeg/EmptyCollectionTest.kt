@@ -6,6 +6,8 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import java.io.ByteArrayInputStream
 
 /**
@@ -29,37 +31,25 @@ class EmptyCollectionTest {
         generator.close()
     }
 
-    @Test
-    fun `SXSSF mode - empty collection should output one empty repeat unit`() {
-        val sxssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.ENABLED)
-        ExcelGenerator(sxssfConfig).use { sxssfGenerator ->
+    @ParameterizedTest(name = "{0} mode - empty collection should output one empty repeat unit")
+    @EnumSource(StreamingMode::class)
+    fun `empty collection should output one empty repeat unit`(mode: StreamingMode) {
+        val config = TbegConfig(streamingMode = mode)
+        ExcelGenerator(config).use { gen ->
             val template = TestUtils.loadTemplate()
             val emptyProvider = createEmptyCollectionProvider()
 
-            val result = sxssfGenerator.generate(template, emptyProvider)
+            val result = gen.generate(template, emptyProvider)
 
-            verifyEmptyRepeatUnit(result, "SXSSF")
-        }
-    }
-
-    @Test
-    fun `XSSF mode - empty collection should output one empty repeat unit`() {
-        val xssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.DISABLED)
-        ExcelGenerator(xssfConfig).use { xssfGenerator ->
-            val template = TestUtils.loadTemplate()
-            val emptyProvider = createEmptyCollectionProvider()
-
-            val result = xssfGenerator.generate(template, emptyProvider)
-
-            verifyEmptyRepeatUnit(result, "XSSF")
+            verifyEmptyRepeatUnit(result, mode.name)
         }
     }
 
     @Test
     @org.junit.jupiter.api.Disabled("가로 확장 시트에서 SXSSF/XSSF 간 미묘한 차이 존재 - 추후 조사 필요")
     fun `SXSSF and XSSF should produce identical results for empty collection`() {
-        val sxssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.ENABLED)
-        val xssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.DISABLED)
+        val sxssfConfig = TbegConfig(streamingMode = StreamingMode.ENABLED)
+        val xssfConfig = TbegConfig(streamingMode = StreamingMode.DISABLED)
 
         ExcelGenerator(sxssfConfig).use { sxssfGenerator ->
             ExcelGenerator(xssfConfig).use { xssfGenerator ->
@@ -78,7 +68,7 @@ class EmptyCollectionTest {
 
     @Test
     fun `empty collection with count=0 vs count=null should produce identical results`() {
-        val sxssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.ENABLED)
+        val sxssfConfig = TbegConfig(streamingMode = StreamingMode.ENABLED)
         ExcelGenerator(sxssfConfig).use { sxssfGenerator ->
             // count=0을 명시적으로 제공
             val withZeroCount = createEmptyCollectionProvider(provideCount = true)
@@ -229,29 +219,17 @@ class EmptyCollectionTest {
      *
      * 빈 컬렉션일 때 emptyRange에 지정된 내용이 출력되어야 함
      */
-    @Test
-    fun `XSSF mode - emptyRange should display specified content with dedicated template`() {
-        val xssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.DISABLED)
-        ExcelGenerator(xssfConfig).use { xssfGenerator ->
+    @ParameterizedTest(name = "{0} mode - emptyRange should display specified content with dedicated template")
+    @EnumSource(StreamingMode::class)
+    fun `emptyRange should display specified content with dedicated template`(mode: StreamingMode) {
+        val config = TbegConfig(streamingMode = mode)
+        ExcelGenerator(config).use { gen ->
             val template = TestUtils.loadEmptyCollectionTemplate()
             val provider = createEmptyRangeTestProvider()
 
-            val result = xssfGenerator.generate(template, provider)
+            val result = gen.generate(template, provider)
 
-            verifyEmptyRangeResult(result, "XSSF")
-        }
-    }
-
-    @Test
-    fun `SXSSF mode - emptyRange should display specified content with dedicated template`() {
-        val sxssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.ENABLED)
-        ExcelGenerator(sxssfConfig).use { sxssfGenerator ->
-            val template = TestUtils.loadEmptyCollectionTemplate()
-            val provider = createEmptyRangeTestProvider()
-
-            val result = sxssfGenerator.generate(template, provider)
-
-            verifyEmptyRangeResult(result, "SXSSF")
+            verifyEmptyRangeResult(result, mode.name)
         }
     }
 

@@ -15,6 +15,12 @@ data class ParsedMarker(
     val isFormula: Boolean
 ) {
     /**
+     * 파라미터 정의 찾기 (이름 또는 별칭으로)
+     */
+    private fun findParameterDef(paramName: String) =
+        definition.parameters.find { it.name == paramName || paramName in it.aliases }
+
+    /**
      * 파라미터 값 조회 (기본값 적용)
      *
      * @param paramName 파라미터 이름
@@ -24,10 +30,7 @@ data class ParsedMarker(
         // 직접 매칭
         parameters[paramName]?.let { return it }
 
-        // 파라미터 정의 찾기
-        val paramDef = definition.parameters.find {
-            it.name == paramName || paramName in it.aliases
-        }
+        val paramDef = findParameterDef(paramName)
 
         // 별칭으로 검색
         paramDef?.aliases?.forEach { alias ->
@@ -49,17 +52,4 @@ data class ParsedMarker(
         get(paramName) ?: throw IllegalStateException(
             "Required parameter '$paramName' not found in marker '${definition.name}'"
         )
-
-    /**
-     * 파라미터가 존재하는지 확인
-     */
-    fun has(paramName: String): Boolean {
-        if (parameters.containsKey(paramName)) return true
-
-        val paramDef = definition.parameters.find {
-            it.name == paramName || paramName in it.aliases
-        }
-
-        return paramDef?.aliases?.any { parameters.containsKey(it) } == true
-    }
 }

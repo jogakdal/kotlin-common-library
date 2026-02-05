@@ -1,5 +1,6 @@
 package com.hunet.common.tbeg.engine.rendering
 
+import com.hunet.common.tbeg.engine.core.ConditionalFormattingUtils
 import com.hunet.common.tbeg.engine.core.extractSheetReference
 import com.hunet.common.tbeg.engine.core.parseCellRef
 import com.hunet.common.tbeg.engine.rendering.parser.UnifiedMarkerParser
@@ -154,9 +155,24 @@ class TemplateAnalyzer {
      *
      * 템플릿의 조건부 서식을 명세에 저장하여 SXSSF 모드에서 복원할 수 있도록 한다.
      */
-    private fun extractConditionalFormattings(sheet: Sheet): List<ConditionalFormattingSpec> {
-        val xssfSheet = sheet as? XSSFSheet ?: return emptyList()
-        val scf = xssfSheet.sheetConditionalFormatting
+    private fun extractConditionalFormattings(sheet: Sheet) =
+        extractConditionalFormattingsCore(sheet as? XSSFSheet)
+
+    /**
+     * 조건부 서식 추출 핵심 로직
+     *
+     * @param sheet 대상 XSSFSheet (null이면 빈 리스트 반환)
+     * @param rangeFilter 범위 필터 (null이면 모든 범위 포함)
+     * @param transformRange 범위 변환 함수 (null이면 원본 유지)
+     */
+    private fun extractConditionalFormattingsCore(
+        sheet: XSSFSheet?,
+        rangeFilter: ((CellRangeAddress) -> Boolean)? = null,
+        transformRange: ((CellRangeAddress) -> CellRangeAddress)? = null
+    ): List<ConditionalFormattingSpec> {
+        if (sheet == null) return emptyList()
+
+        val scf = sheet.sheetConditionalFormatting
         val count = scf.numConditionalFormattings
 
         if (count == 0) return emptyList()
@@ -166,23 +182,19 @@ class TemplateAnalyzer {
             val ranges = cf.formattingRanges.toList()
             if (ranges.isEmpty()) return@mapNotNull null
 
+            // 범위 필터링 적용
+            val filteredRanges = rangeFilter?.let { filter -> ranges.filter(filter) } ?: ranges
+            if (filteredRanges.isEmpty()) return@mapNotNull null
+
             val rules = (0 until cf.numberOfRules).mapNotNull { ruleIndex ->
                 val rule = cf.getRule(ruleIndex) ?: return@mapNotNull null
-
-                // XSSFConditionalFormattingRule에서 dxfId 추출
-                val dxfId = runCatching {
-                    // ctCfRule.dxfId 접근
-                    val ctRule = rule.javaClass.getDeclaredField("_cfRule").apply { isAccessible = true }.get(rule)
-                    val getDxfId = ctRule.javaClass.getMethod("getDxfId")
-                    (getDxfId.invoke(ctRule) as? Long)?.toInt() ?: -1
-                }.getOrDefault(-1)
 
                 ConditionalFormattingRuleSpec(
                     conditionType = rule.conditionType ?: ConditionType.CELL_VALUE_IS,
                     comparisonOperator = rule.comparisonOperation,
                     formula1 = rule.formula1,
                     formula2 = rule.formula2,
-                    dxfId = dxfId,
+                    dxfId = ConditionalFormattingUtils.extractDxfId(rule),
                     priority = rule.priority,
                     stopIfTrue = rule.stopIfTrue
                 )
@@ -190,8 +202,11 @@ class TemplateAnalyzer {
 
             if (rules.isEmpty()) return@mapNotNull null
 
+            // 범위 변환 적용
+            val finalRanges = transformRange?.let { transform -> filteredRanges.map(transform) } ?: filteredRanges
+
             ConditionalFormattingSpec(
-                ranges = ranges,
+                ranges = finalRanges,
                 rules = rules
             )
         }
@@ -403,48 +418,13 @@ class TemplateAnalyzer {
         sheet: Sheet,
         spec: EmptyRangeSpec
     ): List<ConditionalFormattingSpec> {
-        val xssfSheet = sheet as? XSSFSheet ?: return emptyList()
-        val scf = xssfSheet.sheetConditionalFormatting
-        val count = scf.numConditionalFormattings
-
-        if (count == 0) return emptyList()
-
         val specRange = CellRangeAddress(spec.startRow, spec.endRow, spec.startCol, spec.endCol)
 
-        return (0 until count).mapNotNull { i ->
-            val cf = scf.getConditionalFormattingAt(i) ?: return@mapNotNull null
-            val ranges = cf.formattingRanges.toList()
-            if (ranges.isEmpty()) return@mapNotNull null
-
-            // emptyRange 영역과 겹치는 범위만 필터링
-            val overlappingRanges = ranges.filter { range -> rangesOverlap(range, specRange) }
-            if (overlappingRanges.isEmpty()) return@mapNotNull null
-
-            val rules = (0 until cf.numberOfRules).mapNotNull { ruleIndex ->
-                val rule = cf.getRule(ruleIndex) ?: return@mapNotNull null
-
-                // XSSFConditionalFormattingRule에서 dxfId 추출
-                val dxfId = runCatching {
-                    val ctRule = rule.javaClass.getDeclaredField("_cfRule").apply { isAccessible = true }.get(rule)
-                    val getDxfId = ctRule.javaClass.getMethod("getDxfId")
-                    (getDxfId.invoke(ctRule) as? Long)?.toInt() ?: -1
-                }.getOrDefault(-1)
-
-                ConditionalFormattingRuleSpec(
-                    conditionType = rule.conditionType ?: ConditionType.CELL_VALUE_IS,
-                    comparisonOperator = rule.comparisonOperation,
-                    formula1 = rule.formula1,
-                    formula2 = rule.formula2,
-                    dxfId = dxfId,
-                    priority = rule.priority,
-                    stopIfTrue = rule.stopIfTrue
-                )
-            }
-
-            if (rules.isEmpty()) return@mapNotNull null
-
-            // 상대 좌표로 변환 (emptyRange 시작 기준, 범위 클립)
-            val relativeRanges = overlappingRanges.map { range ->
+        return extractConditionalFormattingsCore(
+            sheet = sheet as? XSSFSheet,
+            rangeFilter = { range -> rangesOverlap(range, specRange) },
+            transformRange = { range ->
+                // 상대 좌표로 변환 (emptyRange 시작 기준, 범위 클립)
                 CellRangeAddress(
                     maxOf(range.firstRow, spec.startRow) - spec.startRow,
                     minOf(range.lastRow, spec.endRow) - spec.startRow,
@@ -452,12 +432,7 @@ class TemplateAnalyzer {
                     minOf(range.lastColumn, spec.endCol) - spec.startCol
                 )
             }
-
-            ConditionalFormattingSpec(
-                ranges = relativeRanges,
-                rules = rules
-            )
-        }
+        )
     }
 
     /** 두 범위가 겹치는지 확인 */

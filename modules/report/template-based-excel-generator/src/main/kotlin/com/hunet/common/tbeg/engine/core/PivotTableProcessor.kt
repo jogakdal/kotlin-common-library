@@ -1,6 +1,6 @@
 package com.hunet.common.tbeg.engine.core
 
-import com.hunet.common.tbeg.ExcelGeneratorConfig
+import com.hunet.common.tbeg.TbegConfig
 import com.hunet.common.logging.commonLogger
 import org.apache.poi.openxml4j.opc.OPCPackage
 import org.apache.poi.openxml4j.opc.PackagePart
@@ -27,7 +27,7 @@ import java.util.zip.ZipOutputStream
  * 피벗 테이블 처리를 담당하는 프로세서.
  */
 internal class PivotTableProcessor(
-    private val config: ExcelGeneratorConfig
+    private val config: TbegConfig
 ) {
     // WeakHashMap 사용: 워크북이 GC되면 캐시 엔트리도 자동 정리
     private val styleCache = WeakHashMap<XSSFWorkbook, MutableMap<String, XSSFCellStyle>>()

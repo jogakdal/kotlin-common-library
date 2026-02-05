@@ -1,5 +1,9 @@
-package com.hunet.common.tbeg
+package com.hunet.common.tbeg.samples
 
+import com.hunet.common.tbeg.ExcelGenerator
+import com.hunet.common.tbeg.TbegConfig
+import com.hunet.common.tbeg.StreamingMode
+import com.hunet.common.tbeg.simpleDataProvider
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -61,7 +65,7 @@ object EmptyCollectionSample {
         println("[${modeName.uppercase()}] 빈 컬렉션 렌더링")
         println("-".repeat(40))
 
-        val config = ExcelGeneratorConfig(streamingMode = streamingMode)
+        val config = TbegConfig(streamingMode = streamingMode)
         ExcelGenerator(config).use { generator ->
             val template = loadEmptyCollectionTemplate()
             val dataProvider = createEmptyCollectionProvider()

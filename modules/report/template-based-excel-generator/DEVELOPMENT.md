@@ -30,7 +30,7 @@
 └─────────────────────────┬───────────────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────────────┐
-│                      ExcelPipeline                          │
+│                      TbegPipeline                           │
 │                                                             │
 │  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐     │
 │  │ChartExtract  │ → │PivotExtract  │ → │TemplateRender│     │
@@ -53,23 +53,23 @@
 
 ### 파이프라인 처리 순서
 
-| 순서 | 프로세서 | 클래스 | 역할 | 실행 조건 |
-|------|---------|--------|------|----------|
-| 1 | ChartExtract | `ChartExtractProcessor` | 차트 정보 추출 및 임시 제거 | SXSSF 모드 |
-| 2 | PivotExtract | `PivotExtractProcessor` | 피벗 테이블 정보 추출 | 항상 |
-| 3 | TemplateRender | `TemplateRenderProcessor` | 템플릿 렌더링 (XSSF/SXSSF 전략) | 항상 |
-| 4 | NumberFormat | `NumberFormatProcessor` | 숫자 서식 자동 적용 | 항상 |
-| 5 | XmlVariableReplace | `XmlVariableReplaceProcessor` | XML 내 변수 치환 | 항상 |
-| 6 | PivotRecreate | `PivotRecreateProcessor` | 피벗 테이블 재생성 | 피벗 존재 시 |
-| 7 | ChartRestore | `ChartRestoreProcessor` | 차트 복원 및 데이터 범위 조정 | 차트 존재 시 |
-| 8 | Metadata | `MetadataProcessor` | 문서 메타데이터 적용 | 항상 |
+| 순서 | 프로세서               | 클래스                           | 역할                      | 실행 조건    |
+|----|--------------------|-------------------------------|-------------------------|----------|
+| 1  | ChartExtract       | `ChartExtractProcessor`       | 차트 정보 추출 및 임시 제거        | SXSSF 모드 |
+| 2  | PivotExtract       | `PivotExtractProcessor`       | 피벗 테이블 정보 추출            | 항상       |
+| 3  | TemplateRender     | `TemplateRenderProcessor`     | 템플릿 렌더링 (XSSF/SXSSF 전략) | 항상       |
+| 4  | NumberFormat       | `NumberFormatProcessor`       | 숫자 서식 자동 적용             | 항상       |
+| 5  | XmlVariableReplace | `XmlVariableReplaceProcessor` | XML 내 변수 치환             | 항상       |
+| 6  | PivotRecreate      | `PivotRecreateProcessor`      | 피벗 테이블 재생성              | 피벗 존재 시  |
+| 7  | ChartRestore       | `ChartRestoreProcessor`       | 차트 복원 및 데이터 범위 조정       | 차트 존재 시  |
+| 8  | Metadata           | `MetadataProcessor`           | 문서 메타데이터 적용             | 항상       |
 
 ### 렌더링 전략 (Strategy Pattern)
 
-| 전략 | 클래스 | 사용 조건 | 특징 |
-|------|--------|----------|------|
-| SXSSF | `SxssfRenderingStrategy` | 스트리밍 모드 (기본값) | 100행 버퍼, 메모리 효율적 |
-| XSSF | `XssfRenderingStrategy` | 비스트리밍 모드 | 전체 메모리 로드, 모든 기능 지원 |
+| 전략    | 클래스                      | 사용 조건         | 특징                  |
+|-------|--------------------------|---------------|---------------------|
+| SXSSF | `SxssfRenderingStrategy` | 스트리밍 모드 (기본값) | 100행 버퍼, 메모리 효율적    |
+| XSSF  | `XssfRenderingStrategy`  | 비스트리밍 모드      | 전체 메모리 로드, 모든 기능 지원 |
 
 ---
 
@@ -80,7 +80,7 @@ src/main/kotlin/com/hunet/common/tbeg/
 ├── ExcelGenerator.kt                       # 메인 진입점 (Public API)
 ├── ExcelDataProvider.kt                    # 데이터 제공 인터페이스
 ├── SimpleDataProvider.kt                   # Map 기반 간단한 DataProvider 구현
-├── ExcelGeneratorConfig.kt                 # 설정 클래스 (Builder 패턴)
+├── TbegConfig.kt                           # 설정 클래스 (Builder 패턴)
 ├── DocumentMetadata.kt                     # 문서 메타데이터
 ├── Enums.kt                                # StreamingMode, FileNamingMode 등 열거형
 │
@@ -98,7 +98,7 @@ src/main/kotlin/com/hunet/common/tbeg/
 │   │   └── ExcelUtils.kt                   # 유틸리티 함수
 │   │
 │   ├── pipeline/                           # 처리 파이프라인
-│   │   ├── ExcelPipeline.kt                # 파이프라인 정의
+│   │   ├── TbegPipeline.kt                 # 파이프라인 정의
 │   │   ├── ExcelProcessor.kt               # 프로세서 인터페이스
 │   │   ├── ProcessingContext.kt            # 처리 컨텍스트
 │   │   └── processors/                     # 개별 프로세서 (8개)
@@ -147,46 +147,46 @@ src/main/kotlin/com/hunet/common/tbeg/
 
 ### Public API
 
-| 클래스 | 역할 |
-|--------|------|
-| `ExcelGenerator` | 메인 진입점. `generate()`, `generateAsync()`, `submit()` 메서드 제공 |
-| `ExcelDataProvider` | 데이터 제공 인터페이스. 컬렉션/이미지 지연 로딩 지원 |
-| `SimpleDataProvider` | Map 기반 간단한 DataProvider 구현. 컬렉션/이미지 지연 로딩 지원 |
-| `ExcelGeneratorConfig` | 설정 옵션 (Builder 패턴) |
-| `DocumentMetadata` | 문서 메타데이터 (제목, 작성자 등) |
+| 클래스                  | 역할                                                         |
+|----------------------|------------------------------------------------------------|
+| `ExcelGenerator`     | 메인 진입점. `generate()`, `generateAsync()`, `submit()` 메서드 제공 |
+| `ExcelDataProvider`  | 데이터 제공 인터페이스. 컬렉션/이미지 지연 로딩 지원                             |
+| `SimpleDataProvider` | Map 기반 간단한 DataProvider 구현. 컬렉션/이미지 지연 로딩 지원               |
+| `TbegConfig`         | 설정 옵션 (Builder 패턴)                                         |
+| `DocumentMetadata`   | 문서 메타데이터 (제목, 작성자 등)                                       |
 
 ### 파이프라인
 
-| 클래스 | 역할 |
-|--------|------|
-| `ExcelPipeline` | 프로세서 체인 관리 및 실행 |
-| `ExcelProcessor` | 프로세서 인터페이스 (`process(context)`) |
-| `ProcessingContext` | 프로세서 간 공유 데이터 (워크북, 확장 정보 등) |
+| 클래스                 | 역할                              |
+|---------------------|---------------------------------|
+| `TbegPipeline`      | 프로세서 체인 관리 및 실행                 |
+| `ExcelProcessor`    | 프로세서 인터페이스 (`process(context)`) |
+| `ProcessingContext` | 프로세서 간 공유 데이터 (워크북, 확장 정보 등)    |
 
 ### 렌더링 엔진
 
-| 클래스 | 역할 |
-|--------|------|
-| `TemplateRenderingEngine` | 렌더링 전략 선택 및 실행 |
-| `TemplateAnalyzer` | 템플릿 분석 (마커 파싱, 정규식 정의) |
-| `WorkbookSpec` | 분석된 템플릿 명세 (SheetSpec, CellSpec) |
-| `PositionCalculator` | repeat 확장 시 셀 위치 계산 |
-| `FormulaAdjuster` | 수식 참조 자동 확장 |
+| 클래스                       | 역할                               |
+|---------------------------|----------------------------------|
+| `TemplateRenderingEngine` | 렌더링 전략 선택 및 실행                   |
+| `TemplateAnalyzer`        | 템플릿 분석 (마커 파싱, 정규식 정의)           |
+| `WorkbookSpec`            | 분석된 템플릿 명세 (SheetSpec, CellSpec) |
+| `PositionCalculator`      | repeat 확장 시 셀 위치 계산              |
+| `FormulaAdjuster`         | 수식 참조 자동 확장                      |
 
 ### 스트리밍 지원
 
-| 클래스 | 역할 |
-|--------|------|
-| `SxssfRenderingStrategy` | SXSSF 기반 스트리밍 렌더링 |
-| `StreamingDataSource` | Iterator 기반 데이터 순차 소비 |
+| 클래스                      | 역할                    |
+|--------------------------|-----------------------|
+| `SxssfRenderingStrategy` | SXSSF 기반 스트리밍 렌더링     |
+| `StreamingDataSource`    | Iterator 기반 데이터 순차 소비 |
 
 ### 비동기 처리
 
-| 클래스 | 역할 |
-|--------|------|
-| `GenerationJob` | 비동기 작업 핸들 (취소, 대기 지원) |
+| 클래스                       | 역할                                          |
+|---------------------------|---------------------------------------------|
+| `GenerationJob`           | 비동기 작업 핸들 (취소, 대기 지원)                       |
 | `ExcelGenerationListener` | 콜백 인터페이스 (onStarted, onCompleted, onFailed) |
-| `GenerationResult` | 생성 결과 DTO |
+| `GenerationResult`        | 생성 결과 DTO                                   |
 
 ---
 
@@ -196,10 +196,10 @@ src/main/kotlin/com/hunet/common/tbeg/
 
 TBEG는 두 가지 형태의 마커를 지원합니다:
 
-| 형태 | 문법 | 위치 | 용도 |
-|------|------|------|------|
-| **텍스트 마커** | `${...}` | 셀 값 | 일반적인 사용 |
-| **수식 마커** | `=TBEG_*(...)` | 셀 수식 | Excel에서 마커가 보이지 않게 |
+| 형태         | 문법             | 위치   | 용도                 |
+|------------|----------------|------|--------------------|
+| **텍스트 마커** | `${...}`       | 셀 값  | 일반적인 사용            |
+| **수식 마커**  | `=TBEG_*(...)` | 셀 수식 | Excel에서 마커가 보이지 않게 |
 
 수식 마커는 Excel에서 `#NAME?` 오류로 표시되지만, 생성 시 올바르게 처리됩니다.
 
@@ -235,13 +235,13 @@ ${repeat(컬렉션, 범위, 변수, RIGHT)}
 
 **파라미터:**
 
-| 파라미터 | 설명 | 예시 |
-|---------|------|------|
-| 컬렉션 | 데이터의 키 이름 | `employees` |
-| 범위 | 반복할 셀 범위 | `A2:C2` |
-| 변수 | 각 아이템을 참조할 변수명 | `emp` |
-| 방향 | DOWN (기본) 또는 RIGHT | `DOWN` |
-| empty | 빈 컬렉션 시 대체 범위 (선택) | `A10:C10` |
+| 파라미터  | 설명                 | 예시          |
+|-------|--------------------|-------------|
+| 컬렉션   | 데이터의 키 이름          | `employees` |
+| 범위    | 반복할 셀 범위           | `A2:C2`     |
+| 변수    | 각 아이템을 참조할 변수명     | `emp`       |
+| 방향    | DOWN (기본) 또는 RIGHT | `DOWN`      |
+| empty | 빈 컬렉션 시 대체 범위 (선택) | `A10:C10`   |
 
 **예시:**
 ```
@@ -277,15 +277,15 @@ ${image(이름, 위치, 크기)}
 
 **크기 옵션:**
 
-| 옵션 | 설명 |
-|------|------|
-| `fit` 또는 `0:0` | 셀/범위 크기에 맞춤 (기본값) |
-| `original` 또는 `-1:-1` | 원본 크기 유지 |
-| `200:150` | 너비 200px, 높이 150px |
-| `200:-1` | 너비 200px, 높이 비율 유지 |
-| `-1:150` | 높이 150px, 너비 비율 유지 |
-| `0:-1` | 셀 너비에 맞춤, 높이 비율 유지 |
-| `-1:0` | 셀 높이에 맞춤, 너비 비율 유지 |
+| 옵션                    | 설명                 |
+|-----------------------|--------------------|
+| `fit` 또는 `0:0`        | 셀/범위 크기에 맞춤 (기본값)  |
+| `original` 또는 `-1:-1` | 원본 크기 유지           |
+| `200:150`             | 너비 200px, 높이 150px |
+| `200:-1`              | 너비 200px, 높이 비율 유지 |
+| `-1:150`              | 높이 150px, 너비 비율 유지 |
+| `0:-1`                | 셀 너비에 맞춤, 높이 비율 유지 |
+| `-1:0`                | 셀 높이에 맞춤, 너비 비율 유지 |
 
 **예시:**
 ```
@@ -345,20 +345,20 @@ parser/
 └── UnifiedMarkerParser.kt    # 통합 파서 (진입점)
 ```
 
-| 클래스 | 역할 |
-|--------|------|
-| `MarkerDefinition` | 마커별 파라미터 정의 (이름, 필수 여부, 기본값, 별칭) |
-| `ParameterParser` | 위치 기반 + 명시적 파라미터 파싱 |
-| `ParsedMarker` | 파싱 결과 (파라미터 Map) |
-| `UnifiedMarkerParser` | 텍스트/수식 마커 감지 및 `CellContent` 변환 |
+| 클래스                   | 역할                               |
+|-----------------------|----------------------------------|
+| `MarkerDefinition`    | 마커별 파라미터 정의 (이름, 필수 여부, 기본값, 별칭) |
+| `ParameterParser`     | 위치 기반 + 명시적 파라미터 파싱              |
+| `ParsedMarker`        | 파싱 결과 (파라미터 Map)                 |
+| `UnifiedMarkerParser` | 텍스트/수식 마커 감지 및 `CellContent` 변환  |
 
 **지원 마커:**
 
-| 마커 | 파라미터 |
-|------|----------|
+| 마커       | 파라미터                                               |
+|----------|----------------------------------------------------|
 | `repeat` | `collection`, `range`, `var`, `direction`, `empty` |
-| `image` | `name`, `position`, `size` |
-| `size` | `collection` |
+| `image`  | `name`, `position`, `size`                         |
+| `size`   | `collection`                                       |
 
 **파라미터 형식:**
 - 위치 기반: `${repeat(employees, A2:C2, emp)}`
@@ -378,22 +378,22 @@ parser/
 
 ### 지원 기능 목록
 
-| 기능 | 설명 | 처리 위치 |
-|------|------|----------|
-| 변수 치환 | 단순 값 바인딩 | `TemplateRenderingEngine` |
-| 중첩 변수 | 객체 속성 접근 | `TemplateRenderingEngine` |
-| 반복 (DOWN) | 행 방향 확장 | `RenderingStrategy` |
-| 반복 (RIGHT) | 열 방향 확장 | `RenderingStrategy` |
-| 빈 컬렉션 처리 | empty 파라미터로 대체 내용 지정 | `RenderingStrategy` |
-| 이미지 삽입 | 동적 이미지 | `ImageInserter` |
-| 차트 | 데이터 범위 자동 확장 | `ChartProcessor` |
-| 피벗 테이블 | 소스 범위 자동 확장 | `PivotTableProcessor` |
-| 수식 확장 | repeat 영역 참조 자동 확장 | `FormulaAdjuster` |
-| 셀 병합 | 위치 자동 조정 | `PositionCalculator` |
-| 조건부 서식 | 범위 자동 조정 | `FormulaAdjuster` |
-| 머리글/바닥글 | 변수 치환 지원 | `XmlVariableProcessor` |
-| 파일 암호화 | 열기 암호 설정 | `ExcelGenerator` |
-| 비동기 처리 | 백그라운드 생성 + 진행률 | `GenerationJob` |
+| 기능         | 설명                   | 처리 위치                     |
+|------------|----------------------|---------------------------|
+| 변수 치환      | 단순 값 바인딩             | `TemplateRenderingEngine` |
+| 중첩 변수      | 객체 속성 접근             | `TemplateRenderingEngine` |
+| 반복 (DOWN)  | 행 방향 확장              | `RenderingStrategy`       |
+| 반복 (RIGHT) | 열 방향 확장              | `RenderingStrategy`       |
+| 빈 컬렉션 처리   | empty 파라미터로 대체 내용 지정 | `RenderingStrategy`       |
+| 이미지 삽입     | 동적 이미지               | `ImageInserter`           |
+| 차트         | 데이터 범위 자동 확장         | `ChartProcessor`          |
+| 피벗 테이블     | 소스 범위 자동 확장          | `PivotTableProcessor`     |
+| 수식 확장      | repeat 영역 참조 자동 확장   | `FormulaAdjuster`         |
+| 셀 병합       | 위치 자동 조정             | `PositionCalculator`      |
+| 조건부 서식     | 범위 자동 조정             | `FormulaAdjuster`         |
+| 머리글/바닥글    | 변수 치환 지원             | `XmlVariableProcessor`    |
+| 파일 암호화     | 열기 암호 설정             | `ExcelGenerator`          |
+| 비동기 처리     | 백그라운드 생성 + 진행률       | `GenerationJob`           |
 
 ---
 
@@ -450,18 +450,18 @@ actualRow 10에서:
 
 #### emptyRange 크기 처리
 
-| emptyRange 크기 | 처리 방식 |
-|----------------|----------|
-| 단일 셀 (더 작음) | 반복 영역 전체를 셀 병합 후 내용 삽입 |
-| 다중 셀 (더 작음) | emptyRange만큼만 출력, 나머지는 빈 셀 |
-| 더 큼 | 반복 영역 크기만큼만 출력, 나머지는 버림 |
+| emptyRange 크기 | 처리 방식                      |
+|---------------|----------------------------|
+| 단일 셀 (더 작음)   | 반복 영역 전체를 셀 병합 후 내용 삽입     |
+| 다중 셀 (더 작음)   | emptyRange만큼만 출력, 나머지는 빈 셀 |
+| 더 큼           | 반복 영역 크기만큼만 출력, 나머지는 버림    |
 
 #### 처리 위치
 
-| 모드 | 처리 함수 |
-|------|----------|
-| XSSF | `XssfRenderingStrategy.writeEmptyRangeContent()` |
-| SXSSF (streaming) | `SxssfRenderingStrategy.writeRepeatCellsForRow()` |
+| 모드                  | 처리 함수                                                    |
+|---------------------|----------------------------------------------------------|
+| XSSF                | `XssfRenderingStrategy.writeEmptyRangeContent()`         |
+| SXSSF (streaming)   | `SxssfRenderingStrategy.writeRepeatCellsForRow()`        |
 | SXSSF (pendingRows) | `SxssfRenderingStrategy.collectEmptyRangeContentCells()` |
 
 ### 2. 메모리 관리 원칙 (SXSSF 모드)
@@ -469,10 +469,10 @@ actualRow 10에서:
 #### 2.1 컬렉션 전체 메모리 로드 금지
 SXSSF 모드에서는 대용량 데이터 처리를 위해 컬렉션 전체를 메모리에 올리지 않습니다.
 
-| 모드 | 메모리 정책 | 이유 |
-|------|------------|------|
+| 모드    | 메모리 정책              | 이유            |
+|-------|---------------------|---------------|
 | SXSSF | 컬렉션 전체를 메모리에 올리지 않음 | 대용량 데이터 처리 목적 |
-| XSSF | 전체 메모리 로드 허용 | 소량 데이터 전용 모드 |
+| XSSF  | 전체 메모리 로드 허용        | 소량 데이터 전용 모드  |
 
 #### 2.2 DataProvider 재호출 방식
 같은 컬렉션이 여러 repeat 영역에서 사용되면 DataProvider를 재호출합니다.
@@ -500,12 +500,12 @@ repeat 영역에 포함된 수식과 범위 참조는 확장량만큼 자동 조
 
 **참조 유형별 처리:**
 
-| 참조 유형 | 처리 방식 |
-|----------|----------|
-| 상대 참조 (`B3`) | repeat 확장에 따라 범위로 확장 |
-| 절대 참조 (`$B$3`) | 확장하지 않음 (고정 위치) |
-| 행 절대 (`B$3`) | DOWN 방향 확장 안 함 |
-| 열 절대 (`$B3`) | RIGHT 방향 확장 안 함 |
+| 참조 유형               | 처리 방식                   |
+|---------------------|-------------------------|
+| 상대 참조 (`B3`)        | repeat 확장에 따라 범위로 확장    |
+| 절대 참조 (`$B$3`)      | 확장하지 않음 (고정 위치)         |
+| 행 절대 (`B$3`)        | DOWN 방향 확장 안 함          |
+| 열 절대 (`$B3`)        | RIGHT 방향 확장 안 함         |
 | 다른 시트 (`Sheet2!B3`) | 해당 시트의 repeat 확장 정보로 처리 |
 
 **다른 시트 참조 처리:**
@@ -542,49 +542,49 @@ repeat 확장에 영향받는 정적 요소(수식, 병합 셀, 조건부 서식
 
 스타일 복사 시 유지해야 하는 속성 목록:
 
-| 속성 | 설명 |
-|------|------|
-| `horizontalAlignment` | 가로 정렬 |
-| `verticalAlignment` | 세로 정렬 |
-| `fontBold` | 굵게 |
-| `fontItalic` | 기울임꼴 |
-| `fontUnderline` | 밑줄 |
-| `fontStrikeout` | 취소선 |
-| `fontName` | 글꼴 이름 |
-| `fontSize` | 글꼴 크기 |
-| `fontColorRgb` | 글꼴 색상 |
-| `fillForegroundColorRgb` | 채우기 색상 |
-| `fillPatternType` | 채우기 패턴 |
-| `borderTop/Bottom/Left/Right` | 테두리 |
-| `dataFormat` | 표시 형식 |
+| 속성                            | 설명     |
+|-------------------------------|--------|
+| `horizontalAlignment`         | 가로 정렬  |
+| `verticalAlignment`           | 세로 정렬  |
+| `fontBold`                    | 굵게     |
+| `fontItalic`                  | 기울임꼴   |
+| `fontUnderline`               | 밑줄     |
+| `fontStrikeout`               | 취소선    |
+| `fontName`                    | 글꼴 이름  |
+| `fontSize`                    | 글꼴 크기  |
+| `fontColorRgb`                | 글꼴 색상  |
+| `fillForegroundColorRgb`      | 채우기 색상 |
+| `fillPatternType`             | 채우기 패턴 |
+| `borderTop/Bottom/Left/Right` | 테두리    |
+| `dataFormat`                  | 표시 형식  |
 
 ---
 
 ## 설정 옵션
 
-### ExcelGeneratorConfig 기본값
+### TbegConfig 기본값
 
-| 옵션 | 기본값 | 설명 |
-|------|--------|------|
-| `streamingMode` | `ENABLED` | ENABLED (SXSSF) / DISABLED (XSSF) |
-| `fileNamingMode` | `TIMESTAMP` | TIMESTAMP / NONE |
-| `timestampFormat` | `"yyyyMMdd_HHmmss"` | DateTimeFormatter 패턴 |
-| `fileConflictPolicy` | `SEQUENCE` | SEQUENCE / ERROR |
-| `progressReportInterval` | `100` | 진행률 보고 간격 (행 수) |
-| `preserveTemplateLayout` | `true` | 템플릿 레이아웃 보존 |
-| `pivotIntegerFormatIndex` | `3` | 정수 포맷 인덱스 (`#,##0`) |
-| `pivotDecimalFormatIndex` | `4` | 소수 포맷 인덱스 (`#,##0.00`) |
-| `missingDataBehavior` | `WARN` | WARN / THROW |
+| 옵션                        | 기본값                 | 설명                                |
+|---------------------------|---------------------|-----------------------------------|
+| `streamingMode`           | `ENABLED`           | ENABLED (SXSSF) / DISABLED (XSSF) |
+| `fileNamingMode`          | `TIMESTAMP`         | TIMESTAMP / NONE                  |
+| `timestampFormat`         | `"yyyyMMdd_HHmmss"` | DateTimeFormatter 패턴              |
+| `fileConflictPolicy`      | `SEQUENCE`          | SEQUENCE / ERROR                  |
+| `progressReportInterval`  | `100`               | 진행률 보고 간격 (행 수)                   |
+| `preserveTemplateLayout`  | `true`              | 템플릿 레이아웃 보존                       |
+| `pivotIntegerFormatIndex` | `3`                 | 정수 포맷 인덱스 (`#,##0`)               |
+| `pivotDecimalFormatIndex` | `4`                 | 소수 포맷 인덱스 (`#,##0.00`)            |
+| `missingDataBehavior`     | `WARN`              | WARN / THROW                      |
 
 ### 프리셋 설정
 
 ```kotlin
 // 대용량 처리 최적화
-ExcelGeneratorConfig.forLargeData()
+TbegConfig.forLargeData()
 // streamingMode = ENABLED, progressReportInterval = 500
 
 // 소량 처리
-ExcelGeneratorConfig.forSmallData()
+TbegConfig.forSmallData()
 // streamingMode = DISABLED
 ```
 
@@ -608,13 +608,13 @@ hunet:
 
 ### SXSSF (스트리밍) 모드
 
-| 항목 | 지원 여부 | 비고 |
-|------|----------|------|
-| 아래 행 참조 수식 | ✅ | repeat 영역 참조 시 자동 확장 |
-| 위쪽 행 참조 수식 | ✅ | 자동 조정됨 |
-| 자동 확장 수식 (SUM 등) | ✅ | 범위 자동 확장 |
-| 차트 | ✅ | Extract/Restore 프로세서로 처리 |
-| 피벗 테이블 | ✅ | Extract/Recreate 프로세서로 처리 |
+| 항목               | 지원 여부 | 비고                        |
+|------------------|-------|---------------------------|
+| 아래 행 참조 수식       | ✅     | repeat 영역 참조 시 자동 확장      |
+| 위쪽 행 참조 수식       | ✅     | 자동 조정됨                    |
+| 자동 확장 수식 (SUM 등) | ✅     | 범위 자동 확장                  |
+| 차트               | ✅     | Extract/Restore 프로세서로 처리  |
+| 피벗 테이블           | ✅     | Extract/Recreate 프로세서로 처리 |
 
 ### 일반 제한사항
 
@@ -624,11 +624,11 @@ hunet:
 
 ### 내부 상수
 
-| 상수 | 값 | 위치 |
-|------|-----|------|
-| SXSSF 버퍼 크기 | 100행 | `SxssfRenderingStrategy.kt:49` |
-| 이미지 마진 | 1px | `ImageInserter.kt` |
-| EMU 변환율 | 9525 EMU/px | `ImageInserter.kt` |
+| 상수          | 값           | 위치                             |
+|-------------|-------------|--------------------------------|
+| SXSSF 버퍼 크기 | 100행        | `SxssfRenderingStrategy.kt:49` |
+| 이미지 마진      | 1px         | `ImageInserter.kt`             |
+| EMU 변환율     | 9525 EMU/px | `ImageInserter.kt`             |
 
 ---
 
@@ -638,18 +638,18 @@ hunet:
 
 동일 스타일 중복 생성을 방지합니다.
 
-| 클래스 | 캐시 | 용도 |
-|--------|------|------|
-| `PivotTableProcessor` | `styleCache` (WeakHashMap) | 피벗 셀 스타일 |
-| `NumberFormatProcessor` | `styleCache` | 숫자 서식 스타일 |
+| 클래스                     | 캐시                         | 용도        |
+|-------------------------|----------------------------|-----------|
+| `PivotTableProcessor`   | `styleCache` (WeakHashMap) | 피벗 셀 스타일  |
+| `NumberFormatProcessor` | `styleCache`               | 숫자 서식 스타일 |
 
 ### 필드 캐싱
 
 리플렉션 성능을 최적화합니다.
 
-| 클래스 | 캐시 | 용도 |
-|--------|------|------|
-| `TemplateRenderingEngine` | `fieldCache` | 필드 정보 |
+| 클래스                       | 캐시            | 용도         |
+|---------------------------|---------------|------------|
+| `TemplateRenderingEngine` | `fieldCache`  | 필드 정보      |
 | `TemplateRenderingEngine` | `getterCache` | getter 메서드 |
 
 ### calcChain 정리
@@ -666,7 +666,7 @@ hunet:
 ### 새 프로세서 추가
 
 1. `ExcelProcessor` 인터페이스 구현
-2. `ExcelPipeline`에 프로세서 등록 (순서 중요)
+2. `TbegPipeline`에 프로세서 등록 (순서 중요)
 
 ```kotlin
 class MyProcessor : ExcelProcessor {
@@ -717,7 +717,7 @@ val NEW_MARKER = MarkerDefinition("newmarker", listOf(
 ```
 src/test/
 ├── kotlin/com/hunet/common/tbeg/
-│   ├── ExcelGeneratorTest.kt           # 통합 테스트
+│   ├── TbegTest.kt                     # 통합 테스트
 │   ├── PerformanceBenchmark.kt         # 성능 벤치마크
 │   ├── engine/
 │   │   ├── rendering/
@@ -727,7 +727,7 @@ src/test/
 │   │   └── ...
 │   └── ...
 └── resources/
-    └── templates/                       # 테스트용 템플릿
+    └── templates/                      # 테스트용 템플릿
         ├── template.xlsx
         ├── simple_template.xlsx
         └── ...
@@ -773,17 +773,17 @@ src/test/
 
 **테스트 환경**: Java 21, macOS, 3개 컬럼 repeat + SUM 수식
 
-| 데이터 크기 | DISABLED (XSSF) | ENABLED (SXSSF) | 속도 향상 |
-|------------|-----------------|-----------------|----------|
-| 1,000행 | 178ms | 146ms | 1.2배 |
-| 10,000행 | 2,081ms | 578ms | **3.6배** |
-| 30,000행 | - | 1,104ms | - |
-| 50,000행 | - | 1,239ms | - |
-| 100,000행 | - | 2,713ms | - |
+| 데이터 크기   | DISABLED (XSSF) | ENABLED (SXSSF) | 속도 향상    |
+|----------|-----------------|-----------------|----------|
+| 1,000행   | 172ms           | 147ms           | 1.2배     |
+| 10,000행  | 1,801ms         | 663ms           | **2.7배** |
+| 30,000행  | -               | 1,057ms         | -        |
+| 50,000행  | -               | 1,202ms         | -        |
+| 100,000행 | -               | 3,154ms         | -        |
 
 ### 타 라이브러리 비교 (30,000행)
 
-| 라이브러리 | 소요 시간 |
-|----------|----------|
-| **TBEG** | **1.1초** |
-| JXLS | 5.2초 |
+| 라이브러리    | 소요 시간    | 비고                                                          |
+|----------|----------|-------------------------------------------------------------|
+| **TBEG** | **1.1초** | 스트리밍 모드                                                     |
+| JXLS     | 5.2초     | [벤치마크 출처](https://github.com/jxlsteam/jxls/discussions/203) |

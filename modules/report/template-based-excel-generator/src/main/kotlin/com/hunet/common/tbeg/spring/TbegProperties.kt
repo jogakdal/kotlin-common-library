@@ -1,6 +1,6 @@
 package com.hunet.common.tbeg.spring
 
-import com.hunet.common.tbeg.ExcelGeneratorConfig
+import com.hunet.common.tbeg.TbegConfig
 import com.hunet.common.tbeg.FileConflictPolicy
 import com.hunet.common.tbeg.FileNamingMode
 import com.hunet.common.tbeg.MissingDataBehavior
@@ -81,9 +81,9 @@ data class TbegProperties(
     var missingDataBehavior: MissingDataBehaviorProperty = MissingDataBehaviorProperty.WARN
 ) {
     /**
-     * ExcelGeneratorConfig로 변환한다.
+     * TbegConfig로 변환한다.
      */
-    fun toConfig(): ExcelGeneratorConfig = ExcelGeneratorConfig(
+    fun toConfig(): TbegConfig = TbegConfig(
         streamingMode = streamingMode.toStreamingMode(),
         fileNamingMode = fileNamingMode.toFileNamingMode(),
         timestampFormat = timestampFormat,

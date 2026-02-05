@@ -1,5 +1,6 @@
 package com.hunet.common.tbeg.engine.rendering
 
+import org.apache.poi.ss.usermodel.CellType
 import org.apache.poi.ss.usermodel.ConditionType
 import org.apache.poi.ss.util.CellRangeAddress
 
@@ -390,16 +391,7 @@ data class EmptyRangeSpec(
     val endRow: Int,
     val startCol: Int,
     val endCol: Int
-) {
-    /** 행 개수 */
-    val rowCount: Int get() = endRow - startRow + 1
-
-    /** 열 개수 */
-    val colCount: Int get() = endCol - startCol + 1
-
-    /** 단일 셀인지 여부 */
-    val isSingleCell: Boolean get() = rowCount == 1 && colCount == 1
-}
+)
 
 /**
  * 빈 컬렉션일 때 표시할 셀 내용 (미리 읽어둔 스냅샷)
@@ -435,8 +427,19 @@ data class EmptyRangeContent(
  */
 data class CellSnapshot(
     val value: Any?,
-    val cellType: org.apache.poi.ss.usermodel.CellType,
+    val cellType: CellType,
     val styleIndex: Short,
     val formula: String?
 )
+
+/**
+ * CellSnapshot을 CellContent로 변환한다.
+ */
+fun CellSnapshot.toContent(): CellContent = when (cellType) {
+    CellType.STRING -> CellContent.StaticString(value as? String ?: "")
+    CellType.NUMERIC -> CellContent.StaticNumber(value as? Double ?: 0.0)
+    CellType.BOOLEAN -> CellContent.StaticBoolean(value as? Boolean ?: false)
+    CellType.FORMULA -> CellContent.Formula(formula ?: "")
+    else -> CellContent.Empty
+}
 

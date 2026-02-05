@@ -21,12 +21,12 @@ com.hunet.common.tbeg.ExcelGenerator
 ### 생성자
 
 ```kotlin
-class ExcelGenerator(config: ExcelGeneratorConfig = ExcelGeneratorConfig())
+class ExcelGenerator(config: TbegConfig = TbegConfig())
 ```
 
 | 파라미터 | 타입 | 기본값 | 설명 |
 |---------|------|--------|------|
-| config | ExcelGeneratorConfig | ExcelGeneratorConfig() | 생성기 설정 |
+| config | TbegConfig | TbegConfig() | 생성기 설정 |
 
 ### 동기 메서드
 
@@ -650,5 +650,5 @@ data class ProgressInfo(
 
 ## 다음 단계
 
-- [설정 옵션](./configuration.md) - ExcelGeneratorConfig 옵션
+- [설정 옵션](./configuration.md) - TbegConfig 옵션
 - [기본 예제](../examples/basic-examples.md) - 다양한 사용 예제

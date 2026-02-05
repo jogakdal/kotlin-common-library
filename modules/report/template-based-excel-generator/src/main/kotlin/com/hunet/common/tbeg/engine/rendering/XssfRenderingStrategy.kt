@@ -1,12 +1,7 @@
 package com.hunet.common.tbeg.engine.rendering
 
 import com.hunet.common.tbeg.engine.core.*
-import org.apache.poi.ss.formula.FormulaParseException
-import org.apache.poi.ss.usermodel.Cell
-import org.apache.poi.ss.usermodel.CellType
-import org.apache.poi.ss.usermodel.ConditionType
-import org.apache.poi.ss.usermodel.Sheet
-import org.apache.poi.ss.usermodel.Workbook
+import org.apache.poi.ss.usermodel.*
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.XSSFCell
 import org.apache.poi.xssf.usermodel.XSSFCellStyle
@@ -36,10 +31,6 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         // TBEG_SIZE는 수식을 문자열로 변환하여 변수 치환 단계에서 처리
         private val FORMULA_MARKER_PATTERN = Regex("""TBEG_(REPEAT|IMAGE)\s*\(""", RegexOption.IGNORE_CASE)
         private val SIZE_MARKER_PATTERN = Regex("""TBEG_SIZE\s*\(""", RegexOption.IGNORE_CASE)
-
-        // Excel 내장 숫자 형식 인덱스
-        private const val NUMBER_FORMAT_INTEGER: Short = 3  // #,##0
-        private const val NUMBER_FORMAT_DECIMAL: Short = 4  // #,##0.00
     }
 
     /** repeat 영역을 고유하게 식별하기 위한 키 (같은 collection이 여러 위치에서 사용될 때) */
@@ -441,11 +432,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
                     val isEmpty = rawItems.isEmpty()
                     // 빈 컬렉션이면 최소 1개 반복 단위(빈 행/열)를 위해 null 아이템 추가
                     val items: Collection<Any?> = rawItems.ifEmpty { listOf(null) }
-                    val templateRowCount = rowSpec.repeatEndRowIndex - rowSpec.templateRowIndex + 1
                     val repeatKey = RepeatKey(rowSpec.collectionName, rowSpec.templateRowIndex, rowSpec.repeatStartCol)
-                    val expansion = calculator.getExpansionForRegion(
-                        rowSpec.collectionName, rowSpec.templateRowIndex, rowSpec.repeatStartCol
-                    )
 
                     when (rowSpec.direction) {
                         RepeatDirection.DOWN -> {
@@ -520,10 +507,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
 
             // Formula 셀의 경우 수식 확장 처리 (repeat 영역을 참조하는 수식)
             if (cellSpec.content is CellContent.Formula) {
-                processFormulaXssf(
-                    cell, cellSpec.content as CellContent.Formula, data,
-                    calculator, repeatRegions
-                )
+                processFormulaXssf(cell, cellSpec.content, data, calculator, repeatRegions)
             } else {
                 processCellContentXssf(
                     cell, cellSpec.content, data, sheetIndex, imageLocations, context,
@@ -926,7 +910,6 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         endCol: Int
     ) {
         val scf = sheet.sheetConditionalFormatting
-        val targetRange = CellRangeAddress(startRow, endRow, startCol, endCol)
 
         // 역순으로 삭제 (인덱스 변경 방지)
         val indicesToRemove = (0 until scf.numConditionalFormattings).filter { i ->
@@ -979,9 +962,9 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
      * ConditionalFormattingRuleSpec에서 규칙을 생성한다.
      */
     private fun createConditionalFormattingRule(
-        scf: org.apache.poi.ss.usermodel.SheetConditionalFormatting,
+        scf: SheetConditionalFormatting,
         ruleSpec: ConditionalFormattingRuleSpec
-    ): org.apache.poi.ss.usermodel.ConditionalFormattingRule? {
+    ): ConditionalFormattingRule? {
         return try {
             val rule = when (ruleSpec.conditionType) {
                 ConditionType.CELL_VALUE_IS -> scf.createConditionalFormattingRule(
@@ -1003,7 +986,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
             }
 
             rule
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
@@ -1038,27 +1021,15 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         }
     }
 
-    /**
-     * 숫자 형식 스타일 캐시.
-     * 캐시 키: "원본스타일인덱스_int" 또는 "원본스타일인덱스_dec"
-     */
+    // 숫자 형식 스타일 캐시 (emptyRange 숫자 셀용)
     private val numberStyleCache = mutableMapOf<String, XSSFCellStyle>()
 
     /**
      * 원본 스타일을 복제하고 Excel 내장 숫자 형식을 적용한 스타일을 반환한다.
-     * 정수는 인덱스 3 (#,##0), 소수는 인덱스 4 (#,##0.00)를 사용한다.
      */
     private fun getOrCreateNumberStyle(
         workbook: XSSFWorkbook,
         originalStyle: XSSFCellStyle,
         isInteger: Boolean
-    ): XSSFCellStyle {
-        val cacheKey = "${originalStyle.index}_${if (isInteger) "int" else "dec"}"
-        return numberStyleCache.getOrPut(cacheKey) {
-            workbook.createCellStyle().apply {
-                cloneStyleFrom(originalStyle)
-                dataFormat = if (isInteger) NUMBER_FORMAT_INTEGER else NUMBER_FORMAT_DECIMAL
-            }
-        }
-    }
+    ) = getOrCreateNumberStyle(numberStyleCache, workbook, originalStyle, isInteger)
 }

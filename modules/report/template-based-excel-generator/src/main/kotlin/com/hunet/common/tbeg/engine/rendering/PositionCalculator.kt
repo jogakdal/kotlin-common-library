@@ -67,10 +67,7 @@ class PositionCalculator(
         val rowExpansion: Int,
         val colExpansion: Int,
         val itemCount: Int
-    ) {
-        /** 이 repeat의 확장된 최종 끝 행 */
-        val finalEndRow: Int get() = finalStartRow + (region.endRow - region.startRow) + rowExpansion
-    }
+    )
 
     private val expansions = mutableListOf<RepeatExpansion>()
     private var calculated = false

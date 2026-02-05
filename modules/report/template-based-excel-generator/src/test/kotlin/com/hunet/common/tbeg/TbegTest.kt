@@ -17,7 +17,7 @@ import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-class ExcelGeneratorTest {
+class TbegTest {
 
     private lateinit var generator: ExcelGenerator
 
@@ -80,16 +80,16 @@ class ExcelGeneratorTest {
     }
 
     @Test
-    fun `ExcelGeneratorConfig default should have expected values`() {
-        val config = ExcelGeneratorConfig.default()
+    fun `TbegConfig default should have expected values`() {
+        val config = TbegConfig.default()
 
         assertEquals(StreamingMode.ENABLED, config.streamingMode)
         assertEquals("yyyyMMdd_HHmmss", config.timestampFormat)
     }
 
     @Test
-    fun `ExcelGeneratorConfig forLargeData should use streaming mode`() {
-        val config = ExcelGeneratorConfig.forLargeData()
+    fun `TbegConfig forLargeData should use streaming mode`() {
+        val config = TbegConfig.forLargeData()
 
         assertEquals(StreamingMode.ENABLED, config.streamingMode)
     }
@@ -640,7 +640,7 @@ class ExcelGeneratorTest {
 
     @Test
     fun `FileNamingMode NONE should create file without timestamp`() {
-        val config = ExcelGeneratorConfig(fileNamingMode = FileNamingMode.NONE)
+        val config = TbegConfig(fileNamingMode = FileNamingMode.NONE)
         ExcelGenerator(config).use { gen ->
             val template = loadTemplate()
             val data = createTestData()
@@ -659,7 +659,7 @@ class ExcelGeneratorTest {
 
     @Test
     fun `FileNamingMode TIMESTAMP should create file with timestamp`() {
-        val config = ExcelGeneratorConfig(fileNamingMode = FileNamingMode.TIMESTAMP)
+        val config = TbegConfig(fileNamingMode = FileNamingMode.TIMESTAMP)
         ExcelGenerator(config).use { gen ->
             val template = loadTemplate()
             val data = createTestData()
@@ -679,7 +679,7 @@ class ExcelGeneratorTest {
 
     @Test
     fun `FileConflictPolicy ERROR should throw exception when file exists`() {
-        val config = ExcelGeneratorConfig(
+        val config = TbegConfig(
             fileNamingMode = FileNamingMode.NONE,
             fileConflictPolicy = FileConflictPolicy.ERROR
         )
@@ -705,7 +705,7 @@ class ExcelGeneratorTest {
 
     @Test
     fun `FileConflictPolicy SEQUENCE should add sequence number when file exists`() {
-        val config = ExcelGeneratorConfig(
+        val config = TbegConfig(
             fileNamingMode = FileNamingMode.NONE,
             fileConflictPolicy = FileConflictPolicy.SEQUENCE
         )
@@ -749,7 +749,7 @@ class ExcelGeneratorTest {
 
     @Test
     fun `FileConflictPolicy SEQUENCE with TIMESTAMP should add sequence after timestamp`() {
-        val config = ExcelGeneratorConfig(
+        val config = TbegConfig(
             fileNamingMode = FileNamingMode.TIMESTAMP,
             fileConflictPolicy = FileConflictPolicy.SEQUENCE,
             timestampFormat = "yyyyMMdd"  // 날짜만 사용하여 충돌 유발
@@ -786,7 +786,7 @@ class ExcelGeneratorTest {
 
     @Test
     fun `MissingDataBehavior WARN should not throw exception when data is missing`() {
-        val config = ExcelGeneratorConfig(missingDataBehavior = MissingDataBehavior.WARN)
+        val config = TbegConfig(missingDataBehavior = MissingDataBehavior.WARN)
         ExcelGenerator(config).use { gen ->
             val template = loadTemplate()
             // 일부 데이터만 제공
@@ -804,7 +804,7 @@ class ExcelGeneratorTest {
 
     @Test
     fun `MissingDataBehavior THROW should throw MissingTemplateDataException when data is missing`() {
-        val config = ExcelGeneratorConfig(missingDataBehavior = MissingDataBehavior.THROW)
+        val config = TbegConfig(missingDataBehavior = MissingDataBehavior.THROW)
         ExcelGenerator(config).use { gen ->
             val template = loadTemplate()
             // 일부 데이터만 제공
@@ -825,7 +825,7 @@ class ExcelGeneratorTest {
 
     @Test
     fun `MissingTemplateDataException should contain correct missing data info`() {
-        val config = ExcelGeneratorConfig(missingDataBehavior = MissingDataBehavior.THROW)
+        val config = TbegConfig(missingDataBehavior = MissingDataBehavior.THROW)
         ExcelGenerator(config).use { gen ->
             val template = loadTemplate()
             // employees만 제공 (title, date 누락)
@@ -844,7 +844,7 @@ class ExcelGeneratorTest {
 
     @Test
     fun `MissingDataBehavior THROW should not throw when all required data is provided`() {
-        val config = ExcelGeneratorConfig(missingDataBehavior = MissingDataBehavior.THROW)
+        val config = TbegConfig(missingDataBehavior = MissingDataBehavior.THROW)
         ExcelGenerator(config).use { gen ->
             val template = loadTemplate()
 
@@ -870,22 +870,22 @@ class ExcelGeneratorTest {
     }
 
     @Test
-    fun `ExcelGeneratorConfig should have WARN as default missingDataBehavior`() {
-        val config = ExcelGeneratorConfig.default()
+    fun `TbegConfig should have WARN as default missingDataBehavior`() {
+        val config = TbegConfig.default()
         assertEquals(MissingDataBehavior.WARN, config.missingDataBehavior)
     }
 
     @Test
-    fun `ExcelGeneratorConfig Builder should support missingDataBehavior`() {
-        val config = ExcelGeneratorConfig.builder()
+    fun `TbegConfig Builder should support missingDataBehavior`() {
+        val config = TbegConfig.builder()
             .missingDataBehavior(MissingDataBehavior.THROW)
             .build()
         assertEquals(MissingDataBehavior.THROW, config.missingDataBehavior)
     }
 
     @Test
-    fun `ExcelGeneratorConfig withMissingDataBehavior should return new instance`() {
-        val original = ExcelGeneratorConfig.default()
+    fun `TbegConfig withMissingDataBehavior should return new instance`() {
+        val original = TbegConfig.default()
         val modified = original.withMissingDataBehavior(MissingDataBehavior.THROW)
 
         assertEquals(MissingDataBehavior.WARN, original.missingDataBehavior)
