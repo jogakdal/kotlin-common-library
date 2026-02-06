@@ -7,6 +7,7 @@
 - TBEG 매뉴얼: [modules/report/template-based-excel-generator/manual/index.md](modules/report/template-based-excel-generator/manual/index.md)
 
 ## 주요 모듈
+- **common-bom** - 버전 관리용 BOM (Bill of Materials)
 - common-core
 - standard-api-response
 - std-api-annotations
@@ -55,6 +56,28 @@
 - (tests/examples) `com.hunet.common.tbeg.spring` : Spring Boot 샘플
 
 ## 빠른 의존성 예 (Gradle Kotlin DSL)
+
+### BOM 사용 (권장)
+
+BOM(Bill of Materials)을 사용하면 모든 모듈의 버전을 한 곳에서 관리할 수 있습니다.
+
+```kotlin
+dependencies {
+    // BOM 임포트 - 호환되는 버전 조합 자동 적용
+    implementation(platform("com.hunet.common:common-bom:2026.1.0-SNAPSHOT"))
+
+    // 개별 모듈은 버전 없이 추가
+    implementation("com.hunet.common:common-core")
+    implementation("com.hunet.common:standard-api-response")
+    implementation("com.hunet.common:tbeg")
+    testImplementation("com.hunet.common:test-support")
+}
+```
+
+### 개별 버전 지정
+
+각 모듈의 버전을 직접 지정할 수도 있습니다.
+
 ```kotlin
 dependencies {
     implementation("com.hunet.common:common-core:<version>")
@@ -70,7 +93,19 @@ dependencies {
 `<version>` 값은 모듈별로 상이할 수 있으며 아래 "모듈 버전 관리" 참고.
 
 ## 모듈 버전 관리
+
+### BOM 버전 (릴리스 트레인)
+
+BOM은 릴리스 트레인 방식으로 버전을 관리합니다. 연도와 릴리스 번호로 구성됩니다.
+
+```properties
+moduleVersion.common-bom=2026.1.0-SNAPSHOT  # 2026년 첫 번째 릴리스
+```
+
+### 개별 모듈 버전
+
 `gradle.properties`에서 각 모듈별 override 속성을 통해 버전을 개별 관리합니다.
+
 ```properties
 moduleVersion.common-core=1.2.1-SNAPSHOT
 moduleVersion.standard-api-response=1.3.1-SNAPSHOT
@@ -79,7 +114,7 @@ moduleVersion.apidoc-core=1.1.0-SNAPSHOT
 moduleVersion.apidoc-annotations=1.1.0-SNAPSHOT
 moduleVersion.jpa-repository-extension=1.2.0-SNAPSHOT
 moduleVersion.test-support=1.1.1-SNAPSHOT
-moduleVersion.tbeg=1.0.0-SNAPSHOT
+moduleVersion.tbeg=1.1.0-SNAPSHOT
 ```
 - 루트 `version` (예: 1.1.0-SNAPSHOT)이 기본이며, 존재하는 `moduleVersion.*` 키가 우선 적용됩니다.
 

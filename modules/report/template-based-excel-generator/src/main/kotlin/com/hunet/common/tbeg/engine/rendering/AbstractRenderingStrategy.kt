@@ -5,6 +5,7 @@ import com.hunet.common.tbeg.engine.core.parseCellRef
 import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.Sheet
 import org.apache.poi.ss.usermodel.Workbook
+import org.apache.poi.xssf.usermodel.XSSFCellStyle
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 
 /**
@@ -300,6 +301,38 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
             val ctCalcChain = chain.ctCalcChain
             while (ctCalcChain.sizeOfCArray() > 0) {
                 ctCalcChain.removeC(0)
+            }
+        }
+    }
+
+    // ========== 숫자 형식 스타일 유틸리티 ==========
+
+    companion object {
+        // Excel 내장 숫자 형식 인덱스
+        protected const val NUMBER_FORMAT_INTEGER: Short = 3  // #,##0
+        protected const val NUMBER_FORMAT_DECIMAL: Short = 4  // #,##0.00
+    }
+
+    /**
+     * 원본 스타일을 복제하고 Excel 내장 숫자 형식을 적용한 스타일을 반환한다.
+     * 정수는 인덱스 3 (#,##0), 소수는 인덱스 4 (#,##0.00)를 사용한다.
+     *
+     * @param cache 스타일 캐시 맵 (키: "원본스타일인덱스_int" 또는 "원본스타일인덱스_dec")
+     * @param workbook 워크북
+     * @param originalStyle 원본 스타일
+     * @param isInteger 정수 여부
+     */
+    protected fun getOrCreateNumberStyle(
+        cache: MutableMap<String, XSSFCellStyle>,
+        workbook: XSSFWorkbook,
+        originalStyle: XSSFCellStyle,
+        isInteger: Boolean
+    ): XSSFCellStyle {
+        val cacheKey = "${originalStyle.index}_${if (isInteger) "int" else "dec"}"
+        return cache.getOrPut(cacheKey) {
+            workbook.createCellStyle().apply {
+                cloneStyleFrom(originalStyle)
+                dataFormat = if (isInteger) NUMBER_FORMAT_INTEGER else NUMBER_FORMAT_DECIMAL
             }
         }
     }

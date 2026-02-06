@@ -51,15 +51,17 @@ internal fun Int.toColumnLetter(): String = buildString {
 internal fun toColumnLetter(index: Int) = index.toColumnLetter()
 
 /**
- * 셀 참조 문자열을 파싱한다.
+ * 셀 참조 문자열을 파싱한다. (절대 좌표 $도 지원)
  * 예: "B5" -> (row=4, col=1)
+ *     "$B$5" -> (row=4, col=1)  // $ 기호는 무시
  *
- * @param ref 셀 참조 문자열 (예: "A1", "B5", "AA100")
+ * @param ref 셀 참조 문자열 (예: "A1", "$B$5", "AA100")
  * @return Pair(행 인덱스, 열 인덱스) - 0-based
  */
 internal fun parseCellRef(ref: String): Pair<Int, Int> {
-    val colPart = ref.takeWhile(Char::isLetter).uppercase()
-    val rowPart = ref.dropWhile(Char::isLetter)
+    val cleaned = ref.replace("$", "")  // 절대 좌표 기호 제거
+    val colPart = cleaned.takeWhile(Char::isLetter).uppercase()
+    val rowPart = cleaned.dropWhile(Char::isLetter)
     val col = colPart.toColumnIndex()
     val row = rowPart.toInt() - 1
     return row to col
@@ -77,6 +79,32 @@ internal fun toCellRef(row: Int, col: Int) = "${col.toColumnLetter()}${row + 1}"
  */
 internal fun toRangeRef(startRow: Int, startCol: Int, endRow: Int, endCol: Int) =
     "${toCellRef(startRow, startCol)}:${toCellRef(endRow, endCol)}"
+
+/**
+ * 범위 문자열에서 시트 참조를 분리한다.
+ * 예: "'Sheet1'!A1:C3" -> ("Sheet1", "A1:C3")
+ *     "A1:C3" -> (null, "A1:C3")
+ *     "'시트 이름'!$A$1:$C$3" -> ("시트 이름", "$A$1:$C$3")
+ *     "빈범위!A1:B2" -> ("빈범위", "A1:B2")
+ *
+ * @param range 범위 문자열 (시트 참조 포함 가능)
+ * @return Pair(시트 이름 또는 null, 시트 참조 제거된 범위)
+ */
+internal fun extractSheetReference(range: String): Pair<String?, String> {
+    // 작은따옴표로 감싼 시트명!범위 형식
+    val quotedPattern = Regex("""^'([^']+)'!(.+)$""")
+    quotedPattern.find(range)?.let {
+        return it.groupValues[1] to it.groupValues[2]
+    }
+
+    // 따옴표 없는 시트명!범위 형식 (한글 포함 다양한 문자 지원)
+    val unquotedPattern = Regex("""^([^'!]+)!(.+)$""")
+    unquotedPattern.find(range)?.let {
+        return it.groupValues[1] to it.groupValues[2]
+    }
+
+    return null to range
+}
 
 // ========== XML 유틸리티 ==========
 

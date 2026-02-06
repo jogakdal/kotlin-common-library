@@ -1,5 +1,8 @@
-package com.hunet.common.tbeg;
+package com.hunet.common.tbeg.samples;
 
+import com.hunet.common.tbeg.DocumentMetadata;
+import com.hunet.common.tbeg.ExcelGenerator;
+import com.hunet.common.tbeg.SimpleDataProvider;
 import com.hunet.common.tbeg.async.ExcelGenerationListener;
 import com.hunet.common.tbeg.async.GenerationJob;
 import com.hunet.common.tbeg.async.GenerationResult;
@@ -61,7 +64,7 @@ import java.util.concurrent.TimeUnit;
  * }
  * }</pre>
  */
-public class ExcelGeneratorJavaSample {
+public class TbegJavaSample {
 
     /**
      * 샘플 데이터 클래스 (Employee).
@@ -716,7 +719,7 @@ public class ExcelGeneratorJavaSample {
     // ==================== 유틸리티 메서드 ====================
 
     private static InputStream loadTemplate() {
-        InputStream stream = ExcelGeneratorJavaSample.class.getResourceAsStream("/templates/template.xlsx");
+        InputStream stream = TbegJavaSample.class.getResourceAsStream("/templates/template.xlsx");
         if (stream == null) {
             throw new IllegalStateException("템플릿 파일을 찾을 수 없습니다: /templates/template.xlsx");
         }
@@ -724,7 +727,7 @@ public class ExcelGeneratorJavaSample {
     }
 
     private static byte @Nullable [] loadImage(String fileName) {
-        try (InputStream stream = ExcelGeneratorJavaSample.class.getResourceAsStream("/" + fileName)) {
+        try (InputStream stream = TbegJavaSample.class.getResourceAsStream("/" + fileName)) {
             if (stream == null) return null;
             return stream.readAllBytes();
         } catch (IOException e) {
@@ -734,7 +737,7 @@ public class ExcelGeneratorJavaSample {
 
     private static Path findModuleDir() {
         try {
-            CodeSource classLocation = ExcelGeneratorJavaSample.class.getProtectionDomain().getCodeSource();
+            CodeSource classLocation = TbegJavaSample.class.getProtectionDomain().getCodeSource();
             if (classLocation != null) {
                 Path current = Path.of(classLocation.getLocation().toURI());
                 while (current.getParent() != null) {

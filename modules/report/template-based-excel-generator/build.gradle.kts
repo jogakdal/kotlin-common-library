@@ -47,7 +47,7 @@ tasks.register<JavaExec>("runSample") {
     group = "application"
     description = "TBEG (Template Based Excel Generator) Kotlin 샘플 실행"
     classpath = sourceSets["test"].runtimeClasspath
-    mainClass.set("com.hunet.common.tbeg.ExcelGeneratorSample")
+    mainClass.set("com.hunet.common.tbeg.samples.TbegSample")
 }
 
 // 샘플 실행 태스크 (Java)
@@ -55,7 +55,7 @@ tasks.register<JavaExec>("runJavaSample") {
     group = "application"
     description = "TBEG (Template Based Excel Generator) Java 샘플 실행"
     classpath = sourceSets["test"].runtimeClasspath
-    mainClass.set("com.hunet.common.tbeg.ExcelGeneratorJavaSample")
+    mainClass.set("com.hunet.common.tbeg.samples.TbegJavaSample")
 }
 
 // Spring Boot 샘플 실행 태스크 (Kotlin)
@@ -63,7 +63,7 @@ tasks.register<JavaExec>("runSpringBootSample") {
     group = "application"
     description = "TBEG Spring Boot Kotlin 샘플 실행"
     classpath = sourceSets["test"].runtimeClasspath
-    mainClass.set("com.hunet.common.tbeg.spring.TbegSpringBootSample")
+    mainClass.set("com.hunet.common.tbeg.samples.TbegSpringBootSample")
 }
 
 // Spring Boot 샘플 실행 태스크 (Java)
@@ -71,7 +71,7 @@ tasks.register<JavaExec>("runSpringBootJavaSample") {
     group = "application"
     description = "TBEG Spring Boot Java 샘플 실행"
     classpath = sourceSets["test"].runtimeClasspath
-    mainClass.set("com.hunet.common.tbeg.spring.TbegSpringBootJavaSample")
+    mainClass.set("com.hunet.common.tbeg.samples.TbegSpringBootJavaSample")
 }
 
 // TemplateRenderingEngine 샘플 실행 태스크
@@ -79,7 +79,7 @@ tasks.register<JavaExec>("runRenderingEngineSample") {
     group = "application"
     description = "TemplateRenderingEngine 샘플 실행"
     classpath = sourceSets["test"].runtimeClasspath
-    mainClass.set("com.hunet.common.tbeg.TemplateRenderingEngineSample")
+    mainClass.set("com.hunet.common.tbeg.samples.TemplateRenderingEngineSample")
 }
 
 // 다중 Repeat 영역 샘플 실행 태스크
@@ -95,8 +95,16 @@ tasks.register<JavaExec>("runBenchmark") {
     group = "application"
     description = "TBEG 성능 벤치마크 실행"
     classpath = sourceSets["test"].runtimeClasspath
-    mainClass.set("com.hunet.common.tbeg.PerformanceBenchmark")
+    mainClass.set("com.hunet.common.tbeg.benchmark.PerformanceBenchmark")
     maxHeapSize = "2g"
+}
+
+// 빈 컬렉션 + emptyRange 샘플 실행 태스크
+tasks.register<JavaExec>("runEmptyCollectionSample") {
+    group = "application"
+    description = "빈 컬렉션 + emptyRange 기능 샘플 실행"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.hunet.common.tbeg.samples.EmptyCollectionSample")
 }
 
 // 테스트 클래스패스 출력 (java 명령 실행용)

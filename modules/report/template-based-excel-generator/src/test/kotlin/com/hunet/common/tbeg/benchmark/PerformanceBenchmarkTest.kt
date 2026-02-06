@@ -1,5 +1,9 @@
-package com.hunet.common.tbeg
+package com.hunet.common.tbeg.benchmark
 
+import com.hunet.common.tbeg.ExcelDataProvider
+import com.hunet.common.tbeg.ExcelGenerator
+import com.hunet.common.tbeg.TbegConfig
+import com.hunet.common.tbeg.StreamingMode
 import org.apache.poi.ss.usermodel.Cell
 import org.apache.poi.ss.usermodel.CellType
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
@@ -84,7 +88,7 @@ class PerformanceBenchmarkTest {
 
         // XSSF 벤치마크
         print("  XSSF: ")
-        val xssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.DISABLED)
+        val xssfConfig = TbegConfig(streamingMode = StreamingMode.DISABLED)
         val xssfTimes = mutableListOf<Long>()
         var xssfResult: ByteArray? = null
 
@@ -103,7 +107,7 @@ class PerformanceBenchmarkTest {
 
         // SXSSF 벤치마크
         print("SXSSF: ")
-        val sxssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.ENABLED)
+        val sxssfConfig = TbegConfig(streamingMode = StreamingMode.ENABLED)
         val sxssfTimes = mutableListOf<Long>()
         var sxssfResult: ByteArray? = null
 

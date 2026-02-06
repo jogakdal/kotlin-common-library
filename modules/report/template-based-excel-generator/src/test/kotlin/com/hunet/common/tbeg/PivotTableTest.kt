@@ -39,7 +39,7 @@ class PivotTableTest {
         java.nio.file.Files.createDirectories(samplesDir)
 
         // DISABLED 모드로 생성 (피벗 테이블 없는 템플릿 사용)
-        val disabledConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.DISABLED)
+        val disabledConfig = TbegConfig(streamingMode = StreamingMode.DISABLED)
         ExcelGenerator(disabledConfig).use { generator ->
             val template = javaClass.getResourceAsStream("/templates/no_pivot_template.xlsx")!!
             val bytes = generator.generate(template, dataProvider)
@@ -48,7 +48,7 @@ class PivotTableTest {
         }
 
         // ENABLED 모드로 생성 (피벗 테이블 없는 템플릿 사용)
-        val enabledConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.ENABLED)
+        val enabledConfig = TbegConfig(streamingMode = StreamingMode.ENABLED)
         ExcelGenerator(enabledConfig).use { generator ->
             val template = javaClass.getResourceAsStream("/templates/no_pivot_template.xlsx")!!
             val bytes = generator.generate(template, dataProvider)

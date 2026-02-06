@@ -47,7 +47,7 @@ class CountProviderConsistencyTest {
         val withoutCountProvider = createDataProviderWithoutCount(employeeCount, mergedEmployeeCount)
 
         // SXSSF 모드로 생성
-        val sxssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.ENABLED)
+        val sxssfConfig = TbegConfig(streamingMode = StreamingMode.ENABLED)
         ExcelGenerator(sxssfConfig).use { sxssfGenerator ->
             val template1 = TestUtils.loadTemplate()
             val bytesWithCount = sxssfGenerator.generate(template1, withCountProvider)
@@ -72,7 +72,7 @@ class CountProviderConsistencyTest {
         val withoutCountProvider = createDataProviderWithoutCount(employeeCount, mergedEmployeeCount)
 
         // XSSF 모드로 생성
-        val xssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.DISABLED)
+        val xssfConfig = TbegConfig(streamingMode = StreamingMode.DISABLED)
         ExcelGenerator(xssfConfig).use { xssfGenerator ->
             val template1 = TestUtils.loadTemplate()
             val bytesWithCount = xssfGenerator.generate(template1, withCountProvider)

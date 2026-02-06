@@ -9,7 +9,7 @@ import com.hunet.common.tbeg.engine.core.PivotTableProcessor
 import com.hunet.common.tbeg.engine.core.XmlVariableProcessor
 import com.hunet.common.tbeg.engine.core.encryptExcel
 import com.hunet.common.tbeg.engine.core.encryptExcelTo
-import com.hunet.common.tbeg.engine.pipeline.ExcelPipeline
+import com.hunet.common.tbeg.engine.pipeline.TbegPipeline
 import com.hunet.common.tbeg.engine.pipeline.ProcessingContext
 import com.hunet.common.tbeg.engine.pipeline.processors.*
 import kotlinx.coroutines.*
@@ -58,7 +58,7 @@ import java.util.concurrent.Executors
  * @param config 생성기 설정
  */
 class ExcelGenerator @JvmOverloads constructor(
-    private val config: ExcelGeneratorConfig = ExcelGeneratorConfig()
+    private val config: TbegConfig = TbegConfig()
 ) : Closeable {
     private val dispatcher = Executors.newCachedThreadPool().asCoroutineDispatcher()
     private val scope = CoroutineScope(dispatcher + SupervisorJob())
@@ -68,7 +68,7 @@ class ExcelGenerator @JvmOverloads constructor(
     private val xmlVariableProcessor = XmlVariableProcessor()
     private val chartProcessor = ChartProcessor()
 
-    private val pipeline = ExcelPipeline(
+    private val pipeline = TbegPipeline(
         ChartExtractProcessor(chartProcessor),
         PivotExtractProcessor(pivotTableProcessor),
         TemplateRenderProcessor(),

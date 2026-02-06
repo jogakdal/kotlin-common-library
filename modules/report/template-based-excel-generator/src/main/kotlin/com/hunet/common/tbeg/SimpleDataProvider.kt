@@ -1,5 +1,6 @@
 package com.hunet.common.tbeg
 
+import java.util.function.Consumer
 import java.util.function.Supplier
 
 /**
@@ -136,6 +137,7 @@ class SimpleDataProvider private constructor(
         }
 
         /** 컬렉션을 추가한다. (지연 로딩 - Java Supplier) */
+        @Suppress("unused") // Java API
         fun itemsFromSupplier(name: String, itemsSupplier: Supplier<Iterator<Any>>) = apply {
             collections[name] = { itemsSupplier.get() }
         }
@@ -143,6 +145,7 @@ class SimpleDataProvider private constructor(
         /**
          * 컬렉션과 개수를 함께 추가한다. (지연 로딩 - Java Supplier + count)
          */
+        @Suppress("unused") // Java API
         fun itemsFromSupplier(name: String, count: Int, itemsSupplier: Supplier<Iterator<Any>>) = apply {
             collections[name] = { itemsSupplier.get() }
             collectionCounts[name] = count
@@ -155,6 +158,7 @@ class SimpleDataProvider private constructor(
         fun image(name: String, imageSupplier: () -> ByteArray) = apply { images[name] = imageSupplier }
 
         /** 이미지를 추가한다. (지연 로딩 - Java Supplier) */
+        @Suppress("unused") // Java API
         fun imageFromSupplier(name: String, imageSupplier: Supplier<ByteArray>) = apply {
             images[name] = { imageSupplier.get() }
         }
@@ -165,7 +169,7 @@ class SimpleDataProvider private constructor(
         }
 
         /** 문서 메타데이터를 설정한다. (Java Consumer) */
-        fun metadata(configurer: java.util.function.Consumer<DocumentMetadata.Builder>) = apply {
+        fun metadata(configurer: Consumer<DocumentMetadata.Builder>) = apply {
             this.metadata = DocumentMetadata.Builder().also { configurer.accept(it) }.build()
         }
 

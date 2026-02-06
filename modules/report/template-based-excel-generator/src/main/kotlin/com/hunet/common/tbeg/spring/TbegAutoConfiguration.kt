@@ -1,7 +1,7 @@
 package com.hunet.common.tbeg.spring
 
 import com.hunet.common.tbeg.ExcelGenerator
-import com.hunet.common.tbeg.ExcelGeneratorConfig
+import com.hunet.common.tbeg.TbegConfig
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
@@ -42,7 +42,7 @@ import org.springframework.context.annotation.Bean
  * class CustomTbegConfig {
  *     @Bean
  *     fun excelGenerator(): ExcelGenerator {
- *         return ExcelGenerator(ExcelGeneratorConfig.forLargeData())
+ *         return ExcelGenerator(TbegConfig.forLargeData())
  *     }
  * }
  * ```
@@ -53,14 +53,14 @@ import org.springframework.context.annotation.Bean
 class TbegAutoConfiguration {
 
     /**
-     * ExcelGeneratorConfig Bean.
+     * TbegConfig Bean.
      *
      * 프로퍼티 설정을 기반으로 Config를 생성한다.
      * 사용자가 직접 정의한 Bean이 있으면 이 Bean은 생성되지 않습니다.
      */
     @Bean
     @ConditionalOnMissingBean
-    fun excelGeneratorConfig(properties: TbegProperties) = properties.toConfig()
+    fun tbegConfig(properties: TbegProperties) = properties.toConfig()
 
     /**
      * ExcelGenerator Bean.
@@ -70,5 +70,5 @@ class TbegAutoConfiguration {
      */
     @Bean(destroyMethod = "close")
     @ConditionalOnMissingBean
-    fun excelGenerator(config: ExcelGeneratorConfig) = ExcelGenerator(config)
+    fun excelGenerator(config: TbegConfig) = ExcelGenerator(config)
 }

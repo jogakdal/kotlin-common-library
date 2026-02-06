@@ -6,6 +6,8 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import java.io.ByteArrayInputStream
 
 /**
@@ -29,37 +31,25 @@ class EmptyCollectionTest {
         generator.close()
     }
 
-    @Test
-    fun `SXSSF mode - empty collection should output one empty repeat unit`() {
-        val sxssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.ENABLED)
-        ExcelGenerator(sxssfConfig).use { sxssfGenerator ->
+    @ParameterizedTest(name = "{0} mode - empty collection should output one empty repeat unit")
+    @EnumSource(StreamingMode::class)
+    fun `empty collection should output one empty repeat unit`(mode: StreamingMode) {
+        val config = TbegConfig(streamingMode = mode)
+        ExcelGenerator(config).use { gen ->
             val template = TestUtils.loadTemplate()
             val emptyProvider = createEmptyCollectionProvider()
 
-            val result = sxssfGenerator.generate(template, emptyProvider)
+            val result = gen.generate(template, emptyProvider)
 
-            verifyEmptyRepeatUnit(result, "SXSSF")
-        }
-    }
-
-    @Test
-    fun `XSSF mode - empty collection should output one empty repeat unit`() {
-        val xssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.DISABLED)
-        ExcelGenerator(xssfConfig).use { xssfGenerator ->
-            val template = TestUtils.loadTemplate()
-            val emptyProvider = createEmptyCollectionProvider()
-
-            val result = xssfGenerator.generate(template, emptyProvider)
-
-            verifyEmptyRepeatUnit(result, "XSSF")
+            verifyEmptyRepeatUnit(result, mode.name)
         }
     }
 
     @Test
     @org.junit.jupiter.api.Disabled("가로 확장 시트에서 SXSSF/XSSF 간 미묘한 차이 존재 - 추후 조사 필요")
     fun `SXSSF and XSSF should produce identical results for empty collection`() {
-        val sxssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.ENABLED)
-        val xssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.DISABLED)
+        val sxssfConfig = TbegConfig(streamingMode = StreamingMode.ENABLED)
+        val xssfConfig = TbegConfig(streamingMode = StreamingMode.DISABLED)
 
         ExcelGenerator(sxssfConfig).use { sxssfGenerator ->
             ExcelGenerator(xssfConfig).use { xssfGenerator ->
@@ -78,7 +68,7 @@ class EmptyCollectionTest {
 
     @Test
     fun `empty collection with count=0 vs count=null should produce identical results`() {
-        val sxssfConfig = ExcelGeneratorConfig(streamingMode = StreamingMode.ENABLED)
+        val sxssfConfig = TbegConfig(streamingMode = StreamingMode.ENABLED)
         ExcelGenerator(sxssfConfig).use { sxssfGenerator ->
             // count=0을 명시적으로 제공
             val withZeroCount = createEmptyCollectionProvider(provideCount = true)
@@ -113,6 +103,7 @@ class EmptyCollectionTest {
                 "employees" -> emptyList<TestUtils.Employee>().iterator()
                 "mergedEmployees" -> emptyList<TestUtils.Employee>().iterator()
                 "departments" -> emptyList<Any>().iterator()
+                "emptyCollection" -> emptyList<Any>().iterator()
                 else -> null
             }
 
@@ -120,6 +111,7 @@ class EmptyCollectionTest {
                 "employees" -> if (provideCount) 0 else null
                 "mergedEmployees" -> if (provideCount) 0 else null
                 "departments" -> if (provideCount) 0 else null
+                "emptyCollection" -> if (provideCount) 0 else null
                 else -> null
             }
 
@@ -217,6 +209,79 @@ class EmptyCollectionTest {
             CellType.BLANK -> ""
             CellType.ERROR -> "ERROR:${cell.errorCellValue}"
             else -> ""
+        }
+    }
+
+    // ==================== emptyRange 전용 테스트 (empty_collection_template.xlsx) ====================
+
+    /**
+     * emptyRange 기능 테스트 - 전용 템플릿 사용
+     *
+     * 빈 컬렉션일 때 emptyRange에 지정된 내용이 출력되어야 함
+     */
+    @ParameterizedTest(name = "{0} mode - emptyRange should display specified content with dedicated template")
+    @EnumSource(StreamingMode::class)
+    fun `emptyRange should display specified content with dedicated template`(mode: StreamingMode) {
+        val config = TbegConfig(streamingMode = mode)
+        ExcelGenerator(config).use { gen ->
+            val template = TestUtils.loadEmptyCollectionTemplate()
+            val provider = createEmptyRangeTestProvider()
+
+            val result = gen.generate(template, provider)
+
+            verifyEmptyRangeResult(result, mode.name)
+        }
+    }
+
+    /**
+     * emptyRange 테스트용 DataProvider 생성
+     * - emptyCollection: 빈 컬렉션 (emptyRange 내용이 출력되어야 함)
+     */
+    private fun createEmptyRangeTestProvider(): ExcelDataProvider {
+        return object : ExcelDataProvider {
+            override fun getValue(name: String): Any? = null
+
+            override fun getItems(name: String): Iterator<Any>? = when (name) {
+                "emptyCollection" -> emptyList<Any>().iterator()
+                else -> null
+            }
+
+            override fun getItemCount(name: String): Int? = when (name) {
+                "emptyCollection" -> 0
+                else -> null
+            }
+
+            override fun getImage(name: String): ByteArray? = null
+            override fun getMetadata(): DocumentMetadata? = null
+        }
+    }
+
+    /**
+     * emptyRange 결과 검증
+     */
+    private fun verifyEmptyRangeResult(bytes: ByteArray, mode: String) {
+        XSSFWorkbook(ByteArrayInputStream(bytes)).use { workbook ->
+            val sheet = workbook.getSheetAt(0)
+
+            // 행이 존재해야 함
+            assertTrue(sheet.lastRowNum >= 0, "$mode: 시트에 행이 존재해야 함")
+
+            // repeat 마커가 남아있지 않아야 함
+            for (rowIdx in 0..sheet.lastRowNum) {
+                val row = sheet.getRow(rowIdx) ?: continue
+                for (cellIdx in 0 until row.lastCellNum) {
+                    val cell = row.getCell(cellIdx) ?: continue
+                    if (cell.cellType == CellType.STRING) {
+                        val value = cell.stringCellValue
+                        assertFalse(value.contains("\${repeat"),
+                            "$mode: 행[$rowIdx] 열[$cellIdx]에 repeat 마커가 남아있음: $value")
+                        assertFalse(value.contains("TBEG_REPEAT"),
+                            "$mode: 행[$rowIdx] 열[$cellIdx]에 수식 마커가 남아있음: $value")
+                    }
+                }
+            }
+
+            println("$mode: emptyRange 테스트 통과 - 행 수: ${sheet.lastRowNum + 1}")
         }
     }
 }

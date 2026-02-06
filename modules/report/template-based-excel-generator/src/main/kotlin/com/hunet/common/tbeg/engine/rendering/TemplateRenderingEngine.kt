@@ -124,14 +124,12 @@ class TemplateRenderingEngine(
         // StreamingDataSource 생성 (expectedSizes 전달: count 불일치 경고용)
         val streamingDataSource = StreamingDataSource(dataProvider, collectionSizes)
 
-        return try {
+        return streamingDataSource.use { streamingDataSource ->
             val renderingContext = createRenderingContext(
                 streamingDataSource = streamingDataSource,
                 collectionSizes = collectionSizes
             )
             strategy.render(templateBytes, simpleData, renderingContext)
-        } finally {
-            streamingDataSource.close()
         }
     }
 
