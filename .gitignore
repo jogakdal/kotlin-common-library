@@ -17,3 +17,15 @@
 /temp/
 
 .local-temp
+
+### macOS ###
+.DS_Store
+
+### Excel temp files ###
+~$*.xlsx
+
+### Claude Code ###
+.claude/
+**/docs/
+CLAUDE.md
+**/MANUAL_UPDATE_PLAN.md

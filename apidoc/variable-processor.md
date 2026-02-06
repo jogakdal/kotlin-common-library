@@ -12,21 +12,21 @@
 ## Options
 `VariableProcessor.Options` 로 모든 동작 제어:
 
-| 필드 | 기본             | 설명                                      |
-|------|----------------|-----------------------------------------|
-| delimiters | `("%{", "}%")` | 토큰 구분자 (open / close)                   |
-| ignoreCase | `true`         | 토큰 이름 대소문자 무시 (충돌 시 예외)                 |
-| ignoreMissing | `false`        | 미등록 토큰/Resolver 없을 때 원문 유지 (기본값도 없으면 원문) |
-| enableDefaultValue | `false`        | `%{token\|fallback}%` 기본값 문법 활성화        |
-| defaultDelimiter | `\|`           | 기본값 구분자 문자 |
-| escapeChar | `\\`           | 기본값 파싱 이스케이프 문자                         |
+| 필드                 | 기본             | 설명                                       |
+|--------------------|----------------|------------------------------------------|
+| delimiters         | `("%{", "}%")` | 토큰 구분자 (open / close)                    |
+| ignoreCase         | `true`         | 토큰 이름 대소문자 무시 (충돌 시 예외)                  |
+| ignoreMissing      | `false`        | 미등록 토큰/Resolver 없을 때 원문 유지 (기본값도 없으면 원문) |
+| enableDefaultValue | `false`        | `%{token\|fallback}%` 기본값 문법 활성화         |
+| defaultDelimiter   | `\|`           | 기본값 구분자 문자                               |
+| escapeChar         | `\\`           | 기본값 파싱 이스케이프 문자                          |
 
 ### 기본값/미등록 처리 정책
-| 상황 | ignoreMissing=false | ignoreMissing=true |
-|------|--------------------|--------------------|
-| Resolver 없음, 기본값 없음 | 예외 | 원문 유지 |
-| Resolver 없음, 기본값 존재 | 예외 | 기본값 사용 |
-| Resolver 존재, 파라미터 없음, 기본값 있음 | 기본값 반환 | 기본값 반환 |
+| 상황                           | ignoreMissing=false | ignoreMissing=true |
+|------------------------------|---------------------|--------------------|
+| Resolver 없음, 기본값 없음          | 예외                  | 원문 유지              |
+| Resolver 없음, 기본값 존재          | 예외                  | 기본값 사용             |
+| Resolver 존재, 파라미터 없음, 기본값 있음 | 기본값 반환              | 기본값 반환             |
 
 ### Kotlin 사용 예
 ```kotlin
@@ -72,6 +72,56 @@ val r = vp.process(
 )
 // Hello guest / Total=10
 ```
+
+## 데이터 맵 기반 동적 치환 (processWithData)
+
+레지스트리 등록 없이 데이터 맵에서 직접 값을 참조하여 치환합니다.
+
+### 지원 표현식
+| 표현식                  | 설명      | 예시                                   |
+|----------------------|---------|--------------------------------------|
+| `${variable}`        | 단순 변수   | `${name}` → `data["name"]`           |
+| `${object.property}` | 프로퍼티 접근 | `${user.name}` → `data["user"].name` |
+
+### 프로퍼티 접근 순서
+1. Map인 경우: 키로 직접 접근
+2. 일반 객체: 필드 → getter(`getXxx`) → is getter(`isXxx`) → Kotlin 프로퍼티
+
+### Kotlin 사용 예
+```kotlin
+data class User(val name: String, val age: Int)
+
+val data = mapOf(
+    "title" to "사용자 정보",
+    "user" to User("황용호", 30),
+    "items" to mapOf("count" to 5)
+)
+
+val result = vp.processWithData(
+    "제목: \${title}, 이름: \${user.name}, 나이: \${user.age}, 개수: \${items.count}",
+    data
+)
+// 제목: 사용자 정보, 이름: 황용호, 나이: 30, 개수: 5
+```
+
+### 커스텀 구분자 사용
+```kotlin
+val result = vp.processWithData(
+    "Hello %{user.name}%!",
+    data,
+    VariableProcessor.Options(
+        delimiters = VariableProcessor.Delimiters("%{", "}%"),
+        ignoreMissing = true
+    )
+)
+```
+
+### 기본 옵션
+- 구분자: `${`, `}` (JSTL/EL 스타일)
+- ignoreMissing: `true` (미등록 변수는 원문 유지)
+
+> **참고**: `processWithData`는 레지스트리 기반 Resolver를 사용하지 않으므로, 단순 값 치환에 적합합니다.
+> 합계 계산 등 로직이 필요한 경우 기존 `process()` + Resolver 조합을 사용하세요.
 
 ## Spring 통합
 ### 1) 표준 DI (Kotlin)

@@ -16,7 +16,7 @@ import kotlin.reflect.jvm.isAccessible
 import java.time.LocalDateTime
 
 /**
- * SoftDeleteJpaRepository에서 findAnnotation → getAnnotation 마이그레이션 테스트
+ * SoftDeleteJpaRepository에서 findAnnotation -> getAnnotation 마이그레이션 테스트
  */
 @ExtendWith(MockitoExtension::class)
 class SoftDeleteJpaRepositoryMigrationTest {

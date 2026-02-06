@@ -36,7 +36,7 @@ internal val spelExpressionParser by lazy { SpelExpressionParser() }
 fun applySequentialCode(entity: Any, sequenceGenerator: SequenceGenerator) {
     /**
      * 처리 전략:
-     * 1) Kotlin 프로퍼티: hasAnnotation(getAnnotation) 사용 → @property / @field / @get / constructor param 등에 붙은
+     * 1) Kotlin 프로퍼티: hasAnnotation(getAnnotation) 사용 -> @property / @field / @get / constructor param 등에 붙은
      *    다양한 선언 위치 지원 (통합 탐색 필요).
      * 2) Java 필드 fallback: 이미 Kotlin 프로퍼티 루프에서 간접(backing field) 어노테이션까지 커버했으므로
      *    중복 방지 + 의미적 명확성을 위해 '직접 선언' 어노테이션만(hasDirectAnnotation) 스캔.

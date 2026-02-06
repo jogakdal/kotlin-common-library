@@ -485,7 +485,7 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
     @Suppress("UNCHECKED_CAST")
     @Transactional
     override fun upsert(entity: E): E {
-        // UpsertKey 기반 기존 엔티티 탐색 → 머지
+        // UpsertKey 기반 기존 엔티티 탐색 -> 머지
         findByUpsertKey(entity)?.let { found ->
             val inputId = entityInformation.getId(entity) as ID?
             val foundId = entityInformation.getId(found) as ID?
@@ -494,7 +494,7 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
             }
             return copyAndMerge(entity, found)
         }
-        // ID 기반 기존 엔티티 조회 → 삭제 상태면 새로 persist (이후 코드 생성), 아니면 머지
+        // ID 기반 기존 엔티티 조회 -> 삭제 상태면 새로 persist (이후 코드 생성), 아니면 머지
         val entityId = entityInformation.getId(entity) as ID?
         if (entityId != null && existsById(entityId)) {
             val existing = findById(entityId).orElse(null)
@@ -515,7 +515,7 @@ class SoftDeleteJpaRepositoryImpl<E: Any, ID: Serializable>(
             }
             existing?.let { return copyAndMerge(entity, it) }
         }
-        // 완전히 신규 엔티티 → persist 전에 코드 생성
+        // 완전히 신규 엔티티 -> persist 전에 코드 생성
         applySequentialCodes(entity as Any, newIdentitySet())
         entityManager.persist(entity)
         entityManager.flush()

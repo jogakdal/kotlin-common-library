@@ -511,7 +511,7 @@ StandardResponse<CompositePayload> comp = StandardResponse.deserialize(jsonCompo
 
 ### 6.11 Dynamic Type Hint
 ```kotlin
-// 외부 입력 typeHint → 허용 목록 기반 동적 역직렬화 (whitelist 적용)
+// 외부 입력 typeHint -> 허용 목록 기반 동적 역직렬화 (whitelist 적용)
 val jsonDyn = """
 {
   "status":"SUCCESS",
@@ -542,7 +542,7 @@ val dynResp: StandardResponse<out BasePayload> = if (rawHint != null && rawHint 
 }
 println("DYN_STATUS=${dynResp.status} class=${dynResp.payload::class.simpleName}")
 ```
-> 보안 권고: typeHint → enum/whitelist 검증 후 역직렬화. 미허용 값이면 FAILURE + ErrorPayload.
+> 보안 권고: typeHint -> enum/whitelist 검증 후 역직렬화. 미허용 값이면 FAILURE + ErrorPayload.
 
 ### 6.12 케이스별 역직렬화 예제
 섹션 1~5에서 이미 정의한 DTO(StatusPayload, ErrorPayload, ItemPayload, ItemsPageContainer, LogEntryPayload, LogsIncrementalContainer, MultiListsPayload, CompositePayload 등)로 만들어진 JSON을 다시 역직렬화하는 예제입니다.
@@ -800,7 +800,7 @@ System.out.println(compositeResp.getPayload().getInfo().getVersionText());
 | userId      | user_id    | USER_ID              | user-id   | userId    | UserId      |
 | firstName   | first_name | FIRST_NAME           | first-name| firstName | FirstName   |
 | APIURLVersion2 | api_url_version2 | API_URL_VERSION2 | api-url-version2 | apiUrlVersion2 | ApiUrlVersion2 |
-> 변환 순서: 토큰 분해 → 캐시 조합 → 케이스 변환. 한 번 계산된 결과 재사용.
+> 변환 순서: 토큰 분해 -> 캐시 조합 -> 케이스 변환. 한 번 계산된 결과 재사용.
 
 ### 7.2 @ResponseCase vs toJson(case=...) 우선순위
 ```kotlin
@@ -898,7 +898,7 @@ val complex = StandardResponse.deserialize<Complex>(raw)
 println(complex.payload.entries[0]["k1"]!!.childId) // 1
 ```
 ### 8.4 Canonical 규칙 요약
-입력 키에서 비영숫자 제거 후 소문자화 → canonical. underscore/dash 변형 모두 후보로 등록. 예: `USER-ID`, `user_id`, `UserId`, `userid` → canonical `userid`.
+입력 키에서 비영숫자 제거 후 소문자화 -> canonical. underscore/dash 변형 모두 후보로 등록. 예: `USER-ID`, `user_id`, `UserId`, `userid` -> canonical `userid`.
 ### 8.5 충돌 처리(WARN)
 | 상황 | 처리 |
 |------|------|
