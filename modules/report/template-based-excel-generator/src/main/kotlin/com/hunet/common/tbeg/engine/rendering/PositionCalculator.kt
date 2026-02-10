@@ -1,5 +1,8 @@
 package com.hunet.common.tbeg.engine.rendering
 
+import com.hunet.common.tbeg.engine.core.CellCoord
+import com.hunet.common.tbeg.engine.core.CollectionSizes
+import com.hunet.common.tbeg.engine.core.RowRange
 import com.hunet.common.tbeg.exception.TemplateProcessingException
 import org.apache.poi.ss.util.CellRangeAddress
 
@@ -47,7 +50,7 @@ sealed class RowInfo {
  */
 class PositionCalculator(
     private val repeatRegions: List<RepeatRegionSpec>,
-    private val collectionSizes: Map<String, Int>,
+    private val collectionSizes: CollectionSizes,
     private val templateLastRow: Int = -1  // 템플릿의 마지막 행 인덱스 (-1이면 repeatRegions에서 계산)
 ) {
     /**
@@ -108,13 +111,21 @@ class PositionCalculator(
     }
 
     /**
+     * 특정 템플릿 셀 좌표가 최종적으로 어디로 이동하는지 계산한다.
+     *
+     * @param template 템플릿 셀 좌표 (0-based)
+     * @return 최종 위치 CellCoord
+     */
+    fun getFinalPosition(template: CellCoord) = getFinalPosition(template.row, template.col)
+
+    /**
      * 특정 템플릿 위치(행, 열)가 최종적으로 어디로 이동하는지 계산한다.
      *
      * @param templateRow 템플릿 행 인덱스 (0-based)
      * @param templateCol 템플릿 열 인덱스 (0-based)
-     * @return (최종 행, 최종 열) 쌍
+     * @return 최종 위치 CellCoord
      */
-    fun getFinalPosition(templateRow: Int, templateCol: Int): Pair<Int, Int> {
+    fun getFinalPosition(templateRow: Int, templateCol: Int): CellCoord {
         if (!calculated) calculate()
 
         var rowOffset = 0
@@ -134,7 +145,7 @@ class PositionCalculator(
             }
         }
 
-        return (templateRow + rowOffset) to (templateCol + colOffset)
+        return CellCoord(templateRow + rowOffset, templateCol + colOffset)
     }
 
     /**
@@ -158,7 +169,7 @@ class PositionCalculator(
         // 범위에 포함된 모든 열에 대해 행 오프셋을 계산하고 최대값 선택
         var maxRowOffset = 0
         for (col in templateFirstCol..templateLastCol) {
-            val (finalRow, _) = getFinalPosition(templateFirstRow, col)
+            val finalRow = getFinalPosition(templateFirstRow, col).row
             val rowOffset = finalRow - templateFirstRow
             maxRowOffset = maxOf(maxRowOffset, rowOffset)
         }
@@ -166,7 +177,7 @@ class PositionCalculator(
         // 범위에 포함된 모든 행에 대해 열 오프셋을 계산하고 최대값 선택
         var maxColOffset = 0
         for (row in templateFirstRow..templateLastRow) {
-            val (_, finalCol) = getFinalPosition(row, templateFirstCol)
+            val finalCol = getFinalPosition(row, templateFirstCol).col
             val colOffset = finalCol - templateFirstCol
             maxColOffset = maxOf(maxColOffset, colOffset)
         }
@@ -180,6 +191,25 @@ class PositionCalculator(
     }
 
     /**
+     * 시작/끝 셀 좌표로 템플릿 범위의 최종 위치를 계산한다.
+     *
+     * @param start 템플릿 시작 셀 좌표 (0-based)
+     * @param end 템플릿 끝 셀 좌표 (0-based)
+     * @return 최종 CellRangeAddress
+     */
+    fun getFinalRange(start: CellCoord, end: CellCoord) =
+        getFinalRange(start.row, end.row, start.col, end.col)
+
+    /**
+     * CellRangeAddress를 직접 받는 오버로드.
+     *
+     * @param range 템플릿 범위 (CellRangeAddress)
+     * @return 최종 CellRangeAddress
+     */
+    fun getFinalRange(range: CellRangeAddress) =
+        getFinalRange(range.firstRow, range.lastRow, range.firstColumn, range.lastColumn)
+
+    /**
      * 특정 repeat 영역 내에서 특정 아이템 인덱스의 행 시작 위치를 계산한다.
      *
      * @param expansion repeat 확장 정보
@@ -189,7 +219,7 @@ class PositionCalculator(
      */
     fun getRowForRepeatItem(expansion: RepeatExpansion, itemIndex: Int, templateRowOffset: Int = 0) =
         expansion.finalStartRow +
-                (itemIndex * (expansion.region.endRow - expansion.region.startRow + 1)) + templateRowOffset
+                (itemIndex * (expansion.region.templateRowCount)) + templateRowOffset
 
     /**
      * 특정 repeat 영역 내에서 특정 아이템 인덱스의 열 시작 위치를 계산한다.
@@ -201,7 +231,7 @@ class PositionCalculator(
      */
     fun getColForRepeatItem(expansion: RepeatExpansion, itemIndex: Int, templateColOffset: Int = 0) =
         expansion.finalStartCol +
-                (itemIndex * (expansion.region.endCol - expansion.region.startCol + 1)) + templateColOffset
+                (itemIndex * (expansion.region.templateColCount)) + templateColOffset
 
     /**
      * 특정 collection의 확장 정보를 반환한다.
@@ -250,8 +280,8 @@ class PositionCalculator(
             .mapNotNull { it.emptyRange }
             .filter { it.sheetName == null }  // 같은 시트의 emptyRange만
             .any { range ->
-                templateRow in range.startRow..range.endRow &&
-                templateCol in range.startCol..range.endCol
+                templateRow in range.rowRange &&
+                templateCol in range.colRange
             }
     }
 
@@ -292,18 +322,15 @@ class PositionCalculator(
         for (expansion in expansions.reversed()) {
             if (expansion.region.direction != RepeatDirection.DOWN) continue
 
-            val templateRowCount = expansion.region.endRow - expansion.region.startRow + 1
-            val itemCount = collectionSizes[expansion.region.collection] ?: 0
-            // 데이터가 0개여도 최소 1개 행(빈 행)을 출력
-            val effectiveItemCount = maxOf(1, itemCount)
+            val templateRowCount = expansion.region.templateRowCount
+            val effectiveItemCount = maxOf(1, collectionSizes[expansion.region.collection] ?: 0)
 
             // 이 repeat가 차지하는 실제 행 범위
-            val repeatStartRow = expansion.finalStartRow
-            val repeatEndRow = expansion.finalStartRow + (templateRowCount * effectiveItemCount) - 1
+            val repeatRows = RowRange(expansion.finalStartRow, expansion.finalStartRow + (templateRowCount * effectiveItemCount) - 1)
 
-            if (actualRow in repeatStartRow..repeatEndRow) {
+            if (actualRow in repeatRows) {
                 // 이 행은 repeat 내부에 있음
-                val rowWithinRepeat = actualRow - repeatStartRow
+                val rowWithinRepeat = actualRow - expansion.finalStartRow
                 val itemIndex = rowWithinRepeat / templateRowCount
                 val templateRowOffset = rowWithinRepeat % templateRowCount
 
@@ -338,19 +365,16 @@ class PositionCalculator(
             if (expansion.region.direction != RepeatDirection.DOWN) continue
 
             // 이 열이 해당 repeat의 열 범위에 있는지 확인
-            if (column !in expansion.region.startCol..expansion.region.endCol) continue
+            if (column !in expansion.region.colRange) continue
 
-            val templateRowCount = expansion.region.endRow - expansion.region.startRow + 1
-            val itemCount = collectionSizes[expansion.region.collection] ?: 0
-            // 데이터가 0개여도 최소 1개 행(빈 행)을 출력
-            val effectiveItemCount = maxOf(1, itemCount)
+            val templateRowCount = expansion.region.templateRowCount
+            val effectiveItemCount = maxOf(1, collectionSizes[expansion.region.collection] ?: 0)
 
             // 이 repeat가 차지하는 실제 행 범위
-            val repeatStartRow = expansion.finalStartRow
-            val repeatEndRow = expansion.finalStartRow + (templateRowCount * effectiveItemCount) - 1
+            val repeatRows = RowRange(expansion.finalStartRow, expansion.finalStartRow + (templateRowCount * effectiveItemCount) - 1)
 
-            if (actualRow in repeatStartRow..repeatEndRow) {
-                val rowWithinRepeat = actualRow - repeatStartRow
+            if (actualRow in repeatRows) {
+                val rowWithinRepeat = actualRow - expansion.finalStartRow
                 val itemIndex = rowWithinRepeat / templateRowCount
                 val templateRowOffset = rowWithinRepeat % templateRowCount
 
@@ -378,17 +402,17 @@ class PositionCalculator(
             if (expansion.region.direction != RepeatDirection.DOWN) continue
 
             // 이 열이 해당 repeat의 열 범위에 있는지 확인
-            if (column !in expansion.region.startCol..expansion.region.endCol) continue
+            if (column !in expansion.region.colRange) continue
 
-            val itemCount = collectionSizes[expansion.region.collection] ?: 0
-            // 데이터가 0개여도 최소 1개 행(빈 행)을 출력
-            val effectiveItemCount = maxOf(1, itemCount)
+            val effectiveItemCount = maxOf(1, collectionSizes[expansion.region.collection] ?: 0)
 
-            val templateRowCount = expansion.region.endRow - expansion.region.startRow + 1
-            val repeatEndRow = expansion.finalStartRow + (templateRowCount * effectiveItemCount) - 1
+            val repeatRows = RowRange(
+                expansion.finalStartRow,
+                expansion.finalStartRow + (expansion.region.templateRowCount * effectiveItemCount) - 1
+            )
 
             // 이 repeat 영역 이후의 행이면 확장량만큼 빼기
-            if (actualRow > repeatEndRow) {
+            if (actualRow > repeatRows.end) {
                 templateRow -= expansion.rowExpansion
             }
         }
@@ -406,15 +430,15 @@ class PositionCalculator(
         for (expansion in expansions) {
             if (expansion.region.direction != RepeatDirection.DOWN) continue
 
-            val itemCount = collectionSizes[expansion.region.collection] ?: 0
-            // 데이터가 0개여도 최소 1개 반복 단위(빈 행들)를 출력
-            val effectiveItemCount = maxOf(1, itemCount)
+            val effectiveItemCount = maxOf(1, collectionSizes[expansion.region.collection] ?: 0)
 
-            val templateRowCount = expansion.region.endRow - expansion.region.startRow + 1
-            val repeatEndRow = expansion.finalStartRow + (templateRowCount * effectiveItemCount) - 1
+            val repeatRows = RowRange(
+                expansion.finalStartRow,
+                expansion.finalStartRow + (expansion.region.templateRowCount * effectiveItemCount) - 1
+            )
 
             // 이 repeat 영역 이후의 행이면 확장량만큼 빼기
-            if (actualRow > repeatEndRow) {
+            if (actualRow > repeatRows.end) {
                 templateRow -= expansion.rowExpansion
             }
         }
@@ -428,14 +452,8 @@ class PositionCalculator(
     private fun calculateExpansionAmount(region: RepeatRegionSpec, itemCount: Int) =
         maxOf(1, itemCount).let { effectiveItemCount ->
             when (region.direction) {
-                RepeatDirection.DOWN -> {
-                    val templateRowCount = region.endRow - region.startRow + 1
-                    maxOf(0, (effectiveItemCount - 1) * templateRowCount) to 0
-                }
-                RepeatDirection.RIGHT -> {
-                    val templateColCount = region.endCol - region.startCol + 1
-                    0 to maxOf(0, (effectiveItemCount - 1) * templateColCount)
-                }
+                RepeatDirection.DOWN -> maxOf(0, (effectiveItemCount - 1) * region.templateRowCount) to 0
+                RepeatDirection.RIGHT -> 0 to maxOf(0, (effectiveItemCount - 1) * region.templateColCount)
             }
         }
 
@@ -458,14 +476,14 @@ class PositionCalculator(
         expansion.region.direction == RepeatDirection.DOWN &&
             expansion.rowExpansion > 0 &&
             templateRow > expansion.region.endRow &&
-            templateCol in expansion.region.startCol..expansion.region.endCol
+            templateCol in expansion.region.colRange
 
     /** 요소가 특정 repeat 확장에 의해 열 방향으로 영향받는지 확인 (repeat 오른쪽에 있고 행 범위가 겹치면 영향받음) */
     private fun isAffectedByRepeatCol(templateRow: Int, templateCol: Int, expansion: RepeatExpansion) =
         expansion.region.direction == RepeatDirection.RIGHT &&
             expansion.colExpansion > 0 &&
             templateCol > expansion.region.endCol &&
-            templateRow in expansion.region.startRow..expansion.region.endRow
+            templateRow in expansion.region.rowRange
 
     companion object {
         /**
@@ -492,14 +510,14 @@ class PositionCalculator(
         }
 
         /** 데이터에서 collection 크기 추출 */
-        fun extractCollectionSizes(data: Map<String, Any>, repeatRegions: List<RepeatRegionSpec>) =
-            repeatRegions.associate { region ->
+        fun extractCollectionSizes(data: Map<String, Any>, repeatRegions: List<RepeatRegionSpec>): CollectionSizes =
+            CollectionSizes(repeatRegions.associate { region ->
                 region.collection to when (val items = data[region.collection]) {
                     is List<*> -> items.size
                     is Collection<*> -> items.size
                     is Iterable<*> -> items.count()
                     else -> 0
                 }
-            }
+            })
     }
 }

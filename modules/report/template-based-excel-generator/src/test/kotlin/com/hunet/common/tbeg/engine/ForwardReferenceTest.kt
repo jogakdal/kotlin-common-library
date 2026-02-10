@@ -3,6 +3,7 @@
 package com.hunet.common.tbeg.engine
 
 import com.hunet.common.tbeg.StreamingMode
+import com.hunet.common.tbeg.engine.core.CollectionSizes
 import com.hunet.common.tbeg.engine.rendering.FormulaAdjuster
 import com.hunet.common.tbeg.engine.rendering.PositionCalculator
 import com.hunet.common.tbeg.engine.rendering.RepeatDirection
@@ -255,52 +256,28 @@ class ForwardReferenceTest {
         println("행 수: ${sheetSpec.rows.size}")
 
         for (rowSpec in sheetSpec.rows) {
-            when (rowSpec) {
-                is com.hunet.common.tbeg.engine.rendering.RowSpec.StaticRow -> {
-                    println("  StaticRow[${rowSpec.templateRowIndex}]: ${rowSpec.cells.size}개 셀")
-                    rowSpec.cells.forEach { cell ->
-                        println("    col=${cell.columnIndex}: ${cell.content::class.simpleName}")
-                    }
-                }
-                is com.hunet.common.tbeg.engine.rendering.RowSpec.RepeatRow -> {
-                    println("  RepeatRow[${rowSpec.templateRowIndex}]: collection=${rowSpec.collectionName}, " +
-                            "var=${rowSpec.itemVariable}, cols=${rowSpec.repeatStartCol}..${rowSpec.repeatEndCol}")
-                    rowSpec.cells.forEach { cell ->
-                        println("    col=${cell.columnIndex}: ${cell.content::class.simpleName}")
-                    }
-                }
-                is com.hunet.common.tbeg.engine.rendering.RowSpec.RepeatContinuation -> {
-                    println("  RepeatContinuation[${rowSpec.templateRowIndex}]")
-                }
+            val region = sheetSpec.repeatRegions.find { it.startRow == rowSpec.templateRowIndex }
+            if (region != null) {
+                println("  RepeatStart[${rowSpec.templateRowIndex}]: collection=${region.collection}, " +
+                        "var=${region.variable}, cols=${region.startCol}..${region.endCol}")
+            } else {
+                println("  Row[${rowSpec.templateRowIndex}]: ${rowSpec.cells.size}개 셀")
+            }
+            rowSpec.cells.forEach { cell ->
+                println("    col=${cell.columnIndex}: ${cell.content::class.simpleName}")
             }
         }
 
         // repeat 영역 확인
-        val repeatRows = sheetSpec.rows.filterIsInstance<com.hunet.common.tbeg.engine.rendering.RowSpec.RepeatRow>()
-        println("\n=== RepeatRow 목록 ===")
-        repeatRows.forEach { rr ->
-            println("  templateRowIndex=${rr.templateRowIndex}, collection=${rr.collectionName}")
-        }
-
-        // 핵심: Row 0의 수식이 Row 2의 repeat 영역을 참조하는데, expandFormulaRanges가 동작해야 함
-        // repeatRegions는 repeatRows.associateBy { it.templateRowIndex }
-        // 그러면 key=2인 RepeatRow가 있어야 함
-        assertTrue(repeatRows.any { it.templateRowIndex == 2 }, "Row 2가 RepeatRow여야 함")
-
-        // PositionCalculator 테스트
-        val repeatRegionSpecs = repeatRows.map { row ->
-            RepeatRegionSpec(
-                row.collectionName, row.itemVariable,
-                row.templateRowIndex, row.repeatEndRowIndex,
-                row.repeatStartCol, row.repeatEndCol, row.direction,
-                row.emptyRangeSpec
-            )
-        }
-        println("\n=== RepeatRegionSpec 목록 ===")
+        val repeatRegionSpecs = sheetSpec.repeatRegions
+        println("\n=== RepeatRegion 목록 ===")
         repeatRegionSpecs.forEach { spec ->
             println("  collection=${spec.collection}, startRow=${spec.startRow}, endRow=${spec.endRow}, " +
                     "startCol=${spec.startCol}, endCol=${spec.endCol}")
         }
+
+        // 핵심: Row 0의 수식이 Row 2의 repeat 영역을 참조하는데, expandFormulaRanges가 동작해야 함
+        assertTrue(repeatRegionSpecs.any { it.startRow == 2 }, "Row 2에서 시작하는 repeat 영역이 있어야 함")
 
         // collectionSizes 계산
         val employees = listOf(
@@ -311,8 +288,8 @@ class ForwardReferenceTest {
             mapOf("name" to "정수민", "salary" to 3000000)
         )
         val data = mapOf("employees" to employees)
-        val collectionSizes = data.filterValues { it is Collection<*> }
-            .mapValues { (it.value as Collection<*>).size }
+        val collectionSizes = CollectionSizes(data.filterValues { it is Collection<*> }
+            .mapValues { (it.value as Collection<*>).size })
         println("\n=== collectionSizes ===")
         println("  $collectionSizes")
 
@@ -338,12 +315,12 @@ class ForwardReferenceTest {
         // FormulaAdjuster.expandToRangeWithCalculator 테스트
         if (expansion != null) {
             val formula = "SUM(B3:B3)"
-            val (expanded, isSeq) = com.hunet.common.tbeg.engine.rendering.FormulaAdjuster
+            val (expanded, isSequential) = com.hunet.common.tbeg.engine.rendering.FormulaAdjuster
                 .expandToRangeWithCalculator(formula, expansion, 5)
             println("\n=== FormulaAdjuster.expandToRangeWithCalculator ===")
             println("  원본: $formula")
             println("  확장: $expanded")
-            println("  연속: $isSeq")
+            println("  연속: $isSequential")
         }
     }
 
@@ -567,7 +544,7 @@ class ForwardReferenceTest {
         )
         val sheet2Info = FormulaAdjuster.SheetExpansionInfo(
             expansions = listOf(sheet2Expansion),
-            collectionSizes = mapOf("items" to 3)
+            collectionSizes = CollectionSizes.of("items" to 3)
         )
 
         // 현재 시트의 더미 확장 정보 (현재 시트에는 repeat이 없다고 가정)
@@ -628,7 +605,7 @@ class ForwardReferenceTest {
         )
         val sheetInfo = FormulaAdjuster.SheetExpansionInfo(
             expansions = listOf(sheetExpansion),
-            collectionSizes = mapOf("items" to 3)
+            collectionSizes = CollectionSizes.of("items" to 3)
         )
 
         val currentRegion = RepeatRegionSpec(

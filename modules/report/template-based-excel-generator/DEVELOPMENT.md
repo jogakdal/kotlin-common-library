@@ -92,6 +92,7 @@ src/main/kotlin/com/hunet/common/tbeg/
 │
 ├── engine/                                 # 내부 엔진 (internal)
 │   ├── core/                               # 핵심 유틸리티
+│   │   ├── CommonTypes.kt                  # 공통 타입 (CellCoord, IndexRange, CollectionSizes 등)
 │   │   ├── ChartProcessor.kt               # 차트 추출/복원
 │   │   ├── PivotTableProcessor.kt          # 피벗 테이블 처리
 │   │   ├── XmlVariableProcessor.kt         # XML 내 변수 치환
@@ -169,7 +170,7 @@ src/main/kotlin/com/hunet/common/tbeg/
 |---------------------------|----------------------------------|
 | `TemplateRenderingEngine` | 렌더링 전략 선택 및 실행                   |
 | `TemplateAnalyzer`        | 템플릿 분석 (마커 파싱, 정규식 정의)           |
-| `WorkbookSpec`            | 분석된 템플릿 명세 (SheetSpec, CellSpec) |
+| `WorkbookSpec`            | 분석된 템플릿 명세 (SheetSpec, RowSpec, CellSpec, RepeatRegionSpec) |
 | `PositionCalculator`      | repeat 확장 시 셀 위치 계산              |
 | `FormulaAdjuster`         | 수식 참조 자동 확장                      |
 
@@ -425,16 +426,24 @@ repeat에서 확장된 모든 행은 **repeat 기준 템플릿 행**의 스타�
 
 #### 1.4 열 그룹 독립성
 서로 다른 열 범위의 repeat은 독립적으로 위치가 계산됩니다.
+**같은 행에 여러 독립 repeat이 있어도** 열 범위가 겹치지 않으면 각각 별도의 `RepeatRegionSpec`으로 관리되어 독립 확장됩니다.
 
 ```
-예시:
-- A-C 열: employees repeat (확장 +2행)
-- F-H 열: department repeat (확장 +3행)
+예시 1: 서로 다른 행에 배치된 repeat
+- A-C 열 (3행): employees repeat (확장 +2행)
+- F-H 열 (8행): department repeat (확장 +3행)
 
-actualRow 10에서:
-- A-C 열 관점: templateRow = actualRow - employees확장량
-- F-H 열 관점: templateRow = actualRow - department확장량 (해당 열 범위에서만)
+예시 2: 같은 행에 배치된 repeat
+- A-D 열 (2행): eventTypes repeat (5개 → +4행)
+- J-K 열 (2행): languages repeat (4개 → +3행)
+→ 각 repeat이 독립적으로 확장, 결과 행 수 = max(5, 4)
 ```
+
+**같은 행 다중 repeat 구현 핵심:**
+- `SheetSpec.repeatRegions`: 반복 영역 정보를 `RepeatRegionSpec` 리스트로 저장 (행 중심이 아닌 영역 중심)
+- `TemplateAnalyzer.buildRowSpecs()`: repeat 영역에 속한 행의 셀 파싱 시 모든 아이템 변수를 인식
+- `UnifiedMarkerParser.parse()`: `repeatItemVariables: Set<String>`으로 같은 행의 모든 아이템 변수를 인식
+- non-repeat 셀은 같은 행의 첫 번째 repeat에서만 처리 (중복 방지)
 
 ### 1.5 빈 컬렉션 처리 (emptyRange)
 
@@ -618,8 +627,9 @@ hunet:
 
 ### 일반 제한사항
 
-- repeat 영역은 2D 공간에서 겹쳐야 함
+- repeat 영역은 2D 공간에서 겹치면 안 됨
 - 같은 열 범위 내 여러 repeat은 세로로 배치 가능
+- 같은 행에 여러 repeat을 배치할 경우 열 범위가 겹치지 않아야 함
 - 시퀀스 번호는 최대 10,000까지 시도
 
 ### 내부 상수
@@ -718,12 +728,11 @@ val NEW_MARKER = MarkerDefinition("newmarker", listOf(
 src/test/
 ├── kotlin/com/hunet/common/tbeg/
 │   ├── TbegTest.kt                     # 통합 테스트
-│   ├── PerformanceBenchmark.kt         # 성능 벤치마크
+│   ├── EmptyCollectionTest.kt          # 빈 컬렉션 처리 테스트
 │   ├── engine/
-│   │   ├── rendering/
-│   │   │   ├── PositionCalculatorTest.kt
-│   │   │   ├── FormulaAdjusterTest.kt
-│   │   │   └── ...
+│   │   ├── TemplateRenderingEngineTest.kt  # 렌더링 엔진 테스트
+│   │   ├── PositionCalculatorTest.kt
+│   │   ├── ForwardReferenceTest.kt
 │   │   └── ...
 │   └── ...
 └── resources/

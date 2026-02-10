@@ -32,6 +32,7 @@ com.hunet.common.tbeg/
 │   └── ProgressInfo.kt
 ├── engine/
 │   ├── core/                           # 핵심 유틸리티
+│   │   ├── CommonTypes.kt              # 공통 타입 (CellCoord, IndexRange, CollectionSizes 등)
 │   │   ├── ExcelUtils.kt
 │   │   ├── ChartProcessor.kt
 │   │   ├── PivotTableProcessor.kt
@@ -247,6 +248,27 @@ if (marker.has("alias")) {
 
 ## 5. 위치 계산
 
+### 5.0 CollectionSizes
+
+컬렉션 이름 → 아이템 수 매핑을 나타내는 value class이다. 위치 계산과 수식 확장에 사용된다.
+
+```kotlin
+// 팩토리 메서드
+val sizes = CollectionSizes.of("employees" to 10, "departments" to 3)
+
+// 빌더 함수
+val sizes = buildCollectionSizes {
+    put("employees", 10)
+    put("departments", 3)
+}
+
+// 빈 인스턴스
+val empty = CollectionSizes.EMPTY
+
+// 조회
+val count: Int? = sizes["employees"]  // 10
+```
+
 ### 5.1 PositionCalculator
 
 다중 repeat 영역의 위치를 계산합니다.
@@ -254,20 +276,19 @@ if (marker.has("alias")) {
 ```kotlin
 class PositionCalculator(
     repeatRegions: List<RepeatRegionSpec>,
-    collectionSizes: Map<String, Int>,
+    collectionSizes: CollectionSizes,
     templateLastRow: Int = -1
 ) {
     // 모든 repeat 확장 정보 계산
     fun calculate(): List<RepeatExpansion>
 
     // 템플릿 위치 -> 최종 위치 변환
-    fun getFinalPosition(templateRow: Int, templateCol: Int): Pair<Int, Int>
+    fun getFinalPosition(templateRow: Int, templateCol: Int): CellCoord
+    fun getFinalPosition(template: CellCoord): CellCoord
 
     // 범위의 최종 위치 계산
-    fun getFinalRange(
-        templateFirstRow: Int, templateLastRow: Int,
-        templateFirstCol: Int, templateLastCol: Int
-    ): CellRangeAddress
+    fun getFinalRange(start: CellCoord, end: CellCoord): CellRangeAddress
+    fun getFinalRange(range: CellRangeAddress): CellRangeAddress
 
     // 실제 출력 행 정보 조회
     fun getRowInfo(actualRow: Int): RowInfo
@@ -300,8 +321,7 @@ data class RepeatExpansion(
 ```kotlin
 data class ColumnGroup(
     val groupId: Int,
-    val startCol: Int,
-    val endCol: Int,
+    val colRange: ColRange,
     val repeatRegions: List<RepeatRegionSpec>
 )
 ```
@@ -317,7 +337,7 @@ SXSSF 모드에서 Iterator를 순차적으로 소비합니다.
 ```kotlin
 class StreamingDataSource(
     private val dataProvider: ExcelDataProvider,
-    private val expectedSizes: Map<String, Int>
+    private val expectedSizes: CollectionSizes
 ) : Closeable {
     // repeat 영역별 현재 아이템
     fun advanceToNextItem(repeatKey: RepeatKey): Any?

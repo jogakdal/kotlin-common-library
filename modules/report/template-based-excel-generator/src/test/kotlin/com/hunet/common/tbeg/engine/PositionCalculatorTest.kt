@@ -1,5 +1,6 @@
 package com.hunet.common.tbeg.engine
 
+import com.hunet.common.tbeg.engine.core.CollectionSizes
 import com.hunet.common.tbeg.engine.rendering.PositionCalculator
 import com.hunet.common.tbeg.engine.rendering.RepeatDirection
 import com.hunet.common.tbeg.engine.rendering.RepeatRegionSpec
@@ -26,7 +27,7 @@ class PositionCalculatorTest {
         fun noRepeatRegions() {
             val calculator = PositionCalculator(
                 repeatRegions = emptyList(),
-                collectionSizes = emptyMap()
+                collectionSizes = CollectionSizes.EMPTY
             )
             calculator.calculate()
 
@@ -53,7 +54,7 @@ class PositionCalculatorTest {
 
             val calculator = PositionCalculator(
                 repeatRegions = regions,
-                collectionSizes = mapOf("items" to 3)
+                collectionSizes = CollectionSizes.of("items" to 3)
             )
             calculator.calculate()
 
@@ -78,7 +79,7 @@ class PositionCalculatorTest {
 
             val calculator = PositionCalculator(
                 repeatRegions = regions,
-                collectionSizes = mapOf("items" to 1)
+                collectionSizes = CollectionSizes.of("items" to 1)
             )
             calculator.calculate()
 
@@ -104,7 +105,7 @@ class PositionCalculatorTest {
 
             val calculator = PositionCalculator(
                 repeatRegions = regions,
-                collectionSizes = mapOf("items" to 0)
+                collectionSizes = CollectionSizes.of("items" to 0)
             )
             calculator.calculate()
 
@@ -134,7 +135,7 @@ class PositionCalculatorTest {
 
             val calculator = PositionCalculator(
                 repeatRegions = regions,
-                collectionSizes = mapOf("items" to 3)
+                collectionSizes = CollectionSizes.of("items" to 3)
             )
             calculator.calculate()
 
@@ -164,7 +165,7 @@ class PositionCalculatorTest {
 
             val calculator = PositionCalculator(
                 repeatRegions = regions,
-                collectionSizes = mapOf("items" to 3)
+                collectionSizes = CollectionSizes.of("items" to 3)
             )
             calculator.calculate()
 
@@ -225,7 +226,7 @@ class PositionCalculatorTest {
 
             val calculator = PositionCalculator(
                 repeatRegions = regions,
-                collectionSizes = mapOf("items" to 3)
+                collectionSizes = CollectionSizes.of("items" to 3)
             )
             calculator.calculate()
 
@@ -253,7 +254,7 @@ class PositionCalculatorTest {
 
             val calculator = PositionCalculator(
                 repeatRegions = regions,
-                collectionSizes = mapOf("items" to 4)
+                collectionSizes = CollectionSizes.of("items" to 4)
             )
             calculator.calculate()
 
@@ -299,7 +300,7 @@ class PositionCalculatorTest {
 
             val calculator = PositionCalculator(
                 repeatRegions = regions,
-                collectionSizes = mapOf(
+                collectionSizes = CollectionSizes.of(
                     "employees" to 2,    // 2행 × 2 = 4행 (확장량 2)
                     "departments" to 3   // 2행 × 3 = 6행 (확장량 4)
                 )
@@ -351,7 +352,7 @@ class PositionCalculatorTest {
 
             val calculator = PositionCalculator(
                 repeatRegions = regions,
-                collectionSizes = mapOf("items" to 3)  // 확장량: (3-1) × 2 = 4
+                collectionSizes = CollectionSizes.of("items" to 3)  // 확장량: (3-1) × 2 = 4
             )
             calculator.calculate()
 
@@ -382,7 +383,7 @@ class PositionCalculatorTest {
 
             val calculator = PositionCalculator(
                 repeatRegions = regions,
-                collectionSizes = mapOf("items" to 3)
+                collectionSizes = CollectionSizes.of("items" to 3)
             )
             calculator.calculate()
 

@@ -155,7 +155,8 @@ src/main/kotlin/com/hunet/common/tbeg/
 │   └── ProgressInfo.kt                     # 진행률 정보
 │
 ├── engine/                                 # 내부 엔진 (internal)
-│   ├── core/                               # 핵심 프로세서
+│   ├── core/                               # 핵심 유틸리티
+│   │   ├── CommonTypes.kt                  # 공통 타입 (CellCoord, IndexRange, CollectionSizes 등)
 │   │   ├── ChartProcessor.kt               # 차트 추출/복원
 │   │   ├── PivotTableProcessor.kt          # 피벗 테이블 처리
 │   │   ├── XmlVariableProcessor.kt         # XML 내 변수 치환

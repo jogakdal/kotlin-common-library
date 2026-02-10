@@ -1,8 +1,6 @@
 package com.hunet.common.tbeg.engine.rendering
 
-import com.hunet.common.tbeg.engine.core.ConditionalFormattingUtils
-import com.hunet.common.tbeg.engine.core.extractSheetReference
-import com.hunet.common.tbeg.engine.core.parseCellRef
+import com.hunet.common.tbeg.engine.core.*
 import com.hunet.common.tbeg.engine.rendering.parser.UnifiedMarkerParser
 import org.apache.poi.ss.usermodel.*
 import org.apache.poi.ss.util.AreaReference
@@ -10,11 +8,6 @@ import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.XSSFSheet
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.InputStream
-
-/**
- * 셀 좌표 (row, col 모두 0-based)
- */
-private data class CellCoord(val row: Int, val col: Int)
 
 /**
  * 셀 범위
@@ -48,18 +41,26 @@ class TemplateAnalyzer {
             }
         )
 
-    private fun analyzeSheet(workbook: XSSFWorkbook, sheet: Sheet, sheetIndex: Int) =
-        SheetSpec(
+    private fun analyzeSheet(workbook: XSSFWorkbook, sheet: Sheet, sheetIndex: Int): SheetSpec {
+        val repeatRegions = findRepeatRegions(workbook, sheet).map { region ->
+            // emptyRange가 있으면 해당 셀 내용을 미리 읽어둠
+            val emptyRangeContent = region.emptyRange?.let { readEmptyRangeContent(workbook, sheet, it) }
+            region.copy(emptyRangeContent = emptyRangeContent)
+        }
+
+        return SheetSpec(
             sheetName = sheet.sheetName,
             sheetIndex = sheetIndex,
-            rows = buildRowSpecs(workbook, sheet, findRepeatRegions(workbook, sheet)),
+            rows = buildRowSpecs(sheet, repeatRegions),
             mergedRegions = (0 until sheet.numMergedRegions).map { sheet.getMergedRegion(it) },
             columnWidths = (0..sheet.maxColumnIndex()).associateWith { sheet.getColumnWidth(it) },
             defaultRowHeight = sheet.defaultRowHeight,
             headerFooter = extractHeaderFooter(sheet),
             printSetup = extractPrintSetup(sheet),
-            conditionalFormattings = extractConditionalFormattings(sheet)
+            conditionalFormattings = extractConditionalFormattings(sheet),
+            repeatRegions = repeatRegions
         )
+    }
 
     /**
      * 헤더/푸터 정보 추출
@@ -259,10 +260,8 @@ class TemplateAnalyzer {
 
         return EmptyRangeSpec(
             sheetName = sheetName,
-            startRow = range.start.row,
-            endRow = range.end.row,
-            startCol = range.start.col,
-            endCol = range.end.col
+            rowRange = RowRange(range.start.row, range.end.row),
+            colRange = ColRange(range.start.col, range.end.col)
         )
     }
 
@@ -280,16 +279,13 @@ class TemplateAnalyzer {
         // 콜론이 있으면 범위 셀 참조
         if (":" in rangeWithoutSheet) {
             val (startRef, endRef) = rangeWithoutSheet.split(":")
-            val (startRow, startCol) = parseCellRef(startRef)  // $ 기호는 parseCellRef에서 무시됨
-            val (endRow, endCol) = parseCellRef(endRef)
-            return CellRange(CellCoord(startRow, startCol), CellCoord(endRow, endCol))
+            return CellRange(parseCellRef(startRef), parseCellRef(endRef))
         }
 
         // 단일 셀 참조 패턴 체크 (A1, $A$1, H10 등)
         val singleCellPattern = Regex("""^\$?[A-Za-z]+\$?\d+$""")
         if (singleCellPattern.matches(rangeWithoutSheet)) {
-            val (row, col) = parseCellRef(rangeWithoutSheet)
-            return CellRange(CellCoord(row, col), CellCoord(row, col))
+            return parseCellRef(rangeWithoutSheet).let { CellRange(it, it) }
         }
 
         // Named Range 조회
@@ -312,54 +308,13 @@ class TemplateAnalyzer {
     /**
      * 행별 명세 생성
      */
-    private fun buildRowSpecs(workbook: Workbook, sheet: Sheet, repeatRegions: List<RepeatRegionSpec>): List<RowSpec> {
-        val repeatByStartRow = repeatRegions.associateBy { it.startRow }
-
-        return buildList {
-            var skipUntil = -1
-            for (rowIndex in 0..sheet.lastRowNum) {
-                if (rowIndex <= skipUntil) continue
-
-                repeatByStartRow[rowIndex]?.let { region ->
-                    add(buildRepeatRow(workbook, sheet, rowIndex, region))
-                    (rowIndex + 1..region.endRow).forEach { contRowIndex ->
-                        add(buildRepeatContinuationRow(sheet, contRowIndex, rowIndex, region.variable))
-                    }
-                    skipUntil = region.endRow
-                } ?: add(buildStaticRow(sheet, rowIndex))
-            }
-        }
-    }
-
-    private fun buildStaticRow(sheet: Sheet, rowIndex: Int) =
-        sheet.getRow(rowIndex).let { row ->
-            RowSpec.StaticRow(
-                templateRowIndex = rowIndex,
-                height = row?.height,
-                cells = buildCellSpecs(row, null)
-            )
-        }
-
-    private fun buildRepeatRow(workbook: Workbook, sheet: Sheet, rowIndex: Int, region: RepeatRegionSpec) =
-        sheet.getRow(rowIndex).let { row ->
-            // emptyRange가 있으면 해당 셀 내용을 미리 읽어둠
-            val emptyRangeContent = region.emptyRange?.let { spec ->
-                readEmptyRangeContent(workbook, sheet, spec)
-            }
-
-            RowSpec.RepeatRow(
-                templateRowIndex = rowIndex,
-                height = row?.height,
-                cells = buildCellSpecs(row, region.variable),
-                collectionName = region.collection,
-                itemVariable = region.variable,
-                repeatEndRowIndex = region.endRow,
-                repeatStartCol = region.startCol,
-                repeatEndCol = region.endCol,
-                direction = region.direction,
-                emptyRangeSpec = region.emptyRange,
-                emptyRangeContent = emptyRangeContent
-            )
+    private fun buildRowSpecs(sheet: Sheet, repeatRegions: List<RepeatRegionSpec>): List<RowSpec> =
+        (0..sheet.lastRowNum).map { rowIndex ->
+            val row = sheet.getRow(rowIndex)
+            val repeatVars = repeatRegions
+                .filter { rowIndex in it.rowRange }
+                .map { it.variable }.toSet().takeIf { it.isNotEmpty() }
+            RowSpec(rowIndex, row?.height, buildCellSpecs(row, repeatVars))
         }
 
     /**
@@ -376,12 +331,12 @@ class TemplateAnalyzer {
         val cells = mutableListOf<List<CellSnapshot>>()
         val rowHeights = mutableListOf<Short?>()
 
-        for (rowIdx in spec.startRow..spec.endRow) {
+        for (rowIdx in spec.rowRange) {
             val row = targetSheet.getRow(rowIdx)
             rowHeights.add(row?.height)
 
             val rowCells = mutableListOf<CellSnapshot>()
-            for (colIdx in spec.startCol..spec.endCol) {
+            for (colIdx in spec.colRange) {
                 val cell = row?.getCell(colIdx)
                 rowCells.add(createCellSnapshot(cell))
             }
@@ -392,16 +347,16 @@ class TemplateAnalyzer {
         val mergedRegions = (0 until targetSheet.numMergedRegions)
             .map { targetSheet.getMergedRegion(it) }
             .filter { region ->
-                region.firstRow >= spec.startRow && region.lastRow <= spec.endRow &&
-                region.firstColumn >= spec.startCol && region.lastColumn <= spec.endCol
+                region.firstRow in spec.rowRange && region.lastRow in spec.rowRange &&
+                region.firstColumn in spec.colRange && region.lastColumn in spec.colRange
             }
             .map { region ->
                 // 상대 좌표로 변환 (emptyRange 시작 기준)
                 CellRangeAddress(
-                    region.firstRow - spec.startRow,
-                    region.lastRow - spec.startRow,
-                    region.firstColumn - spec.startCol,
-                    region.lastColumn - spec.startCol
+                    region.firstRow - spec.rowRange.start,
+                    region.lastRow - spec.rowRange.start,
+                    region.firstColumn - spec.colRange.start,
+                    region.lastColumn - spec.colRange.start
                 )
             }
 
@@ -418,7 +373,9 @@ class TemplateAnalyzer {
         sheet: Sheet,
         spec: EmptyRangeSpec
     ): List<ConditionalFormattingSpec> {
-        val specRange = CellRangeAddress(spec.startRow, spec.endRow, spec.startCol, spec.endCol)
+        val specRange = CellRangeAddress(
+            spec.rowRange.start, spec.rowRange.end, spec.colRange.start, spec.colRange.end
+        )
 
         return extractConditionalFormattingsCore(
             sheet = sheet as? XSSFSheet,
@@ -426,10 +383,10 @@ class TemplateAnalyzer {
             transformRange = { range ->
                 // 상대 좌표로 변환 (emptyRange 시작 기준, 범위 클립)
                 CellRangeAddress(
-                    maxOf(range.firstRow, spec.startRow) - spec.startRow,
-                    minOf(range.lastRow, spec.endRow) - spec.startRow,
-                    maxOf(range.firstColumn, spec.startCol) - spec.startCol,
-                    minOf(range.lastColumn, spec.endCol) - spec.startCol
+                    maxOf(range.firstRow, spec.rowRange.start) - spec.rowRange.start,
+                    minOf(range.lastRow, spec.rowRange.end) - spec.rowRange.start,
+                    maxOf(range.firstColumn, spec.colRange.start) - spec.colRange.start,
+                    minOf(range.lastColumn, spec.colRange.end) - spec.colRange.start
                 )
             }
         )
@@ -470,39 +427,25 @@ class TemplateAnalyzer {
         )
     }
 
-    private fun buildRepeatContinuationRow(
-        sheet: Sheet,
-        rowIndex: Int,
-        parentRowIndex: Int,
-        repeatItemVariable: String
-    ) = sheet.getRow(rowIndex).let { row ->
-        RowSpec.RepeatContinuation(
-            templateRowIndex = rowIndex,
-            height = row?.height,
-            cells = buildCellSpecs(row, repeatItemVariable),
-            parentRepeatRowIndex = parentRowIndex
-        )
-    }
-
-    private fun buildCellSpecs(row: Row?, repeatItemVariable: String?) =
+    private fun buildCellSpecs(row: Row?, repeatItemVariables: Set<String>?) =
         row?.mapNotNull { cell ->
             CellSpec(
                 columnIndex = cell.columnIndex,
                 styleIndex = cell.cellStyle?.index ?: 0,
-                content = analyzeCellContent(cell, repeatItemVariable)
+                content = analyzeCellContent(cell, repeatItemVariables)
             )
         } ?: emptyList()
 
     /**
      * 셀 내용 분석 - UnifiedMarkerParser에 위임
      */
-    private fun analyzeCellContent(cell: Cell, repeatItemVariable: String?) =
+    private fun analyzeCellContent(cell: Cell, repeatItemVariables: Set<String>?) =
         when (cell.cellType) {
             CellType.BLANK -> CellContent.Empty
             CellType.BOOLEAN -> CellContent.StaticBoolean(cell.booleanCellValue)
             CellType.NUMERIC -> CellContent.StaticNumber(cell.numericCellValue)
-            CellType.FORMULA -> UnifiedMarkerParser.parse(cell.cellFormula, isFormula = true, repeatItemVariable)
-            CellType.STRING -> UnifiedMarkerParser.parse(cell.stringCellValue, isFormula = false, repeatItemVariable)
+            CellType.FORMULA -> UnifiedMarkerParser.parse(cell.cellFormula, isFormula = true, repeatItemVariables)
+            CellType.STRING -> UnifiedMarkerParser.parse(cell.stringCellValue, isFormula = false, repeatItemVariables)
             else -> CellContent.Empty
         }
 

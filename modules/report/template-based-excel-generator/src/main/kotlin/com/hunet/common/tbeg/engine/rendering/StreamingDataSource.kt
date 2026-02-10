@@ -2,6 +2,7 @@ package com.hunet.common.tbeg.engine.rendering
 
 import com.hunet.common.logging.commonLogger
 import com.hunet.common.tbeg.ExcelDataProvider
+import com.hunet.common.tbeg.engine.core.CollectionSizes
 import java.io.Closeable
 
 /**
@@ -22,7 +23,7 @@ import java.io.Closeable
  */
 internal class StreamingDataSource(
     private val dataProvider: ExcelDataProvider,
-    private val expectedSizes: Map<String, Int> = emptyMap()
+    private val expectedSizes: CollectionSizes = CollectionSizes.EMPTY
 ) : Closeable {
     private val iteratorsByRepeat = mutableMapOf<RepeatKey, Iterator<Any>>()
     private val currentItemByRepeat = mutableMapOf<RepeatKey, Any?>()
