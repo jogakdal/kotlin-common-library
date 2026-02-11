@@ -602,8 +602,8 @@ object FormulaAdjuster {
         val normalizedFormula = normalizeSingleCellRanges(formula)
 
         val region = expansion.region
-        val templateRowCount = region.templateRowCount
-        val templateColCount = region.templateColCount
+        val templateRowCount = region.area.rowRange.count
+        val templateColCount = region.area.colRange.count
 
         var isSequential = true
 
@@ -636,7 +636,7 @@ object FormulaAdjuster {
                     // 현재 시트 참조
                     if (itemCount <= 1) {
                         match.value
-                    } else if (rowIndex !in region.rowRange || colIndex !in region.colRange) {
+                    } else if (rowIndex !in region.area.rowRange || colIndex !in region.area.colRange) {
                         match.value
                     } else if (ref.isRowAbsolute && region.direction == RepeatDirection.DOWN) {
                         match.value
@@ -646,13 +646,13 @@ object FormulaAdjuster {
                         when (region.direction) {
                             RepeatDirection.DOWN -> {
                                 if (templateRowCount == 1) {
-                                    val startRow = expansion.finalStartRow + (rowIndex - region.startRow) + 1
+                                    val startRow = expansion.finalStartRow + (rowIndex - region.area.start.row) + 1
                                     val endRow = startRow + (itemCount - 1)
                                     val col = toColumnLetter(colIndex)
                                     "${ref.colAbs}$col${ref.rowAbs}$startRow:${ref.colAbs}$col${ref.rowAbs}$endRow"
                                 } else {
                                     isSequential = false
-                                    val relativeRow = rowIndex - region.startRow
+                                    val relativeRow = rowIndex - region.area.start.row
                                     val cells = (0 until itemCount).map { idx ->
                                         val newRow = expansion.finalStartRow + (idx * templateRowCount) + relativeRow + 1
                                         val col = toColumnLetter(colIndex)
@@ -663,13 +663,13 @@ object FormulaAdjuster {
                             }
                             RepeatDirection.RIGHT -> {
                                 if (templateColCount == 1) {
-                                    val startCol = expansion.finalStartCol + (colIndex - region.startCol)
+                                    val startCol = expansion.finalStartCol + (colIndex - region.area.start.col)
                                     val endCol = startCol + (itemCount - 1)
                                     val row = ref.row
                                     "${ref.colAbs}${toColumnLetter(startCol)}${ref.rowAbs}$row:${ref.colAbs}${toColumnLetter(endCol)}${ref.rowAbs}$row"
                                 } else {
                                     isSequential = false
-                                    val relativeCol = colIndex - region.startCol
+                                    val relativeCol = colIndex - region.area.start.col
                                     val cells = (0 until itemCount).map { idx ->
                                         val newCol = expansion.finalStartCol + (idx * templateColCount) + relativeCol
                                         "${ref.colAbs}${toColumnLetter(newCol)}${ref.rowAbs}${ref.row}"
@@ -700,23 +700,23 @@ object FormulaAdjuster {
             if (itemCount <= 1) continue
 
             // 참조가 repeat 영역에 포함되는지 확인
-            if (rowIndex !in region.rowRange || colIndex !in region.colRange) {
+            if (rowIndex !in region.area.rowRange || colIndex !in region.area.colRange) {
                 continue
             }
 
-            val templateRowCount = region.templateRowCount
-            val templateColCount = region.templateColCount
+            val templateRowCount = region.area.rowRange.count
+            val templateColCount = region.area.colRange.count
 
             when (region.direction) {
                 RepeatDirection.DOWN -> {
                     if (ref.isRowAbsolute) continue
                     return if (templateRowCount == 1) {
-                        val startRow = expansion.finalStartRow + (rowIndex - region.startRow) + 1
+                        val startRow = expansion.finalStartRow + (rowIndex - region.area.start.row) + 1
                         val endRow = startRow + (itemCount - 1)
                         val col = toColumnLetter(colIndex)
                         "${ref.sheetRef}${ref.colAbs}$col${ref.rowAbs}$startRow:${ref.colAbs}$col${ref.rowAbs}$endRow"
                     } else {
-                        val relativeRow = rowIndex - region.startRow
+                        val relativeRow = rowIndex - region.area.start.row
                         val cells = (0 until itemCount).map { idx ->
                             val newRow = expansion.finalStartRow + (idx * templateRowCount) + relativeRow + 1
                             val col = toColumnLetter(colIndex)
@@ -728,11 +728,11 @@ object FormulaAdjuster {
                 RepeatDirection.RIGHT -> {
                     if (ref.isColAbsolute) continue
                     return if (templateColCount == 1) {
-                        val startCol = expansion.finalStartCol + (colIndex - region.startCol)
+                        val startCol = expansion.finalStartCol + (colIndex - region.area.start.col)
                         val endCol = startCol + (itemCount - 1)
                         "${ref.sheetRef}${ref.colAbs}${toColumnLetter(startCol)}${ref.rowAbs}${ref.row}:${ref.colAbs}${toColumnLetter(endCol)}${ref.rowAbs}${ref.row}"
                     } else {
-                        val relativeCol = colIndex - region.startCol
+                        val relativeCol = colIndex - region.area.start.col
                         val cells = (0 until itemCount).map { idx ->
                             val newCol = expansion.finalStartCol + (idx * templateColCount) + relativeCol
                             "${ref.sheetRef}${ref.colAbs}${toColumnLetter(newCol)}${ref.rowAbs}${ref.row}"
@@ -779,8 +779,8 @@ object FormulaAdjuster {
                 match.value
             } else {
                 // 끝 셀이 repeat 영역 내에 있는지 확인
-                val endInRegion = endRowIndex in region.rowRange &&
-                    endColIndex in region.colRange
+                val endInRegion = endRowIndex in region.area.rowRange &&
+                    endColIndex in region.area.colRange
 
                 if (!endInRegion) {
                     match.value
@@ -790,10 +790,10 @@ object FormulaAdjuster {
                             if (range.end.isRowAbsolute) {
                                 match.value
                             } else if (templateRowCount == 1) {
-                                val newEndRow = expansion.finalStartRow + (endRowIndex - region.startRow) + itemCount
+                                val newEndRow = expansion.finalStartRow + (endRowIndex - region.area.start.row) + itemCount
                                 range.format(newEndRow = newEndRow)
                             } else {
-                                val relativeRow = endRowIndex - region.startRow
+                                val relativeRow = endRowIndex - region.area.start.row
                                 val newEndRow = expansion.finalStartRow + ((itemCount - 1) * templateRowCount) + relativeRow + 1
                                 range.format(newEndRow = newEndRow)
                             }
@@ -802,10 +802,10 @@ object FormulaAdjuster {
                             if (range.end.isColAbsolute) {
                                 match.value
                             } else if (templateColCount == 1) {
-                                val newEndCol = expansion.finalStartCol + (endColIndex - region.startCol) + itemCount - 1
+                                val newEndCol = expansion.finalStartCol + (endColIndex - region.area.start.col) + itemCount - 1
                                 range.format(newEndCol = toColumnLetter(newEndCol))
                             } else {
-                                val relativeCol = endColIndex - region.startCol
+                                val relativeCol = endColIndex - region.area.start.col
                                 val newEndCol = expansion.finalStartCol + ((itemCount - 1) * templateColCount) + relativeCol
                                 range.format(newEndCol = toColumnLetter(newEndCol))
                             }
@@ -829,22 +829,22 @@ object FormulaAdjuster {
             if (itemCount <= 1) continue
 
             // 끝 셀이 repeat 영역에 포함되는지 확인
-            val endInRegion = endRowIndex in region.rowRange &&
-                endColIndex in region.colRange
+            val endInRegion = endRowIndex in region.area.rowRange &&
+                endColIndex in region.area.colRange
 
             if (!endInRegion) continue
 
-            val templateRowCount = region.templateRowCount
-            val templateColCount = region.templateColCount
+            val templateRowCount = region.area.rowRange.count
+            val templateColCount = region.area.colRange.count
 
             when (region.direction) {
                 RepeatDirection.DOWN -> {
                     if (range.end.isRowAbsolute) continue
                     return if (templateRowCount == 1) {
-                        val newEndRow = expansion.finalStartRow + (endRowIndex - region.startRow) + itemCount
+                        val newEndRow = expansion.finalStartRow + (endRowIndex - region.area.start.row) + itemCount
                         range.format(newEndRow = newEndRow)
                     } else {
-                        val relativeRow = endRowIndex - region.startRow
+                        val relativeRow = endRowIndex - region.area.start.row
                         val newEndRow = expansion.finalStartRow + ((itemCount - 1) * templateRowCount) + relativeRow + 1
                         range.format(newEndRow = newEndRow)
                     }
@@ -852,10 +852,10 @@ object FormulaAdjuster {
                 RepeatDirection.RIGHT -> {
                     if (range.end.isColAbsolute) continue
                     return if (templateColCount == 1) {
-                        val newEndCol = expansion.finalStartCol + (endColIndex - region.startCol) + itemCount - 1
+                        val newEndCol = expansion.finalStartCol + (endColIndex - region.area.start.col) + itemCount - 1
                         range.format(newEndCol = toColumnLetter(newEndCol))
                     } else {
-                        val relativeCol = endColIndex - region.startCol
+                        val relativeCol = endColIndex - region.area.start.col
                         val newEndCol = expansion.finalStartCol + ((itemCount - 1) * templateColCount) + relativeCol
                         range.format(newEndCol = toColumnLetter(newEndCol))
                     }

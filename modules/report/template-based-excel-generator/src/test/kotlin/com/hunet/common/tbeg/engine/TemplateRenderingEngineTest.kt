@@ -669,6 +669,49 @@ class TemplateRenderingEngineTest {
         }
     }
 
+    @ParameterizedTest(name = "{0} mode - 같은 행에 같은 컬렉션의 독립 repeat 영역이 올바르게 렌더링된다")
+    @EnumSource(StreamingMode::class)
+    fun `같은 행에 같은 컬렉션의 독립 repeat 영역이 올바르게 렌더링된다`(mode: StreamingMode) {
+        // Given: 같은 행에 employees 컬렉션을 A~B열과 D~E열에서 각각 repeat
+        val employees = listOf(
+            mapOf("name" to "황용호", "position" to "부장"),
+            mapOf("name" to "홍용호", "position" to "과장"),
+            mapOf("name" to "한용호", "position" to "대리"),
+        )
+        val templateBytes = createSameCollectionMultiRepeatTemplate()
+        val data = mapOf("employees" to employees)
+
+        // When
+        val engine = TemplateRenderingEngine(mode)
+        val resultBytes = engine.process(ByteArrayInputStream(templateBytes), data)
+
+        // Then
+        XSSFWorkbook(ByteArrayInputStream(resultBytes)).use { workbook ->
+            val sheet = workbook.getSheetAt(0)
+
+            // 헤더 1행 + employees 3건 = 4행
+            assertTrue(
+                sheet.lastRowNum + 1 >= 4,
+                "시트는 최소 4행이어야 한다 (실제: ${sheet.lastRowNum + 1})"
+            )
+
+            // 좌측 repeat (A~B열): name, position
+            employees.forEachIndexed { idx, emp ->
+                val row = sheet.getRow(idx + 1)
+                assertNotNull(row, "employees[$idx] 행이 존재해야 한다")
+                assertEquals(emp["name"], row.getCell(0).stringCellValue, "좌측[$idx].name")
+                assertEquals(emp["position"], row.getCell(1).stringCellValue, "좌측[$idx].position")
+            }
+
+            // 우측 repeat (D~E열): position, name (역순)
+            employees.forEachIndexed { idx, emp ->
+                val row = sheet.getRow(idx + 1)
+                assertEquals(emp["position"], row.getCell(3).stringCellValue, "우측[$idx].position")
+                assertEquals(emp["name"], row.getCell(4).stringCellValue, "우측[$idx].name")
+            }
+        }
+    }
+
     // ==================== 헬퍼 메서드 ====================
 
     /**
@@ -684,6 +727,37 @@ class TemplateRenderingEngineTest {
                 workbook.write(out)
             }.toByteArray()
         }
+    }
+
+    /**
+     * 같은 행에 같은 컬렉션(employees)을 두 번 repeat하는 템플릿 생성
+     *
+     * 구조:
+     * - Row 0 (헤더): A="이름", B="직급", C(빈열), D="직급", E="이름"
+     * - Row 1 (데이터): A=${e1.name}, B=${e1.position}, C(repeat 마커), D=${e2.position}, E=${e2.name}, F(repeat 마커)
+     *   - C1: ${repeat(employees, A2:B2, e1)} → A~B열 repeat
+     *   - F1: ${repeat(employees, D2:E2, e2)} → D~E열 repeat
+     */
+    private fun createSameCollectionMultiRepeatTemplate() = XSSFWorkbook().use { workbook ->
+        val sheet = workbook.createSheet("Sheet1")
+
+        sheet.createRow(0).apply {
+            createCell(0).setCellValue("이름")
+            createCell(1).setCellValue("직급")
+            createCell(3).setCellValue("직급")
+            createCell(4).setCellValue("이름")
+        }
+
+        sheet.createRow(1).apply {
+            createCell(0).setCellValue("\${e1.name}")
+            createCell(1).setCellValue("\${e1.position}")
+            createCell(2).setCellValue("\${repeat(employees, A2:B2, e1)}")
+            createCell(3).setCellValue("\${e2.position}")
+            createCell(4).setCellValue("\${e2.name}")
+            createCell(5).setCellValue("\${repeat(employees, D2:E2, e2)}")
+        }
+
+        java.io.ByteArrayOutputStream().also { workbook.write(it) }.toByteArray()
     }
 
     /**

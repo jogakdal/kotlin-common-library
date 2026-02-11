@@ -43,25 +43,25 @@ internal class RepeatExpansionProcessor {
         region: RepeatRegionSpec,
         itemCount: Int
     ) {
-        val colsToInsert = (itemCount - 1) * region.templateColCount
+        val colsToInsert = (itemCount - 1) * region.area.colRange.count
 
         if (colsToInsert <= 0) return
 
         shiftColumnsRight(
-            sheet, region.endCol + 1, colsToInsert,
-            region.rowRange
+            sheet, region.area.end.col + 1, colsToInsert,
+            region.area.rowRange
         )
 
-        region.rowRange
+        region.area.rowRange
             .mapNotNull(sheet::getRow)
             .forEach { row ->
-                val templateCells = region.colRange
+                val templateCells = region.area.colRange
                     .mapNotNull(row::getCell)
                     .withIndex()
 
                 (1 until itemCount).forEach { itemIdx ->
                     templateCells.forEach { (templateOffset, templateCell) ->
-                        val newColIdx = region.startCol + (itemIdx * region.templateColCount) + templateOffset
+                        val newColIdx = region.area.start.col + (itemIdx * region.area.colRange.count) + templateOffset
                         row.createCell(newColIdx).apply {
                             cellStyle = templateCell.cellStyle
                             copyValueFrom(templateCell)
@@ -120,15 +120,15 @@ internal class RepeatExpansionProcessor {
     ) {
         // 반복 영역 내 병합 영역 찾기
         val repeatMergedRegions = templateMergedRegions.filter { merged ->
-            merged.firstRow in region.rowRange &&
-                merged.lastRow in region.rowRange &&
-                merged.firstColumn in region.colRange &&
-                merged.lastColumn in region.colRange
+            merged.firstRow in region.area.rowRange &&
+                merged.lastRow in region.area.rowRange &&
+                merged.firstColumn in region.area.colRange &&
+                merged.lastColumn in region.area.colRange
         }
 
         // 각 추가 아이템에 대해 병합 영역 복제
         for (itemIdx in 1 until itemCount) {
-            val rowOffset = itemIdx * region.templateRowCount
+            val rowOffset = itemIdx * region.area.rowRange.count
             for (templateRegion in repeatMergedRegions) {
                 val newRegion = CellRangeAddress(
                     templateRegion.firstRow + rowOffset,
@@ -165,10 +165,10 @@ internal class RepeatExpansionProcessor {
 
             // 반복 영역 내의 범위만 필터
             val repeatRanges = ranges.filter { range ->
-                range.firstRow in region.rowRange &&
-                        range.lastRow in region.rowRange &&
-                        range.firstColumn in region.colRange &&
-                        (region.endCol == Int.MAX_VALUE || range.lastColumn in region.colRange)
+                range.firstRow in region.area.rowRange &&
+                        range.lastRow in region.area.rowRange &&
+                        range.firstColumn in region.area.colRange &&
+                        (region.area.end.col == Int.MAX_VALUE || range.lastColumn in region.area.colRange)
             }
 
             if (repeatRanges.isEmpty()) continue
@@ -179,7 +179,7 @@ internal class RepeatExpansionProcessor {
 
             // 각 추가 아이템에 대해 새 범위 생성 및 추가
             for (itemIdx in 1 until itemCount) {
-                val rowOffset = itemIdx * region.templateRowCount
+                val rowOffset = itemIdx * region.area.rowRange.count
                 val newRanges = repeatRanges.map { range ->
                     CellRangeAddress(
                         range.firstRow + rowOffset,
@@ -210,14 +210,14 @@ internal class RepeatExpansionProcessor {
         if (itemCount <= 1 || rowsInserted <= 0) return
 
         // 반복 영역 이후의 행에서 수식 셀 찾기
-        for (rowIdx in (region.endRow + rowsInserted + 1)..sheet.lastRowNum) {
+        for (rowIdx in (region.area.end.row + rowsInserted + 1)..sheet.lastRowNum) {
             val row = sheet.getRow(rowIdx) ?: continue
             row.forEach { cell ->
                 if (cell.cellType == CellType.FORMULA) {
                     val originalFormula = cell.cellFormula
                     val (expandedFormula, isSequential) = FormulaAdjuster.expandSingleRefToRowRange(
                         originalFormula,
-                        region.rowRange,
+                        region.area.rowRange,
                         itemCount
                     )
 
@@ -253,11 +253,11 @@ internal class RepeatExpansionProcessor {
         if (itemCount <= 1) return
 
         // 반복 영역의 행 범위 내에서 수식 셀 찾기
-        for (rowIdx in region.rowRange) {
+        for (rowIdx in region.area.rowRange) {
             val row = sheet.getRow(rowIdx) ?: continue
             row.forEach { cell ->
                 // 반복 영역 오른쪽에 있는 수식 셀만 처리
-                if (cell.columnIndex > region.endCol + colsInserted && cell.cellType == CellType.FORMULA) {
+                if (cell.columnIndex > region.area.end.col + colsInserted && cell.cellType == CellType.FORMULA) {
                     val originalFormula = cell.cellFormula
 
                     // XSSF 모드에서 확장된 데이터 열(startCol~endCol + colsInserted)은
@@ -266,8 +266,8 @@ internal class RepeatExpansionProcessor {
                     // 수식 셀 위치(newColStart 이상)를 포함하지 않음.
                     val (expandedFormula, isSequential) = FormulaAdjuster.expandSingleRefToColumnRange(
                         originalFormula,
-                        region.colRange,
-                        region.rowRange,
+                        region.area.colRange,
+                        region.area.rowRange,
                         itemCount
                     )
 

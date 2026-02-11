@@ -1,6 +1,8 @@
 package com.hunet.common.tbeg.engine.rendering
 
+import com.hunet.common.logging.commonLogger
 import com.hunet.common.tbeg.engine.core.*
+import com.hunet.common.tbeg.engine.core.CellArea
 import com.hunet.common.tbeg.engine.rendering.parser.UnifiedMarkerParser
 import org.apache.poi.ss.usermodel.*
 import org.apache.poi.ss.util.AreaReference
@@ -10,39 +12,51 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.InputStream
 
 /**
- * 셀 범위
- */
-private data class CellRange(val start: CellCoord, val end: CellCoord)
-
-/**
  * 템플릿 분석기 - 템플릿을 분석하여 워크북 명세 생성
  */
 class TemplateAnalyzer {
+
+    companion object {
+        private val LOG by commonLogger()
+    }
 
     /**
      * 템플릿을 분석하여 워크북 명세 생성
      */
     fun analyze(template: InputStream) =
-        XSSFWorkbook(template).use { workbook ->
-            WorkbookSpec(
-                sheets = (0 until workbook.numberOfSheets).map { index ->
-                    analyzeSheet(workbook, workbook.getSheetAt(index), index)
-                }
-            )
-        }
+        XSSFWorkbook(template).use(::analyzeWorkbook)
 
     /**
      * 워크북과 함께 분석 (워크북 재사용 시)
      */
-    fun analyzeFromWorkbook(workbook: XSSFWorkbook) =
-        WorkbookSpec(
-            sheets = (0 until workbook.numberOfSheets).map { index ->
-                analyzeSheet(workbook, workbook.getSheetAt(index), index)
-            }
-        )
+    fun analyzeFromWorkbook(workbook: XSSFWorkbook) = analyzeWorkbook(workbook)
 
-    private fun analyzeSheet(workbook: XSSFWorkbook, sheet: Sheet, sheetIndex: Int): SheetSpec {
-        val repeatRegions = findRepeatRegions(workbook, sheet).map { region ->
+    private fun analyzeWorkbook(workbook: XSSFWorkbook): WorkbookSpec {
+        // Phase 1: 모든 시트에서 repeat 마커 수집
+        val allRegions = (0 until workbook.numberOfSheets).flatMap { index ->
+            collectRepeatRegions(workbook, workbook.getSheetAt(index))
+        }
+
+        // Phase 2: 중복 제거 (같은 컬렉션 + 같은 대상 시트 + 같은 영역)
+        val dedupedBySheet = deduplicateRepeatRegions(allRegions)
+
+        // Phase 3: SheetSpec 생성
+        val sheets = (0 until workbook.numberOfSheets).map { index ->
+            val sheet = workbook.getSheetAt(index)
+            analyzeSheet(workbook, sheet, index, dedupedBySheet[sheet.sheetName] ?: emptyList())
+        }
+
+        // Phase 4: 셀 단위 범위 마커 중복 제거 (image 등)
+        return WorkbookSpec(sheets = deduplicateCellMarkers(sheets))
+    }
+
+    private fun analyzeSheet(
+        workbook: XSSFWorkbook,
+        sheet: Sheet,
+        sheetIndex: Int,
+        rawRepeatRegions: List<RepeatRegionSpec>
+    ): SheetSpec {
+        val repeatRegions = rawRepeatRegions.map { region ->
             // emptyRange가 있으면 해당 셀 내용을 미리 읽어둠
             val emptyRangeContent = region.emptyRange?.let { readEmptyRangeContent(workbook, sheet, it) }
             region.copy(emptyRangeContent = emptyRangeContent)
@@ -214,9 +228,9 @@ class TemplateAnalyzer {
     }
 
     /**
-     * ${repeat(...)} 또는 =TBEG_REPEAT(...) 마커를 찾아 반복 영역 정보 추출
+     * 시트 내 repeat 마커를 수집하고, 범위의 대상 시트 정보를 함께 반환
      */
-    private fun findRepeatRegions(workbook: Workbook, sheet: Sheet): List<RepeatRegionSpec> =
+    private fun collectRepeatRegions(workbook: Workbook, sheet: Sheet): List<RepeatRegionWithContext> =
         buildList {
             sheet.forEach { row ->
                 row.forEach { cell ->
@@ -229,27 +243,50 @@ class TemplateAnalyzer {
 
                     val content = UnifiedMarkerParser.parse(text, isFormula, null)
                     if (content is CellContent.RepeatMarker) {
-                        add(createRepeatRegionSpec(workbook, content))
+                        val (sheetRef, _) = extractSheetReference(content.range)
+                        add(
+                            RepeatRegionWithContext(
+                                region = createRepeatRegionSpec(workbook, content),
+                                sourceSheetName = sheet.sheetName,
+                                targetSheetName = sheetRef ?: sheet.sheetName
+                            )
+                        )
                     }
                 }
             }
         }
 
-    private fun createRepeatRegionSpec(workbook: Workbook, marker: CellContent.RepeatMarker): RepeatRegionSpec {
-        val range = parseRange(workbook, marker.range)
-        val emptyRange = marker.emptyRange?.let { parseEmptyRangeSpec(workbook, it) }
+    /**
+     * 같은 컬렉션과 같은 대상 범위(시트+영역)를 가진 중복 repeat 마커를 감지하여
+     * 경고 로그 출력 후 마지막 마커만 유지한다.
+     *
+     * @return 마커가 위치한 시트 이름 → 중복 제거된 RepeatRegionSpec 리스트
+     */
+    private fun deduplicateRepeatRegions(
+        allRegions: List<RepeatRegionWithContext>
+    ): Map<String, List<RepeatRegionSpec>> =
+        allRegions.groupBy { Triple(it.region.collection, it.targetSheetName, it.region.area) }
+            .values
+            .map { duplicates ->
+                if (duplicates.size > 1) {
+                    val first = duplicates.first()
+                    LOG.warn(
+                        "같은 컬렉션('${first.region.collection}')과 같은 범위('${first.targetSheetName}'!" +
+                            "${first.region.area.start.toCellRefString()}:${first.region.area.end.toCellRefString()})를 가진 " +
+                            "repeat 마커가 ${duplicates.size}개 있습니다. 마지막 마커만 사용합니다."
+                    )
+                }
+                duplicates.last()
+            }
+            .groupBy({ it.sourceSheetName }, { it.region })
 
-        return RepeatRegionSpec(
-            collection = marker.collection,
-            variable = marker.variable,
-            startRow = range.start.row,
-            endRow = range.end.row,
-            startCol = range.start.col,
-            endCol = range.end.col,
-            direction = marker.direction,
-            emptyRange = emptyRange
-        )
-    }
+    private fun createRepeatRegionSpec(workbook: Workbook, marker: CellContent.RepeatMarker) = RepeatRegionSpec(
+        collection = marker.collection,
+        variable = marker.variable,
+        area = parseRange(workbook, marker.range),
+        direction = marker.direction,
+        emptyRange = marker.emptyRange?.let { parseEmptyRangeSpec(workbook, it) }
+    )
 
     /**
      * empty 범위 문자열을 EmptyRangeSpec으로 파싱
@@ -257,12 +294,7 @@ class TemplateAnalyzer {
     private fun parseEmptyRangeSpec(workbook: Workbook, rangeStr: String): EmptyRangeSpec {
         val (sheetName, rangeWithoutSheet) = extractSheetReference(rangeStr)
         val range = parseRange(workbook, rangeWithoutSheet)
-
-        return EmptyRangeSpec(
-            sheetName = sheetName,
-            rowRange = RowRange(range.start.row, range.end.row),
-            colRange = ColRange(range.start.col, range.end.col)
-        )
+        return EmptyRangeSpec(sheetName, range.rowRange, range.colRange)
     }
 
     /**
@@ -270,22 +302,22 @@ class TemplateAnalyzer {
      *
      * @param workbook Named Range 조회용 워크북
      * @param range 셀 범위("A6:C8", "$A$6:$C$8"), 단일 셀("H10"), 또는 Named Range("DataRange")
-     * @return CellRange
+     * @return CellArea
      */
-    private fun parseRange(workbook: Workbook, range: String): CellRange {
+    private fun parseRange(workbook: Workbook, range: String): CellArea {
         // 시트 참조가 포함된 경우 제거 (parseEmptyRangeSpec에서 이미 처리하지만 안전을 위해)
         val (_, rangeWithoutSheet) = extractSheetReference(range)
 
         // 콜론이 있으면 범위 셀 참조
         if (":" in rangeWithoutSheet) {
             val (startRef, endRef) = rangeWithoutSheet.split(":")
-            return CellRange(parseCellRef(startRef), parseCellRef(endRef))
+            return CellArea(parseCellRef(startRef), parseCellRef(endRef))
         }
 
         // 단일 셀 참조 패턴 체크 (A1, $A$1, H10 등)
         val singleCellPattern = Regex("""^\$?[A-Za-z]+\$?\d+$""")
         if (singleCellPattern.matches(rangeWithoutSheet)) {
-            return parseCellRef(rangeWithoutSheet).let { CellRange(it, it) }
+            return parseCellRef(rangeWithoutSheet).let { CellArea(it, it) }
         }
 
         // Named Range 조회
@@ -299,7 +331,7 @@ class TemplateAnalyzer {
         }
 
         val areaRef = AreaReference(formula, workbook.spreadsheetVersion)
-        return CellRange(
+        return CellArea(
             CellCoord(areaRef.firstCell.row, areaRef.firstCell.col.toInt()),
             CellCoord(areaRef.lastCell.row, areaRef.lastCell.col.toInt())
         )
@@ -312,7 +344,7 @@ class TemplateAnalyzer {
         (0..sheet.lastRowNum).map { rowIndex ->
             val row = sheet.getRow(rowIndex)
             val repeatVars = repeatRegions
-                .filter { rowIndex in it.rowRange }
+                .filter { rowIndex in it.area.rowRange }
                 .map { it.variable }.toSet().takeIf { it.isNotEmpty() }
             RowSpec(rowIndex, row?.height, buildCellSpecs(row, repeatVars))
         }
@@ -451,4 +483,84 @@ class TemplateAnalyzer {
 
     private fun Sheet.maxColumnIndex(): Int =
         maxOfOrNull { row -> row.lastCellNum.toInt() } ?: 0
+
+    // ==================== 셀 마커 중복 제거 ====================
+
+    /**
+     * 범위를 취급하는 셀 마커(image 등)의 중복을 제거한다.
+     * 같은 중복 키를 가진 마커가 여러 개 있으면 경고 로그를 출력하고 마지막 마커만 유지한다.
+     */
+    private fun deduplicateCellMarkers(sheets: List<SheetSpec>): List<SheetSpec> {
+        val markers = buildList {
+            sheets.forEachIndexed { sheetIdx, sheet ->
+                sheet.rows.forEach { row ->
+                    row.cells.forEach { cell ->
+                        cellMarkerDedupKey(cell.content, sheet.sheetName)?.let { (key, desc) ->
+                            add(CellMarkerInfo(sheetIdx, row.templateRowIndex, cell.columnIndex, key, desc))
+                        }
+                    }
+                }
+            }
+        }
+
+        val toRemove = mutableSetOf<Triple<Int, Int, Int>>()
+
+        markers.groupBy { it.dedupKey }
+            .filterValues { it.size > 1 }
+            .forEach { (_, duplicates) ->
+                LOG.warn(
+                    "${duplicates.first().description}가 ${duplicates.size}개 있습니다. 마지막 마커만 사용합니다."
+                )
+                duplicates.dropLast(1).forEach {
+                    toRemove.add(Triple(it.sheetIndex, it.templateRowIndex, it.columnIndex))
+                }
+            }
+
+        if (toRemove.isEmpty()) return sheets
+
+        return sheets.mapIndexed { sheetIdx, sheet ->
+            sheet.copy(rows = sheet.rows.map { row ->
+                row.copy(cells = row.cells.map { cell ->
+                    if (Triple(sheetIdx, row.templateRowIndex, cell.columnIndex) in toRemove) {
+                        cell.copy(content = CellContent.Empty)
+                    } else cell
+                })
+            })
+        }
+    }
+
+    /**
+     * 셀 마커에서 중복 키와 설명을 추출한다.
+     * null이면 중복 체크 대상이 아니다.
+     */
+    private fun cellMarkerDedupKey(content: CellContent, sheetName: String): Pair<String, String>? =
+        when (content) {
+            is CellContent.ImageMarker -> content.position?.let { pos ->
+                val (sheetRef, posWithoutSheet) = extractSheetReference(pos)
+                val targetSheet = sheetRef ?: sheetName
+                val key = "image:${content.imageName}:$targetSheet!$posWithoutSheet:${content.sizeSpec}"
+                val desc = "같은 이름('${content.imageName}')과 같은 위치('$targetSheet'!$posWithoutSheet)와 같은 크기를 가진 image 마커"
+                key to desc
+            }
+            // 향후 다른 범위 기반 마커 추가 가능
+            else -> null
+        }
+
+    // ==================== 내부 데이터 클래스 ====================
+
+    /** repeat 영역 중복 감지용 내부 컨텍스트 */
+    private data class RepeatRegionWithContext(
+        val region: RepeatRegionSpec,
+        val sourceSheetName: String,
+        val targetSheetName: String
+    )
+
+    /** 셀 마커 중복 감지용 위치 정보 */
+    private data class CellMarkerInfo(
+        val sheetIndex: Int,
+        val templateRowIndex: Int,
+        val columnIndex: Int,
+        val dedupKey: String,
+        val description: String
+    )
 }

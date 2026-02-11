@@ -1,5 +1,6 @@
 package com.hunet.common.tbeg.engine.rendering
 
+import com.hunet.common.tbeg.engine.core.CellArea
 import com.hunet.common.tbeg.engine.core.ColRange
 import com.hunet.common.tbeg.engine.core.RowRange
 import org.apache.poi.ss.usermodel.CellType
@@ -206,48 +207,11 @@ enum class RepeatDirection {
 data class RepeatRegionSpec(
     val collection: String,
     val variable: String,
-    val startRow: Int,
-    val endRow: Int,
-    val startCol: Int,
-    val endCol: Int,
+    val area: CellArea,
     val direction: RepeatDirection = RepeatDirection.DOWN,
     val emptyRange: EmptyRangeSpec? = null,           // 컬렉션이 비어있을 때 표시할 범위
     val emptyRangeContent: EmptyRangeContent? = null   // 컬렉션이 비어있을 때 표시할 내용 (미리 읽음)
-) {
-    /** 템플릿 행 수 (endRow - startRow + 1) */
-    val templateRowCount: Int get() = endRow - startRow + 1
-
-    /** 템플릿 열 수 (endCol - startCol + 1) */
-    val templateColCount: Int get() = endCol - startCol + 1
-
-    /** 행 범위 */
-    val rowRange get() = RowRange(startRow, endRow)
-
-    /** 열 범위 */
-    val colRange get() = ColRange(startCol, endCol)
-
-    /**
-     * 다른 repeat 영역과 열 범위가 겹치는지 확인
-     */
-    fun overlapsColumns(other: RepeatRegionSpec): Boolean {
-        return !(endCol < other.startCol || startCol > other.endCol)
-    }
-
-    /**
-     * 다른 repeat 영역과 행 범위가 겹치는지 확인
-     */
-    fun overlapsRows(other: RepeatRegionSpec): Boolean {
-        return !(endRow < other.startRow || startRow > other.endRow)
-    }
-
-    /**
-     * 다른 repeat 영역과 2D 공간(행×열)에서 겹치는지 확인
-     * (방향에 관계없이 행×열 범위가 겹치면 true)
-     */
-    fun overlaps(other: RepeatRegionSpec): Boolean {
-        return overlapsRows(other) && overlapsColumns(other)
-    }
-}
+)
 
 /**
  * 열 그룹 - 열 범위가 겹치는 repeat 영역들의 모음
@@ -277,7 +241,7 @@ data class ColumnGroup(
             for (region in downRepeats) {
                 // 기존 그룹 중 열 범위가 겹치는 그룹 찾기
                 val overlappingGroups = groups.filter { group ->
-                    group.any { it.overlapsColumns(region) }
+                    group.any { it.area.overlapsColumns(region.area) }
                 }
 
                 when (overlappingGroups.size) {
@@ -300,8 +264,8 @@ data class ColumnGroup(
             }
 
             return groups.mapIndexed { index, regionsInGroup ->
-                val minCol = regionsInGroup.minOf { it.startCol }
-                val maxCol = regionsInGroup.maxOf { it.endCol }
+                val minCol = regionsInGroup.minOf { it.area.start.col }
+                val maxCol = regionsInGroup.maxOf { it.area.end.col }
                 ColumnGroup(index, ColRange(minCol, maxCol), regionsInGroup.toList())
             }
         }

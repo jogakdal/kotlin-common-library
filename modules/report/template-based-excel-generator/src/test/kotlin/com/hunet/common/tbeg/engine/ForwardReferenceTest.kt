@@ -3,6 +3,8 @@
 package com.hunet.common.tbeg.engine
 
 import com.hunet.common.tbeg.StreamingMode
+import com.hunet.common.tbeg.engine.core.CellCoord
+import com.hunet.common.tbeg.engine.core.CellArea
 import com.hunet.common.tbeg.engine.core.CollectionSizes
 import com.hunet.common.tbeg.engine.rendering.FormulaAdjuster
 import com.hunet.common.tbeg.engine.rendering.PositionCalculator
@@ -256,10 +258,10 @@ class ForwardReferenceTest {
         println("행 수: ${sheetSpec.rows.size}")
 
         for (rowSpec in sheetSpec.rows) {
-            val region = sheetSpec.repeatRegions.find { it.startRow == rowSpec.templateRowIndex }
+            val region = sheetSpec.repeatRegions.find { it.area.start.row == rowSpec.templateRowIndex }
             if (region != null) {
                 println("  RepeatStart[${rowSpec.templateRowIndex}]: collection=${region.collection}, " +
-                        "var=${region.variable}, cols=${region.startCol}..${region.endCol}")
+                        "var=${region.variable}, cols=${region.area.start.col}..${region.area.end.col}")
             } else {
                 println("  Row[${rowSpec.templateRowIndex}]: ${rowSpec.cells.size}개 셀")
             }
@@ -272,12 +274,12 @@ class ForwardReferenceTest {
         val repeatRegionSpecs = sheetSpec.repeatRegions
         println("\n=== RepeatRegion 목록 ===")
         repeatRegionSpecs.forEach { spec ->
-            println("  collection=${spec.collection}, startRow=${spec.startRow}, endRow=${spec.endRow}, " +
-                    "startCol=${spec.startCol}, endCol=${spec.endCol}")
+            println("  collection=${spec.collection}, startRow=${spec.area.start.row}, endRow=${spec.area.end.row}, " +
+                    "startCol=${spec.area.start.col}, endCol=${spec.area.end.col}")
         }
 
         // 핵심: Row 0의 수식이 Row 2의 repeat 영역을 참조하는데, expandFormulaRanges가 동작해야 함
-        assertTrue(repeatRegionSpecs.any { it.startRow == 2 }, "Row 2에서 시작하는 repeat 영역이 있어야 함")
+        assertTrue(repeatRegionSpecs.any { it.area.start.row == 2 }, "Row 2에서 시작하는 repeat 영역이 있어야 함")
 
         // collectionSizes 계산
         val employees = listOf(
@@ -528,10 +530,7 @@ class ForwardReferenceTest {
         val sheet2Region = RepeatRegionSpec(
             collection = "items",
             variable = "item",
-            startRow = 2,  // 0-based, B3
-            endRow = 2,
-            startCol = 0,
-            endCol = 1,
+            area = CellArea(CellCoord(2, 0), CellCoord(2, 1)),  // 0-based, B3
             direction = RepeatDirection.DOWN
         )
         val sheet2Expansion = PositionCalculator.RepeatExpansion(
@@ -551,10 +550,7 @@ class ForwardReferenceTest {
         val currentRegion = RepeatRegionSpec(
             collection = "dummy",
             variable = "d",
-            startRow = 100,
-            endRow = 100,
-            startCol = 0,
-            endCol = 0,
+            area = CellArea(CellCoord(100, 0), CellCoord(100, 0)),
             direction = RepeatDirection.DOWN
         )
         val currentExpansion = PositionCalculator.RepeatExpansion(
@@ -589,10 +585,7 @@ class ForwardReferenceTest {
         val sheetRegion = RepeatRegionSpec(
             collection = "items",
             variable = "item",
-            startRow = 2,
-            endRow = 2,
-            startCol = 0,
-            endCol = 1,
+            area = CellArea(CellCoord(2, 0), CellCoord(2, 1)),
             direction = RepeatDirection.DOWN
         )
         val sheetExpansion = PositionCalculator.RepeatExpansion(
@@ -611,10 +604,7 @@ class ForwardReferenceTest {
         val currentRegion = RepeatRegionSpec(
             collection = "dummy",
             variable = "d",
-            startRow = 100,
-            endRow = 100,
-            startCol = 0,
-            endCol = 0,
+            area = CellArea(CellCoord(100, 0), CellCoord(100, 0)),
             direction = RepeatDirection.DOWN
         )
         val currentExpansion = PositionCalculator.RepeatExpansion(

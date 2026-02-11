@@ -185,7 +185,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         calculator.calculate()
 
         // 같은 행에 여러 RepeatRegion이 있을 수 있으므로 groupBy
-        val regionsByStartRow = repeatRegions.groupBy { it.startRow }
+        val regionsByStartRow = repeatRegions.groupBy { it.area.start.row }
 
         // 스트리밍 모드 분기
         val hasRightRepeat = repeatRegions.any { it.direction == RepeatDirection.RIGHT }
@@ -248,9 +248,9 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                     for (region in regions) {
                         val items = ctx.data[region.collection] as? Collection<*> ?: emptyList<Any>()
 
-                        val allRepeatColRanges = ctx.regionsByStartRow[region.startRow]
-                            ?.map { it.colRange }
-                            ?: listOf(region.colRange)
+                        val allRepeatColRanges = ctx.regionsByStartRow[region.area.start.row]
+                            ?.map { it.area.colRange }
+                            ?: listOf(region.area.colRange)
 
                         when (region.direction) {
                             RepeatDirection.DOWN -> collectDownRepeatCells(
@@ -258,7 +258,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                             )
                             RepeatDirection.RIGHT -> {
                                 val actualRow = ctx.calculator.getFinalPosition(
-                                    region.startRow, region.startCol
+                                    region.area.start.row, region.area.start.col
                                 ).row
                                 writeRowSxssfWithRightExpansion(ctx, actualRow, region, items)
                             }
@@ -294,12 +294,12 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         region: RepeatRegionSpec,
         items: Collection<*>,
         pendingRows: MutableMap<Int, MutableList<PendingCell>>,
-        allRepeatColRanges: List<ColRange> = listOf(region.colRange),
+        allRepeatColRanges: List<ColRange> = listOf(region.area.colRange),
         isFirstRepeatInRow: Boolean = true
     ) {
-        val templateRowCount = region.templateRowCount
+        val templateRowCount = region.area.rowRange.count
         val expansion = ctx.calculator.getExpansionForRegion(
-            region.collection, region.startRow, region.startCol
+            region.collection, region.area.start.row, region.area.start.col
         )
         val totalRepeatOffset = expansion?.rowExpansion ?: ((items.size * templateRowCount) - templateRowCount)
 
@@ -321,16 +321,16 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
             val itemData = createItemData(ctx.data, region.variable, item)
 
             for (templateOffset in 0 until templateRowCount) {
-                val templateRowIdx = region.startRow + templateOffset
+                val templateRowIdx = region.area.start.row + templateOffset
                 val currentRowBp = ctx.blueprint.rowsByTemplateIndex[templateRowIdx] ?: continue
 
                 val actualRow = expansion?.let {
                     ctx.calculator.getRowForRepeatItem(it, itemIdx, templateOffset)
-                } ?: (region.startRow + (itemIdx * templateRowCount) + templateOffset)
+                } ?: (region.area.start.row + (itemIdx * templateRowCount) + templateOffset)
 
                 // repeat 범위 내 셀만 수집
                 currentRowBp.cells
-                    .filter { it.columnIndex in region.colRange }
+                    .filter { it.columnIndex in region.area.colRange }
                     .forEach { cellSpec ->
                         pendingRows.getOrPut(actualRow) { mutableListOf() }.add(
                             PendingCell(
@@ -362,8 +362,8 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         allRepeatColRanges: List<ColRange>,
         pendingRows: MutableMap<Int, MutableList<PendingCell>>
     ) {
-        for (templateOffset in 0 until region.templateRowCount) {
-            val templateRowIdx = region.startRow + templateOffset
+        for (templateOffset in 0 until region.area.rowRange.count) {
+            val templateRowIdx = region.area.start.row + templateOffset
             val currentRowBp = ctx.blueprint.rowsByTemplateIndex[templateRowIdx] ?: continue
 
             val actualRow = ctx.calculator.getFinalPosition(templateRowIdx, 0).row
@@ -393,42 +393,42 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         pendingRows: MutableMap<Int, MutableList<PendingCell>>
     ) {
         val emptyRangeContent = region.emptyRangeContent ?: return
-        val templateRowCount = region.templateRowCount
+        val templateRowCount = region.area.rowRange.count
         val expansion = ctx.calculator.getExpansionForRegion(
-            region.collection, region.startRow, region.startCol
+            region.collection, region.area.start.row, region.area.start.col
         )
-        val actualStartRow = expansion?.finalStartRow ?: region.startRow
+        val actualStartRow = expansion?.finalStartRow ?: region.area.start.row
 
         // 단일 셀이고 repeat 영역이 더 크면 병합 (병합 영역 등록, 실제 적용은 나중에)
-        if (emptyRangeContent.isSingleCell && (templateRowCount > 1 || region.templateColCount > 1)) {
+        if (emptyRangeContent.isSingleCell && (templateRowCount > 1 || region.area.colRange.count > 1)) {
             val snapshot = emptyRangeContent.cells[0][0]
             pendingRows.getOrPut(actualStartRow) { mutableListOf() }.add(
                 PendingCell(
-                    columnIndex = region.startCol,
+                    columnIndex = region.area.start.col,
                     styleIndex = snapshot.styleIndex,
                     content = snapshot.toContent(),
                     height = emptyRangeContent.rowHeights.getOrNull(0),
-                    templateRowIndex = region.startRow,
+                    templateRowIndex = region.area.start.row,
                     isStaticRow = true,
                     itemData = ctx.data
                 )
             )
             ctx.emptyRangeMergedRegions.add(CellRangeAddress(
                 actualStartRow, actualStartRow + templateRowCount - 1,
-                region.startCol, region.endCol
+                region.area.start.col, region.area.end.col
             ))
             return
         }
 
         val rowsToWrite = minOf(templateRowCount, emptyRangeContent.rowCount)
-        val colsToWrite = minOf(region.templateColCount, emptyRangeContent.colCount)
+        val colsToWrite = minOf(region.area.colRange.count, emptyRangeContent.colCount)
 
         for (rowOffset in 0 until rowsToWrite) {
             val actualRow = actualStartRow + rowOffset
             val rowHeight = emptyRangeContent.rowHeights.getOrNull(rowOffset)
 
             for (colOffset in 0 until colsToWrite) {
-                val colIndex = region.startCol + colOffset
+                val colIndex = region.area.start.col + colOffset
                 val snapshot = emptyRangeContent.cells.getOrNull(rowOffset)?.getOrNull(colOffset) ?: continue
 
                 pendingRows.getOrPut(actualRow) { mutableListOf() }.add(
@@ -437,7 +437,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                         styleIndex = snapshot.styleIndex,
                         content = snapshot.toContent(),
                         height = rowHeight,
-                        templateRowIndex = region.startRow + rowOffset,
+                        templateRowIndex = region.area.start.row + rowOffset,
                         isStaticRow = true,
                         itemData = ctx.data
                     )
@@ -512,10 +512,10 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         for ((_, regionList) in ctx.regionsByStartRow) {
             for (region in regionList) {
             val expansion = ctx.calculator.getExpansionForRegion(
-                region.collection, region.startRow, region.startCol
+                region.collection, region.area.start.row, region.area.start.col
             ) ?: continue
 
-            val templateRowCount = region.templateRowCount
+            val templateRowCount = region.area.rowRange.count
             val repeatStartRow = expansion.finalStartRow
 
             // 빈 컬렉션 + emptyRangeContent가 있는 경우
@@ -537,12 +537,12 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
             val templateRowOffset = rowWithinRepeat % templateRowCount
 
             val repeatKey = StreamingDataSource.RepeatKey(
-                ctx.sheetIndex, region.collection, region.startRow, region.startCol
+                ctx.sheetIndex, region.collection, region.area.start.row, region.area.start.col
             )
             val item = state.getItemForRow(repeatKey, templateRowOffset, itemIndex)
             val itemData = createItemData(ctx.data, region.variable, item)
 
-            val templateRowForCells = region.startRow + templateRowOffset
+            val templateRowForCells = region.area.start.row + templateRowOffset
             val rowSpec = ctx.blueprint.rowsByTemplateIndex[templateRowForCells] ?: continue
 
             rowSpec.height?.let { h -> rowHeight = maxOf(rowHeight ?: 0, h) }
@@ -555,7 +555,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
 
             // repeat 범위 내 셀 처리
             rowSpec.cells
-                .filter { it.columnIndex in region.colRange }
+                .filter { it.columnIndex in region.area.colRange }
                 .forEach { cellSpec ->
                     val cell = row.createCellWithStyle(cellSpec.columnIndex, cellSpec.styleIndex)
                     processCellContentSxssfWithCalculator(
@@ -564,10 +564,10 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                 }
 
             // repeat 범위 밖의 셀은 같은 행의 첫 번째 repeat의 첫 아이템 첫 행에서만 처리
-            if (itemIndex == 0 && templateRowOffset == 0 && processedNonRepeatRows.add(region.startRow)) {
-                val allRepeatColRanges = ctx.regionsByStartRow[region.startRow]
-                    ?.map { it.colRange }
-                    ?: listOf(region.colRange)
+            if (itemIndex == 0 && templateRowOffset == 0 && processedNonRepeatRows.add(region.area.start.row)) {
+                val allRepeatColRanges = ctx.regionsByStartRow[region.area.start.row]
+                    ?.map { it.area.colRange }
+                    ?: listOf(region.area.colRange)
 
                 rowSpec.cells
                     .filter { spec -> allRepeatColRanges.none { spec.columnIndex in it } }
@@ -605,9 +605,9 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
 
         // 첫 번째 행에서 repeat 범위 밖의 셀 처리 (이미지 마커 등)
         if (actualRow == repeatStartRow) {
-            val rowSpec = ctx.blueprint.rowsByTemplateIndex[region.startRow]
+            val rowSpec = ctx.blueprint.rowsByTemplateIndex[region.area.start.row]
             rowSpec?.cells
-                ?.filter { it.columnIndex !in region.colRange }
+                ?.filter { it.columnIndex !in region.area.colRange }
                 ?.forEach { cellSpec ->
                     val cell = row.createCellWithStyle(cellSpec.columnIndex, cellSpec.styleIndex)
                     processCellContentSxssfWithCalculator(
@@ -618,15 +618,15 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         }
 
         // 단일 셀이고 repeat 영역이 더 크면 병합
-        if (emptyRangeContent.isSingleCell && (templateRowCount > 1 || region.templateColCount > 1)) {
+        if (emptyRangeContent.isSingleCell && (templateRowCount > 1 || region.area.colRange.count > 1)) {
             if (actualRow == repeatStartRow) {
                 val snapshot = emptyRangeContent.cells[0][0]
-                val cell = row.createCellWithStyle(region.startCol, snapshot.styleIndex)
+                val cell = row.createCellWithStyle(region.area.start.col, snapshot.styleIndex)
                 writeCellFromSnapshot(cell, snapshot, ctx.xssfWorkbook)
 
                 ctx.sheet.addMergedRegion(CellRangeAddress(
                     repeatStartRow, repeatStartRow + templateRowCount - 1,
-                    region.startCol, region.endCol
+                    region.area.start.col, region.area.end.col
                 ))
             }
             return EmptyRangeResult(true, rowHeight)
@@ -638,14 +638,14 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         }
 
         val rowOffset = actualRow - repeatStartRow
-        val colsToWrite = minOf(region.templateColCount, emptyRangeContent.colCount)
+        val colsToWrite = minOf(region.area.colRange.count, emptyRangeContent.colCount)
 
         emptyRangeContent.rowHeights.getOrNull(rowOffset)?.let { h ->
             rowHeight = maxOf(rowHeight ?: 0, h)
         }
 
         for (colOffset in 0 until colsToWrite) {
-            val colIndex = region.startCol + colOffset
+            val colIndex = region.area.start.col + colOffset
             val snapshot = emptyRangeContent.cells.getOrNull(rowOffset)?.getOrNull(colOffset) ?: continue
             val cell = row.createCellWithStyle(colIndex, snapshot.styleIndex)
             writeCellFromSnapshot(cell, snapshot, ctx.xssfWorkbook)
@@ -774,7 +774,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
     ) {
         /** repeat 영역에 속한 행 인덱스 (건너뛰기용, 캐시) */
         val repeatRowIndices: Set<Int> by lazy {
-            blueprint.repeatRegions.flatMap { it.rowRange }.toSet()
+            blueprint.repeatRegions.flatMap { it.area.rowRange }.toSet()
         }
 
         /** 정적 행 + repeat 영역에 속하지 않는 셀만 사전 필터링 (스트리밍 모드 최적화) */
@@ -784,8 +784,8 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                 .map { rowSpec ->
                     rowSpec to rowSpec.cells.filter { cellSpec ->
                         blueprint.repeatRegions.none { region ->
-                            cellSpec.columnIndex in region.colRange &&
-                                rowSpec.templateRowIndex in region.rowRange
+                            cellSpec.columnIndex in region.area.colRange &&
+                                rowSpec.templateRowIndex in region.area.rowRange
                         }
                     }
                 }
@@ -990,7 +990,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                 ?: continue
 
             val expansion = ctx.calculator.getExpansionForRegion(
-                region.collection, region.startRow, region.startCol
+                region.collection, region.area.start.row, region.area.start.col
             ) ?: continue
 
             if (itemCount > 1) {
@@ -1016,12 +1016,12 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         items: Collection<*>
     ) {
         val expansion = ctx.calculator.getExpansionForRegion(
-            region.collection, region.startRow, region.startCol
+            region.collection, region.area.start.row, region.area.start.col
         )
-        val colShiftAmount = (items.size - 1) * region.templateColCount
+        val colShiftAmount = (items.size - 1) * region.area.colRange.count
 
-        for (rowOffset in 0 until region.templateRowCount) {
-            val templateRowIdx = region.startRow + rowOffset
+        for (rowOffset in 0 until region.area.rowRange.count) {
+            val templateRowIdx = region.area.start.row + rowOffset
             val currentRowIndex = startRowIndex + rowOffset
 
             val rowSpec = ctx.blueprint.rowsByTemplateIndex[templateRowIdx]
@@ -1031,8 +1031,8 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
             rowSpec.height?.let { row.height = it }
 
             // 반복 영역 밖의 셀들
-            cellSpecs.filter { it.columnIndex !in region.colRange }.forEach { cellSpec ->
-                val actualColIndex = if (cellSpec.columnIndex > region.endCol) {
+            cellSpecs.filter { it.columnIndex !in region.area.colRange }.forEach { cellSpec ->
+                val actualColIndex = if (cellSpec.columnIndex > region.area.end.col) {
                     cellSpec.columnIndex + colShiftAmount
                 } else {
                     cellSpec.columnIndex
@@ -1048,11 +1048,11 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
             items.forEachIndexed { itemIdx, item ->
                 val itemData = createItemData(ctx.data, region.variable, item)
 
-                cellSpecs.filter { it.columnIndex in region.colRange }.forEach { cellSpec ->
-                    val templateColOffset = cellSpec.columnIndex - region.startCol
+                cellSpecs.filter { it.columnIndex in region.area.colRange }.forEach { cellSpec ->
+                    val templateColOffset = cellSpec.columnIndex - region.area.start.col
                     val targetColIdx = expansion?.let {
                         ctx.calculator.getColForRepeatItem(it, itemIdx, templateColOffset)
-                    } ?: (region.startCol + (itemIdx * region.templateColCount) + templateColOffset)
+                    } ?: (region.area.start.col + (itemIdx * region.area.colRange.count) + templateColOffset)
 
                     val cell = row.createCellWithStyle(targetColIdx, cellSpec.styleIndex)
                     writeCellContentSxssf(ctx, cell, cellSpec.content, itemData, colShiftAmount, itemIdx)
@@ -1079,11 +1079,11 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
 
         // 열 이동에 따른 수식 참조 조정
         if (colShiftAmount > 0) {
-            formula = FormulaAdjuster.adjustForColumnExpansion(formula, region.endCol + 1, colShiftAmount)
+            formula = FormulaAdjuster.adjustForColumnExpansion(formula, region.area.end.col + 1, colShiftAmount)
         }
 
         // 반복 영역 오른쪽 수식의 범위 확장
-        if (cellSpec.columnIndex > region.endCol && items.size > 1) {
+        if (cellSpec.columnIndex > region.area.end.col && items.size > 1) {
             calculator.getExpansionFor(region.collection)?.let { expansion ->
                 val (expandedFormula, isSequential) = FormulaAdjuster.expandToRangeWithCalculator(
                     formula, expansion, items.size

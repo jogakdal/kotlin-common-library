@@ -156,7 +156,7 @@ src/main/kotlin/com/hunet/common/tbeg/
 │
 ├── engine/                                 # 내부 엔진 (internal)
 │   ├── core/                               # 핵심 유틸리티
-│   │   ├── CommonTypes.kt                  # 공통 타입 (CellCoord, IndexRange, CollectionSizes 등)
+│   │   ├── CommonTypes.kt                  # 공통 타입 (CellCoord, CellArea, IndexRange, CollectionSizes 등)
 │   │   ├── ChartProcessor.kt               # 차트 추출/복원
 │   │   ├── PivotTableProcessor.kt          # 피벗 테이블 처리
 │   │   ├── XmlVariableProcessor.kt         # XML 내 변수 치환

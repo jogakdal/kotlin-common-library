@@ -1,5 +1,7 @@
 package com.hunet.common.tbeg.engine
 
+import com.hunet.common.tbeg.engine.core.CellCoord
+import com.hunet.common.tbeg.engine.core.CellArea
 import com.hunet.common.tbeg.engine.core.CollectionSizes
 import com.hunet.common.tbeg.engine.rendering.PositionCalculator
 import com.hunet.common.tbeg.engine.rendering.RepeatDirection
@@ -44,10 +46,7 @@ class PositionCalculatorTest {
                 RepeatRegionSpec(
                     collection = "items",
                     variable = "item",
-                    startRow = 4,
-                    endRow = 5,
-                    startCol = 0,
-                    endCol = 2,
+                    area = CellArea(CellCoord(4, 0), CellCoord(5, 2)),
                     direction = RepeatDirection.DOWN
                 )
             )
@@ -69,10 +68,7 @@ class PositionCalculatorTest {
                 RepeatRegionSpec(
                     collection = "items",
                     variable = "item",
-                    startRow = 4,
-                    endRow = 5,
-                    startCol = 0,
-                    endCol = 2,
+                    area = CellArea(CellCoord(4, 0), CellCoord(5, 2)),
                     direction = RepeatDirection.DOWN
                 )
             )
@@ -95,10 +91,7 @@ class PositionCalculatorTest {
                 RepeatRegionSpec(
                     collection = "items",
                     variable = "item",
-                    startRow = 4,
-                    endRow = 5,
-                    startCol = 0,
-                    endCol = 2,
+                    area = CellArea(CellCoord(4, 0), CellCoord(5, 2)),
                     direction = RepeatDirection.DOWN
                 )
             )
@@ -125,10 +118,7 @@ class PositionCalculatorTest {
                 RepeatRegionSpec(
                     collection = "items",
                     variable = "item",
-                    startRow = 4,  // 5행 (1-indexed)
-                    endRow = 5,    // 6행 (1-indexed)
-                    startCol = 0,
-                    endCol = 2,
+                    area = CellArea(CellCoord(4, 0), CellCoord(5, 2)),  // 5-6행 (1-indexed)
                     direction = RepeatDirection.DOWN
                 )
             )
@@ -155,10 +145,7 @@ class PositionCalculatorTest {
                 RepeatRegionSpec(
                     collection = "items",
                     variable = "item",
-                    startRow = 4,
-                    endRow = 5,
-                    startCol = 0,
-                    endCol = 2,
+                    area = CellArea(CellCoord(4, 0), CellCoord(5, 2)),
                     direction = RepeatDirection.DOWN
                 )
             )
@@ -216,10 +203,7 @@ class PositionCalculatorTest {
                 RepeatRegionSpec(
                     collection = "items",
                     variable = "item",
-                    startRow = 4,
-                    endRow = 5,
-                    startCol = 0,
-                    endCol = 2,
+                    area = CellArea(CellCoord(4, 0), CellCoord(5, 2)),
                     direction = RepeatDirection.DOWN
                 )
             )
@@ -244,10 +228,7 @@ class PositionCalculatorTest {
                 RepeatRegionSpec(
                     collection = "items",
                     variable = "item",
-                    startRow = 5,
-                    endRow = 5,
-                    startCol = 0,
-                    endCol = 2,
+                    area = CellArea(CellCoord(5, 0), CellCoord(5, 2)),
                     direction = RepeatDirection.DOWN
                 )
             )
@@ -281,19 +262,13 @@ class PositionCalculatorTest {
                 RepeatRegionSpec(
                     collection = "employees",
                     variable = "emp",
-                    startRow = 2,
-                    endRow = 3,
-                    startCol = 0,
-                    endCol = 2,
+                    area = CellArea(CellCoord(2, 0), CellCoord(3, 2)),
                     direction = RepeatDirection.DOWN
                 ),
                 RepeatRegionSpec(
                     collection = "departments",
                     variable = "dept",
-                    startRow = 5,
-                    endRow = 6,
-                    startCol = 0,
-                    endCol = 2,
+                    area = CellArea(CellCoord(5, 0), CellCoord(6, 2)),
                     direction = RepeatDirection.DOWN
                 )
             )
@@ -342,10 +317,7 @@ class PositionCalculatorTest {
                 RepeatRegionSpec(
                     collection = "items",
                     variable = "item",
-                    startRow = 4,
-                    endRow = 5,
-                    startCol = 0,
-                    endCol = 2,
+                    area = CellArea(CellCoord(4, 0), CellCoord(5, 2)),
                     direction = RepeatDirection.DOWN
                 )
             )
@@ -373,10 +345,7 @@ class PositionCalculatorTest {
                 RepeatRegionSpec(
                     collection = "items",
                     variable = "item",
-                    startRow = 4,
-                    endRow = 5,
-                    startCol = 0,
-                    endCol = 2,
+                    area = CellArea(CellCoord(4, 0), CellCoord(5, 2)),
                     direction = RepeatDirection.DOWN
                 )
             )

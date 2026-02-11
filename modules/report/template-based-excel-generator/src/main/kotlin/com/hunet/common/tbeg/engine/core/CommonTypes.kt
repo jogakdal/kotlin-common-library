@@ -6,6 +6,28 @@ package com.hunet.common.tbeg.engine.core
 data class CellCoord(val row: Int, val col: Int)
 
 /**
+ * 셀 범위 (start, end 모두 0-based, 양 끝 포함)
+ */
+data class CellArea(val start: CellCoord, val end: CellCoord) {
+    constructor(startRow: Int, startCol: Int, endRow: Int, endCol: Int) :
+        this(CellCoord(startRow, startCol), CellCoord(endRow, endCol))
+
+    val rowRange get() = RowRange(start.row, end.row)
+    val colRange get() = ColRange(start.col, end.col)
+
+    /** 다른 영역과 열 범위가 겹치는지 확인 */
+    fun overlapsColumns(other: CellArea) =
+        !(end.col < other.start.col || start.col > other.end.col)
+
+    /** 다른 영역과 행 범위가 겹치는지 확인 */
+    fun overlapsRows(other: CellArea) =
+        !(end.row < other.start.row || start.row > other.end.row)
+
+    /** 다른 영역과 2D 공간(행×열)에서 겹치는지 확인 */
+    fun overlaps(other: CellArea) = overlapsRows(other) && overlapsColumns(other)
+}
+
+/**
  * 수식 확장 결과
  *
  * @param formula 확장된 수식 문자열
