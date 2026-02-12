@@ -64,7 +64,7 @@ BOM(Bill of Materials)을 사용하면 모든 모듈의 버전을 한 곳에서 
 ```kotlin
 dependencies {
     // BOM 임포트 - 호환되는 버전 조합 자동 적용
-    implementation(platform("com.hunet.common:common-bom:2026.1.0-SNAPSHOT"))
+    implementation(platform("com.hunet.common:common-bom:2026.1.0"))
 
     // 개별 모듈은 버전 없이 추가
     implementation("com.hunet.common:common-core")
@@ -114,7 +114,7 @@ moduleVersion.apidoc-core=1.1.0-SNAPSHOT
 moduleVersion.apidoc-annotations=1.1.0-SNAPSHOT
 moduleVersion.jpa-repository-extension=1.2.0-SNAPSHOT
 moduleVersion.test-support=1.1.1-SNAPSHOT
-moduleVersion.tbeg=1.1.0-SNAPSHOT
+moduleVersion.tbeg=1.1.1-SNAPSHOT
 ```
 - 루트 `version` (예: 1.1.0-SNAPSHOT)이 기본이며, 존재하는 `moduleVersion.*` 키가 우선 적용됩니다.
 
