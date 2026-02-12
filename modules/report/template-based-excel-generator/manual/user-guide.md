@@ -29,12 +29,7 @@ repositories {
 
 // 2. 의존성 추가
 dependencies {
-    // BOM 사용 (권장) - 버전 자동 관리
-    implementation(platform("com.hunet.common:common-bom:2026.1.0-SNAPSHOT"))
-    implementation("com.hunet.common:tbeg")
-
-    // 또는 직접 버전 지정
-    // implementation("com.hunet.common:tbeg:1.1.0-SNAPSHOT")
+    implementation("com.hunet.common:tbeg:1.1.1")
 }
 ```
 
@@ -54,12 +49,7 @@ repositories {
 
 // 2. 의존성 추가
 dependencies {
-    // BOM 사용 (권장) - 버전 자동 관리
-    implementation platform('com.hunet.common:common-bom:2026.1.0-SNAPSHOT')
-    implementation 'com.hunet.common:tbeg'
-
-    // 또는 직접 버전 지정
-    // implementation 'com.hunet.common:tbeg:1.1.0-SNAPSHOT'
+    implementation 'com.hunet.common:tbeg:1.1.1'
 }
 ```
 
@@ -77,24 +67,12 @@ dependencies {
     </repository>
 </repositories>
 
-<!-- 2. BOM 임포트 (권장) - 버전 자동 관리 -->
-<dependencyManagement>
-    <dependencies>
-        <dependency>
-            <groupId>com.hunet.common</groupId>
-            <artifactId>common-bom</artifactId>
-            <version>2026.1.0-SNAPSHOT</version>
-            <type>pom</type>
-            <scope>import</scope>
-        </dependency>
-    </dependencies>
-</dependencyManagement>
-
-<!-- 3. 의존성 추가 (버전 생략 가능) -->
+<!-- 2. 의존성 추가 -->
 <dependencies>
     <dependency>
         <groupId>com.hunet.common</groupId>
         <artifactId>tbeg</artifactId>
+        <version>1.1.1</version>
     </dependency>
 </dependencies>
 ```
