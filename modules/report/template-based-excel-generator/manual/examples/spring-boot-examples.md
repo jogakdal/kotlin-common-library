@@ -633,6 +633,7 @@ import com.hunet.common.tbeg.ExcelGenerator
 import io.mockk.every
 import io.mockk.mockk
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.springframework.core.io.ClassPathResource
 import java.io.ByteArrayInputStream
@@ -662,17 +663,16 @@ class ReportServiceTest {
         )
 
         // Then
-        val workbook = XSSFWorkbook(ByteArrayInputStream(bytes))
-        val sheet = workbook.getSheetAt(0)
+        XSSFWorkbook(ByteArrayInputStream(bytes)).use { workbook ->
+            val sheet = workbook.getSheetAt(0)
 
-        // 제목 확인
-        assert(sheet.getRow(0).getCell(0).stringCellValue == "테스트 보고서")
+            // 제목 확인
+            assertEquals("테스트 보고서", sheet.getRow(0).getCell(0).stringCellValue)
 
-        // 데이터 행 확인
-        assert(sheet.getRow(2).getCell(0).stringCellValue == "황용호")
-        assert(sheet.getRow(3).getCell(0).stringCellValue == "홍용호")
-
-        workbook.close()
+            // 데이터 행 확인
+            assertEquals("황용호", sheet.getRow(2).getCell(0).stringCellValue)
+            assertEquals("홍용호", sheet.getRow(3).getCell(0).stringCellValue)
+        }
     }
 }
 ```
