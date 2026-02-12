@@ -102,11 +102,11 @@ ${image(logo, B5, 100:50)}
 
 | 데이터 크기   | disabled | enabled | 속도 향상    |
 |----------|----------|---------|----------|
-| 1,000행   | 172ms    | 147ms   | 1.2배     |
-| 10,000행  | 1,801ms  | 663ms   | **2.7배** |
-| 30,000행  | -        | 1,057ms | -        |
-| 50,000행  | -        | 1,202ms | -        |
-| 100,000행 | -        | 3,154ms | -        |
+| 1,000행   | 179ms    | 146ms   | 1.2배     |
+| 10,000행  | 1,887ms  | 519ms   | **3.6배** |
+| 30,000행  | -        | 1,104ms | -        |
+| 50,000행  | -        | 1,269ms | -        |
+| 100,000행 | -        | 2,599ms | -        |
 
 ### 타 라이브러리와 비교 (30,000행)
 
@@ -115,130 +115,14 @@ ${image(logo, B5, 100:50)}
 | **TBEG** | **1.1초** | 스트리밍 모드                                                     |
 | JXLS     | 5.2초     | [벤치마크 출처](https://github.com/jxlsteam/jxls/discussions/203) |
 
+> [!TIP]
 > 벤치마크 실행: `./gradlew :tbeg:runBenchmark`
 
-## 설정 (application.yml)
-
-```yaml
-hunet:
-  tbeg:
-    streaming-mode: enabled   # enabled, disabled
-    file-naming-mode: timestamp
-    preserve-template-layout: true
-```
-
-## 프로젝트 구조
-
-```
-src/main/kotlin/com/hunet/common/tbeg/
-├── ExcelGenerator.kt                       # 메인 진입점 (Public API)
-├── ExcelDataProvider.kt                    # 데이터 제공 인터페이스
-├── SimpleDataProvider.kt                   # 간단한 DataProvider 구현
-├── TbegConfig.kt                           # 설정 클래스
-├── DocumentMetadata.kt                     # 문서 메타데이터
-├── Enums.kt                                # StreamingMode, FileNamingMode 등 열거형
-│
-├── async/                                  # 비동기 처리
-│   ├── ExcelGenerationListener.kt          # 생성 이벤트 리스너
-│   ├── GenerationJob.kt                    # 비동기 작업 핸들
-│   ├── GenerationResult.kt                 # 생성 결과
-│   └── ProgressInfo.kt                     # 진행률 정보
-│
-├── engine/                                 # 내부 엔진 (internal)
-│   ├── core/                               # 핵심 유틸리티
-│   │   ├── CommonTypes.kt                  # 공통 타입 (CellCoord, CellArea, IndexRange, CollectionSizes 등)
-│   │   ├── ChartProcessor.kt               # 차트 추출/복원
-│   │   ├── PivotTableProcessor.kt          # 피벗 테이블 처리
-│   │   ├── XmlVariableProcessor.kt         # XML 내 변수 치환
-│   │   └── ExcelUtils.kt                   # 유틸리티 함수
-│   │
-│   ├── pipeline/                           # 처리 파이프라인
-│   │   ├── TbegPipeline.kt                 # 파이프라인 정의
-│   │   ├── ExcelProcessor.kt               # 프로세서 인터페이스
-│   │   ├── ProcessingContext.kt            # 처리 컨텍스트
-│   │   └── processors/                     # 개별 프로세서
-│   │       ├── ChartExtractProcessor.kt
-│   │       ├── ChartRestoreProcessor.kt
-│   │       ├── MetadataProcessor.kt
-│   │       ├── NumberFormatProcessor.kt
-│   │       ├── PivotExtractProcessor.kt
-│   │       ├── PivotRecreateProcessor.kt
-│   │       ├── TemplateRenderProcessor.kt
-│   │       └── XmlVariableReplaceProcessor.kt
-│   │
-│   └── rendering/                          # 렌더링 전략
-│       ├── RenderingStrategy.kt            # 렌더링 전략 인터페이스
-│       ├── AbstractRenderingStrategy.kt    # 공통 로직
-│       ├── XssfRenderingStrategy.kt        # XSSF (비스트리밍)
-│       ├── SxssfRenderingStrategy.kt       # SXSSF (스트리밍)
-│       ├── TemplateRenderingEngine.kt      # 렌더링 엔진
-│       ├── TemplateAnalyzer.kt             # 템플릿 분석기
-│       ├── WorkbookSpec.kt                 # 워크북/시트/셀 명세
-│       ├── PositionCalculator.kt           # 반복 확장 위치 계산
-│       ├── StreamingDataSource.kt          # 스트리밍 데이터 소스
-│       ├── ImageInserter.kt                # 이미지 삽입
-│       ├── FormulaAdjuster.kt              # 수식 조정
-│       ├── RepeatExpansionProcessor.kt     # 반복 영역 확장
-│       ├── SheetLayoutApplier.kt           # 레이아웃 적용
-│       └── parser/                         # 마커 파서 (내부)
-│           ├── MarkerDefinition.kt         # 마커 정의 및 파라미터 스펙
-│           ├── UnifiedMarkerParser.kt      # 통합 마커 파서
-│           ├── ParameterParser.kt          # 파라미터 값 파서
-│           └── ParsedMarker.kt             # 파싱된 마커 결과
-│
-├── exception/                              # 예외 클래스
-│   ├── TemplateProcessingException.kt
-│   ├── MissingTemplateDataException.kt
-│   └── FormulaExpansionException.kt
-│
-└── spring/                                 # Spring Boot 통합
-    ├── TbegAutoConfiguration.kt            # 자동 설정
-    └── TbegProperties.kt                   # 설정 속성
-```
-
-### 아키텍처 개요
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     ExcelGenerator                          │
-│                      (Public API)                           │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────┐
-│                      TbegPipeline                           │
-│                                                             │
-│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐     │
-│  │ChartExtract  │ → │PivotExtract  │ → │TemplateRender│     │
-│  └──────────────┘   └──────────────┘   └──────┬───────┘     │
-│                                               │             │
-│                                               ▼             │
-│                                    ┌──────────────────┐     │
-│                                    │ RenderingEngine  │     │
-│                                    │ ┌──────┬───────┐ │     │
-│                                    │ │ XSSF │ SXSSF │ │     │
-│                                    │ └──────┴───────┘ │     │
-│                                    └──────────────────┘     │
-│                                               │             │
-│  ┌──────────────┐   ┌──────────────┐   ┌──────▼───────┐     │
-│  │  Metadata    │ ← │ ChartRestore │ ← │ NumberFormat │     │
-│  └──────────────┘   └──────────────┘   └──────────────┘     │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**파이프라인 처리 순서:**
-1. **ChartExtract** - 차트 정보 추출 및 임시 제거
-2. **PivotExtract** - 피벗 테이블 정보 추출
-3. **TemplateRender** - 템플릿 렌더링 (XSSF/SXSSF 전략 선택)
-4. **NumberFormat** - 숫자 서식 자동 적용
-5. **XmlVariableReplace** - XML 내 변수 치환 (차트, 머리글/바닥글 등)
-6. **PivotRecreate** - 피벗 테이블 재생성
-7. **ChartRestore** - 차트 복원 및 데이터 범위 조정
-8. **Metadata** - 문서 메타데이터 적용
+설정 옵션의 상세 내용은 [설정 옵션 레퍼런스](./manual/reference/configuration.md)를 참조하세요.
 
 ## 문서
 
-상세 문서는 아래 링크를 참고하세요:
+**상세 문서는 [TBEG 매뉴얼](./manual/index.md)을 참조하세요.**
 
 - [사용자 가이드](./manual/user-guide.md)
 - [템플릿 문법 레퍼런스](./manual/reference/template-syntax.md)
@@ -247,6 +131,8 @@ src/main/kotlin/com/hunet/common/tbeg/
 - [기본 예제](./manual/examples/basic-examples.md)
 - [고급 예제](./manual/examples/advanced-examples.md)
 - [Spring Boot 예제](./manual/examples/spring-boot-examples.md)
+- [모범 사례](./manual/best-practices.md)
+- [문제 해결](./manual/troubleshooting.md)
 - [유지보수 개발자 가이드](./manual/developer-guide.md)
 
 ## 샘플 실행
