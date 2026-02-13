@@ -115,7 +115,8 @@ TbegConfig(
 )
 ```
 
-> **참고**: Excel 내장 포맷 인덱스는 [Microsoft 문서](https://docs.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.numberingformat)를 참조하세요.
+> [!NOTE]
+> Excel 내장 포맷 인덱스는 [Microsoft 문서](https://docs.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.numberingformat)를 참조하세요.
 
 #### missingDataBehavior
 
