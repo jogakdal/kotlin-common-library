@@ -15,21 +15,11 @@ Excel 템플릿에 데이터를 바인딩하여 보고서를 생성하는 라이
 
 ## 의존성 추가
 
-### BOM 사용 (권장)
-
 ```kotlin
 // build.gradle.kts
 dependencies {
-    implementation(platform("com.hunet.common:common-bom:2026.1.0-SNAPSHOT"))
-    implementation("com.hunet.common:tbeg")  // 버전 자동 적용
+    implementation("com.hunet.common:tbeg:1.1.1")
 }
-```
-
-### 직접 버전 지정
-
-```kotlin
-// build.gradle.kts
-implementation("com.hunet.common:tbeg:1.1.0-SNAPSHOT")
 ```
 
 ## 빠른 시작
@@ -155,7 +145,8 @@ src/main/kotlin/com/hunet/common/tbeg/
 │   └── ProgressInfo.kt                     # 진행률 정보
 │
 ├── engine/                                 # 내부 엔진 (internal)
-│   ├── core/                               # 핵심 프로세서
+│   ├── core/                               # 핵심 유틸리티
+│   │   ├── CommonTypes.kt                  # 공통 타입 (CellCoord, CellArea, IndexRange, CollectionSizes 등)
 │   │   ├── ChartProcessor.kt               # 차트 추출/복원
 │   │   ├── PivotTableProcessor.kt          # 피벗 테이블 처리
 │   │   ├── XmlVariableProcessor.kt         # XML 내 변수 치환
