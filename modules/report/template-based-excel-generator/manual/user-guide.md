@@ -29,7 +29,7 @@ repositories {
 
 // 2. 의존성 추가
 dependencies {
-    implementation("com.hunet.common:tbeg:1.1.1")
+    implementation("com.hunet.common:tbeg:1.1.2")
 }
 ```
 
@@ -49,7 +49,7 @@ repositories {
 
 // 2. 의존성 추가
 dependencies {
-    implementation 'com.hunet.common:tbeg:1.1.1'
+    implementation 'com.hunet.common:tbeg:1.1.2'
 }
 ```
 
@@ -72,7 +72,7 @@ dependencies {
     <dependency>
         <groupId>com.hunet.common</groupId>
         <artifactId>tbeg</artifactId>
-        <version>1.1.1</version>
+        <version>1.1.2</version>
     </dependency>
 </dependencies>
 ```
