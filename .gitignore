@@ -25,7 +25,8 @@
 ~$*.xlsx
 
 ### Claude Code ###
-.claude/
+.claude
+.mcp.json
 **/docs/
 CLAUDE.md
 **/MANUAL_UPDATE_PLAN.md
