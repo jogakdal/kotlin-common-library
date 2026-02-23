@@ -28,6 +28,7 @@ dependencies {
 }
 ```
 
+> [!TIP]
 > 상세한 설정 방법(Groovy DSL, Maven)은 [사용자 가이드](../user-guide.md#11-의존성-추가)를 참조하세요.
 
 ### application.yml
@@ -529,7 +530,8 @@ class LargeReportService(
 }
 ```
 
-> **중요**: JPA Stream을 사용할 때는 반드시 `@Transactional` 어노테이션을 사용해야 합니다. Stream은 트랜잭션이 끝나면 닫히므로, Excel 생성이 완료될 때까지 트랜잭션이 유지되어야 합니다.
+> [!WARNING]
+> JPA Stream을 사용할 때는 반드시 `@Transactional` 어노테이션을 사용해야 합니다. Stream은 트랜잭션이 끝나면 닫히므로, Excel 생성이 완료될 때까지 트랜잭션이 유지되어야 합니다.
 
 Repository 인터페이스 정의, 페이징 기반 Iterator 구현, MyBatis 연동 등 상세한 내용은 [고급 예제 - JPA/Spring Data 연동](./advanced-examples.md#13-jpaspring-data-연동)을 참조하세요.
 
@@ -631,6 +633,7 @@ import com.hunet.common.tbeg.ExcelGenerator
 import io.mockk.every
 import io.mockk.mockk
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.springframework.core.io.ClassPathResource
 import java.io.ByteArrayInputStream
@@ -660,17 +663,16 @@ class ReportServiceTest {
         )
 
         // Then
-        val workbook = XSSFWorkbook(ByteArrayInputStream(bytes))
-        val sheet = workbook.getSheetAt(0)
+        XSSFWorkbook(ByteArrayInputStream(bytes)).use { workbook ->
+            val sheet = workbook.getSheetAt(0)
 
-        // 제목 확인
-        assert(sheet.getRow(0).getCell(0).stringCellValue == "테스트 보고서")
+            // 제목 확인
+            assertEquals("테스트 보고서", sheet.getRow(0).getCell(0).stringCellValue)
 
-        // 데이터 행 확인
-        assert(sheet.getRow(2).getCell(0).stringCellValue == "황용호")
-        assert(sheet.getRow(3).getCell(0).stringCellValue == "홍용호")
-
-        workbook.close()
+            // 데이터 행 확인
+            assertEquals("황용호", sheet.getRow(2).getCell(0).stringCellValue)
+            assertEquals("홍용호", sheet.getRow(3).getCell(0).stringCellValue)
+        }
     }
 }
 ```
