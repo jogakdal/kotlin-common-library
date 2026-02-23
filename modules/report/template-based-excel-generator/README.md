@@ -18,7 +18,7 @@ Excel 템플릿에 데이터를 바인딩하여 보고서를 생성하는 라이
 ```kotlin
 // build.gradle.kts
 dependencies {
-    implementation("com.hunet.common:tbeg:1.1.1")
+    implementation("com.hunet.common:tbeg:1.1.2")
 }
 ```
 
