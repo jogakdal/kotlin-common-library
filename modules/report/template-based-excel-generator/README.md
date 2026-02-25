@@ -110,7 +110,7 @@ ExcelGenerator().use { generator ->
 ```kotlin
 // build.gradle.kts
 dependencies {
-    implementation("com.hunet.common:tbeg:1.1.2")
+    implementation("com.hunet.common:tbeg:1.1.3")
 }
 ```
 
