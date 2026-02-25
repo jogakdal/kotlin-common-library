@@ -4,6 +4,7 @@ import com.hunet.common.tbeg.ExcelDataProvider
 import com.hunet.common.tbeg.StreamingMode
 import com.hunet.common.tbeg.engine.core.CollectionSizes
 import com.hunet.common.tbeg.engine.core.buildCollectionSizes
+import com.hunet.common.tbeg.engine.rendering.ChartRangeAdjuster.RepeatExpansionInfo
 import com.hunet.common.lib.VariableProcessor
 import java.io.InputStream
 import java.lang.reflect.Field
@@ -52,6 +53,13 @@ class TemplateRenderingEngine(
     }
 
     /**
+     * 마지막 렌더링에서 수집된 시트별 repeat 확장 정보.
+     * SXSSF 모드에서 차트 범위 조정에 사용된다.
+     */
+    internal var lastRepeatExpansionInfos: Map<String, List<RepeatExpansionInfo>> = emptyMap()
+        private set
+
+    /**
      * 기본 렌더링 컨텍스트 생성
      */
     private fun createRenderingContext(
@@ -71,8 +79,12 @@ class TemplateRenderingEngine(
     /**
      * 템플릿에 데이터를 바인딩하여 Excel 생성
      */
-    fun process(template: InputStream, data: Map<String, Any>) =
-        strategy.render(template.readBytes(), data, createRenderingContext())
+    fun process(template: InputStream, data: Map<String, Any>): ByteArray {
+        val renderingContext = createRenderingContext()
+        return strategy.render(template.readBytes(), data, renderingContext).also {
+            lastRepeatExpansionInfos = renderingContext.repeatExpansionInfos.toMap()
+        }
+    }
 
     /**
      * 템플릿에 DataProvider 데이터를 바인딩하여 Excel 생성
@@ -132,7 +144,9 @@ class TemplateRenderingEngine(
                 streamingDataSource = streamingDataSource,
                 collectionSizes = collectionSizes
             )
-            strategy.render(templateBytes, simpleData, renderingContext)
+            strategy.render(templateBytes, simpleData, renderingContext).also {
+                lastRepeatExpansionInfos = renderingContext.repeatExpansionInfos.toMap()
+            }
         }
     }
 
@@ -165,7 +179,10 @@ class TemplateRenderingEngine(
             }
         }
     }.let { data ->
-        strategy.render(template.readBytes(), data, createRenderingContext())
+        val renderingContext = createRenderingContext()
+        strategy.render(template.readBytes(), data, renderingContext).also {
+            lastRepeatExpansionInfos = renderingContext.repeatExpansionInfos.toMap()
+        }
     }
 
     @Suppress("UNCHECKED_CAST")

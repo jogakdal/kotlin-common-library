@@ -1,6 +1,7 @@
 package com.hunet.common.tbeg.engine.rendering
 
 import com.hunet.common.tbeg.engine.core.CollectionSizes
+import com.hunet.common.tbeg.engine.rendering.ChartRangeAdjuster.RepeatExpansionInfo
 
 /**
  * 템플릿 렌더링 전략 인터페이스.
@@ -55,5 +56,10 @@ internal data class RenderingContext(
     val evaluateText: (String, Map<String, Any>) -> String,
     val resolveFieldPath: (Any?, String) -> Any?,
     val streamingDataSource: StreamingDataSource? = null,
-    val collectionSizes: CollectionSizes = CollectionSizes.EMPTY
+    val collectionSizes: CollectionSizes = CollectionSizes.EMPTY,
+    /**
+     * 시트별 repeat 확장 정보 수집기 (SXSSF 차트 범위 조정용).
+     * RenderingStrategy가 채우고, TemplateRenderingEngine이 외부로 전달한다.
+     */
+    val repeatExpansionInfos: MutableMap<String, List<RepeatExpansionInfo>> = mutableMapOf()
 )
