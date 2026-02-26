@@ -24,7 +24,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.hunet.common:tbeg:1.1.2")
+    implementation("com.hunet.common:tbeg:1.1.3")
 }
 ```
 
@@ -104,7 +104,7 @@ class ReportService(
             value("date", LocalDate.now().toString())
 
             // count와 함께 지연 로딩 제공
-            // - TBEG가 전체 행 수를 미리 알 수 있어 수식 범위 즉시 계산
+            // - TBEG이 전체 행 수를 미리 알 수 있어 수식 범위 즉시 계산
             // - 데이터 이중 순회 방지로 성능 최적화
             items("employees", employeeCount) {
                 employeeRepository.findAll().iterator()
