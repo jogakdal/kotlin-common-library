@@ -1,6 +1,7 @@
 .gradle
 .run
 .kotlin
+/.bak
 /build/
 **/build
 !gradle/wrapper/gradle-wrapper.jar
@@ -27,6 +28,7 @@
 ### Claude Code ###
 .claude
 .mcp.json
+.playwright-mcp
 **/docs/
 CLAUDE.md
 **/MANUAL_UPDATE_PLAN.md

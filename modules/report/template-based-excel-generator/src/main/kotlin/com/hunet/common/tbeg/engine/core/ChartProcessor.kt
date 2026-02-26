@@ -12,6 +12,7 @@ import java.io.StringWriter
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 import javax.xml.transform.OutputKeys
 import javax.xml.transform.TransformerFactory
@@ -456,6 +457,9 @@ internal class ChartProcessor {
     ): String {
         val docBuilder = DocumentBuilderFactory.newInstance().apply {
             isNamespaceAware = true
+            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+            setFeature("http://xml.org/sax/features/external-general-entities", false)
+            setFeature("http://xml.org/sax/features/external-parameter-entities", false)
         }.newDocumentBuilder()
 
         val currentDoc = docBuilder.parse(currentXml.byteInputStream(Charsets.UTF_8))
@@ -562,7 +566,10 @@ internal class ChartProcessor {
 
     /** DOM 노드를 XML 문자열로 직렬화한다. Document, Element 등 모든 Node 타입에 사용 가능. */
     private fun serializeNode(node: Node): String {
-        val transformer = TransformerFactory.newInstance().newTransformer().apply {
+        val transformer = TransformerFactory.newInstance().apply {
+            setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
+            setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "")
+        }.newTransformer().apply {
             setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes")
             setOutputProperty(OutputKeys.INDENT, "no")
         }

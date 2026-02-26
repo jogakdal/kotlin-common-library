@@ -392,8 +392,11 @@ internal object ChartRangeAdjuster {
         }
 
         for (exp in expansions.filter { it.direction == RepeatDirection.RIGHT }) {
-            val colIdx = col.toColumnIndex()
-            if (colIdx in exp.templateStartCol..exp.templateEndCol && exp.itemCount > 1) {
+            val templateStartRow1 = exp.templateStartRow + 1
+            val templateEndRow1 = exp.templateEndRow + 1
+            if (row in templateStartRow1..templateEndRow1
+                && colIdx in exp.templateStartCol..exp.templateEndCol
+                && exp.itemCount > 1) {
                 val endColIdx = exp.templateStartCol + (exp.itemCount * exp.templateColCount) - 1
                 return "$sheetRef\$$col\$$row:\$${endColIdx.toColumnLetter()}\$$row"
             }
@@ -456,6 +459,7 @@ internal object ChartRangeAdjuster {
 
     /**
      * RIGHT 방향 repeat에 대해 열 범위를 조정한다.
+     * 같은 열 범위의 독립 repeat(멀티 리피트)는 그룹화하여 max 확장량을 사용한다.
      *
      * @return Pair(adjustedStartColIndex, adjustedEndColIndex) (0-based)
      */
@@ -470,29 +474,42 @@ internal object ChartRangeAdjuster {
         val endColIdx = endCol.toColumnIndex()
         var adjustedStartIdx = startColIdx
         var adjustedEndIdx = endColIdx
+        var cumulativeOffset = 0
 
-        for (exp in expansions.filter { it.direction == RepeatDirection.RIGHT }) {
-            val templateStartCol = exp.templateStartCol
-            val templateEndCol = exp.templateEndCol
-            val templateStartRow1 = exp.templateStartRow + 1
-            val templateEndRow1 = exp.templateEndRow + 1
+        // 같은 열 범위의 repeat를 그룹화하고, 열 순서로 정렬
+        val grouped = expansions.filter { it.direction == RepeatDirection.RIGHT }
+            .filter { exp ->
+                val templateStartRow1 = exp.templateStartRow + 1
+                val templateEndRow1 = exp.templateEndRow + 1
+                !(startRow > templateEndRow1 || endRow < templateStartRow1)
+            }
+            .groupBy { it.templateStartCol to it.templateEndCol }
+            .toSortedMap(compareBy { it.first })
 
-            // 행 범위가 repeat 영역과 겹치지 않으면 건너뜀
-            if (startRow > templateEndRow1 || endRow < templateStartRow1) continue
+        for ((_, group) in grouped) {
+            val templateStartCol = group.first().templateStartCol
+            val templateEndCol = group.first().templateEndCol
 
-            val expansionAmount = (exp.itemCount - 1) * exp.templateColCount
+            val expansionAmount = group.maxOf { (it.itemCount - 1) * it.templateColCount }
 
             // 시작 열 조정
             if (startColIdx > templateEndCol) {
-                adjustedStartIdx = startColIdx + expansionAmount
+                adjustedStartIdx = startColIdx + cumulativeOffset + expansionAmount
+            } else {
+                adjustedStartIdx = startColIdx + cumulativeOffset
             }
 
             // 끝 열 조정
+            val maxExpandedTotal = group.maxOf { it.itemCount * it.templateColCount }
             if (endColIdx in templateStartCol..templateEndCol) {
-                adjustedEndIdx = templateStartCol + (exp.itemCount * exp.templateColCount) - 1
+                adjustedEndIdx = templateStartCol + cumulativeOffset + maxExpandedTotal - 1
             } else if (endColIdx > templateEndCol) {
-                adjustedEndIdx = endColIdx + expansionAmount
+                adjustedEndIdx = endColIdx + cumulativeOffset + expansionAmount
+            } else {
+                adjustedEndIdx = endColIdx + cumulativeOffset
             }
+
+            cumulativeOffset += expansionAmount
         }
 
         return adjustedStartIdx to adjustedEndIdx

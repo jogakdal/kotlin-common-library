@@ -243,7 +243,8 @@ class ImageInserter {
         val imageHeightEmu = (imageHeightPx * EMU_PER_PIXEL).toLong()
         val marginEmu = IMAGE_MARGIN_EMU.toLong()
 
-        // 수평 위치: RIGHT는 셀 끝(다음 열) 기준 음수 오프셋으로 렌더링 정밀도 향상
+        // 수평 위치: RIGHT는 endCol+1 기준 음수 오프셋으로 정확한 위치 계산
+        // (ST_Coordinate 타입은 음수를 허용하며, POI 열 너비 근사에 의존하지 않아 정확도가 높다)
         val (fromCol, fromColOff) = when (hAlign) {
             HorizontalAlignment.RIGHT ->
                 (endCol + 1) to -(imageWidthEmu + marginEmu)
@@ -255,7 +256,7 @@ class ImageInserter {
             else -> resolveColPosition(sheet, startCol, margin).let { (col, emu) -> col to emu.toLong() }
         }
 
-        // 수직 위치: BOTTOM은 셀 끝(다음 행) 기준 음수 오프셋으로 렌더링 정밀도 향상
+        // 수직 위치: BOTTOM은 endRow+1 기준 음수 오프셋으로 정확한 위치 계산
         val (fromRow, fromRowOff) = when (vAlign) {
             VerticalAlignment.BOTTOM ->
                 (endRow + 1) to -(imageHeightEmu + marginEmu)
@@ -389,7 +390,7 @@ class ImageInserter {
 
         return XSSFClientAnchor(
             IMAGE_MARGIN_EMU, IMAGE_MARGIN_EMU,
-            endColWidthEmu - IMAGE_MARGIN_EMU, endRowHeightEmu - IMAGE_MARGIN_EMU,
+            maxOf(endColWidthEmu - IMAGE_MARGIN_EMU, 0), maxOf(endRowHeightEmu - IMAGE_MARGIN_EMU, 0),
             mergedRegion?.firstColumn ?: colIndex,
             mergedRegion?.firstRow ?: rowIndex,
             endCol,
