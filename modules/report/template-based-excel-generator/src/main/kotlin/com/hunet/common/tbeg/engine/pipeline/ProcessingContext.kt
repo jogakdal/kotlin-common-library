@@ -5,6 +5,7 @@ import com.hunet.common.tbeg.ExcelDataProvider
 import com.hunet.common.tbeg.TbegConfig
 import com.hunet.common.tbeg.engine.core.ChartProcessor
 import com.hunet.common.tbeg.engine.core.PivotTableProcessor
+import com.hunet.common.tbeg.engine.rendering.ChartRangeAdjuster
 import com.hunet.common.tbeg.engine.rendering.RequiredNames
 
 /**
@@ -64,5 +65,13 @@ internal class ProcessingContext(
      * TemplateRenderProcessor가 템플릿 분석 후 설정한다.
      */
     var requiredNames: RequiredNames? = null
+        internal set
+
+    /**
+     * 시트별 repeat 확장 정보 (SXSSF 차트 범위 조정용).
+     * Key: 시트 이름, Value: 해당 시트의 repeat 확장 정보 목록
+     * RenderingStrategy가 설정하고 ChartRestoreProcessor가 사용한다.
+     */
+    var repeatExpansionInfos: Map<String, List<ChartRangeAdjuster.RepeatExpansionInfo>> = emptyMap()
         internal set
 }

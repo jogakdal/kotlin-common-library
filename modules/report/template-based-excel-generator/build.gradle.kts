@@ -99,6 +99,22 @@ tasks.register<JavaExec>("runBenchmark") {
     maxHeapSize = "2g"
 }
 
+// Rich Sample 템플릿 생성 태스크
+tasks.register<JavaExec>("generateRichSampleTemplate") {
+    group = "application"
+    description = "Rich Sample 템플릿(rich_sample_template.xlsx)을 POI로 생성"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.hunet.common.tbeg.samples.RichSampleTemplateGenerator")
+}
+
+// Rich Sample 실행 태스크 (시각적 데모용)
+tasks.register<JavaExec>("runRichSample") {
+    group = "application"
+    description = "Rich Sample 실행 (분기 매출 실적 보고서)"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.hunet.common.tbeg.samples.RichSample")
+}
+
 // 빈 컬렉션 + emptyRange 샘플 실행 태스크
 tasks.register<JavaExec>("runEmptyCollectionSample") {
     group = "application"

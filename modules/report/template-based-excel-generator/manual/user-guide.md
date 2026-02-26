@@ -29,7 +29,7 @@ repositories {
 
 // 2. 의존성 추가
 dependencies {
-    implementation("com.hunet.common:tbeg:1.1.2")
+    implementation("com.hunet.common:tbeg:1.1.3")
 }
 ```
 
@@ -49,7 +49,7 @@ repositories {
 
 // 2. 의존성 추가
 dependencies {
-    implementation 'com.hunet.common:tbeg:1.1.2'
+    implementation 'com.hunet.common:tbeg:1.1.3'
 }
 ```
 
@@ -72,7 +72,7 @@ dependencies {
     <dependency>
         <groupId>com.hunet.common</groupId>
         <artifactId>tbeg</artifactId>
-        <version>1.1.2</version>
+        <version>1.1.3</version>
     </dependency>
 </dependencies>
 ```
@@ -135,6 +135,8 @@ public class QuickStart {
 ---
 
 ## 2. 핵심 개념
+
+TBEG은 Excel이 할 수 없는 동적 데이터 바인딩(변수 치환, 데이터 반복, 이미지 삽입)을 제공합니다. 수식, 조건부 서식, 차트 등은 Excel 기능을 그대로 활용하며, TBEG은 데이터가 확장되어도 이 기능들이 의도대로 동작하도록 자동 조정합니다.
 
 ### 2.1 템플릿 문법
 

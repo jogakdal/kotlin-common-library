@@ -58,6 +58,54 @@ ExcelGenerator().use { generator ->
 
 서식, 차트, 수식, 조건부 서식은 **모두 템플릿에서 관리**합니다. 코드는 데이터 바인딩에만 집중합니다.
 
+> [!TIP]
+> **TBEG의 설계 철학**: Excel이 이미 잘하는 기능은 재구현하지 않고 그대로 살립니다.
+> 집계는 `=SUM()`으로, 조건부 강조는 조건부 서식으로, 시각화는 차트로 — 익숙한 Excel 기능을 그대로 활용하세요.
+> TBEG은 여기에 동적 데이터 바인딩을 더하고, 데이터가 확장되어도 이 기능들이 의도대로 동작하도록 조정합니다.
+
+### 실제로 이렇게 동작합니다
+
+**템플릿**
+
+![템플릿](../src/main/resources/sample/screenshot_template.png)
+
+Excel에서 서식, 수식, 조건부 서식, 차트를 자유롭게 디자인하고 데이터가 들어갈 자리에 마커(`${...}`)를 배치합니다.
+
+**코드**
+
+```kotlin
+val data = simpleDataProvider {
+    value("reportTitle", "Q1 2026 Sales Performance Report")
+    value("period", "Jan 2026 ~ Mar 2026")
+    value("author", "Yongho Hwang")
+    value("reportDate", LocalDate.now().toString())
+    image("logo", logoBytes)
+    image("ci", ciBytes)
+    items("depts") { deptList.iterator() }
+    items("products") { productList.iterator() }
+}
+
+ExcelGenerator().use { generator ->
+    generator.generateToFile(template, data, outputDir, "quarterly_report")
+}
+```
+
+코드는 데이터 바인딩에만 집중합니다. 서식이나 레이아웃 코드는 한 줄도 필요하지 않습니다.
+
+**결과**
+
+![결과](../src/main/resources/sample/screenshot_result.png)
+
+TBEG이 자동으로 처리한 항목:
+- **변수 치환** — 제목, 기간, 작성자, 날짜
+- **이미지 삽입** — 로고, CI
+- **반복 데이터 확장** — 부서별 실적 행, 제품 카테고리 행
+- **수식 범위 자동 조정** — SUM, AVERAGE 등의 범위가 확장된 데이터에 맞춰 갱신
+- **조건부 서식 복제** — 달성률 색상이 모든 행에 적용
+- **차트 데이터 범위 반영** — 차트가 확장된 데이터를 올바르게 참조
+
+> 전체 코드와 템플릿 다운로드는 [종합 예제](./examples/advanced-examples.md#11-종합-예제--분기-매출-실적-보고서)를 참조하세요.
+
 ### 이럴 때 TBEG을 사용하세요
 
 | 상황 | 적합 여부 |
@@ -111,7 +159,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.hunet.common:tbeg:1.1.2")
+    implementation("com.hunet.common:tbeg:1.1.3")
 }
 ```
 
@@ -165,6 +213,9 @@ fun main() {
 
 ### 개발자 가이드
 - [개발자 가이드](./developer-guide.md) - 내부 아키텍처 및 확장 방법
+
+### 별첨
+- [타 라이브러리 비교](./appendix/library-comparison.md) - Excel 보고서 라이브러리 간 기능 비교
 
 ---
 
