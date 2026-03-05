@@ -637,11 +637,11 @@ class PositionCalculator(
                     if (regions[i].area.overlaps(regions[j].area)) {
                         throw TemplateProcessingException(
                             errorType = TemplateProcessingException.ErrorType.INVALID_PARAMETER_VALUE,
-                            details = "repeat 영역이 겹칩니다: " +
-                                "${regions[i].collection}(${regions[i].direction}, 행 ${regions[i].area.start.row + 1}-" +
-                                "${regions[i].area.end.row + 1}, 열 ${regions[i].area.start.col + 1}-${regions[i].area.end.col + 1}), " +
-                                "${regions[j].collection}(${regions[j].direction}, 행 ${regions[j].area.start.row + 1}-" +
-                                "${regions[j].area.end.row + 1}, 열 ${regions[j].area.start.col + 1}-${regions[j].area.end.col + 1})"
+                            details = "Repeat regions overlap: " +
+                                "${regions[i].collection}(${regions[i].direction}, rows ${regions[i].area.start.row + 1}-" +
+                                "${regions[i].area.end.row + 1}, cols ${regions[i].area.start.col + 1}-${regions[i].area.end.col + 1}), " +
+                                "${regions[j].collection}(${regions[j].direction}, rows ${regions[j].area.start.row + 1}-" +
+                                "${regions[j].area.end.row + 1}, cols ${regions[j].area.start.col + 1}-${regions[j].area.end.col + 1})"
                         )
                     }
                 }

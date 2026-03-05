@@ -2,6 +2,18 @@
 
 ## 1.2.0
 
+### Breaking Changes
+
+- **XSSF(비스트리밍) 모드 폐지**: 항상 스트리밍 모드로 동작합니다
+  - `StreamingMode` enum: deprecated (향후 버전에서 제거 예정)
+  - `TbegConfig.streamingMode`: deprecated (값이 무시됩니다)
+  - `TbegConfig.forSmallData()`: deprecated (`default()`와 동일하게 동작)
+  - `TbegConfig.withStreamingMode()`: deprecated
+  - `TbegConfig.Builder.streamingMode()`: deprecated
+  - Spring 설정 `streaming-mode`: deprecated (값이 무시됩니다)
+  - 내부 클래스 `XssfRenderingStrategy` 삭제
+  - `SxssfRenderingStrategy` -> `StreamingRenderingStrategy`로 리네이밍
+
 ### 새 기능
 
 - **자동 셀 병합 (merge)**: repeat 확장 시 연속된 같은 값의 셀을 자동으로 병합합니다. `${merge(item.field)}` 또는 `=TBEG_MERGE(item.field)` 마커로 사용합니다
@@ -56,7 +68,7 @@
 - `ChartProcessor` 리팩토링
 - `ImageInserter` 리팩토링
 - `FormulaAdjuster` 확장
-- SXSSF/XSSF 렌더링 전략 개선
+- 렌더링 전략 개선
 - Rich Sample 추가 (분기 매출 실적 보고서 데모)
 - 단위/통합 테스트 추가: `ChartRangeAdjusterTest`, `ChartRepeatIntegrationTest`, `DrawingXmlMergeTest`, `FormulaAdjusterTest`, `ImageInserterAlignmentTest`
 
@@ -66,8 +78,8 @@
 
 ### 버그 수정
 
-- **비반복 영역 수식 처리 개선**: XSSF 모드에서 비반복 영역의 수식 셀이 올바르게 처리되지 않던 문제가 수정되었습니다
-- **비반복 영역 정적 행 플래그 수정**: SXSSF 모드에서 비반복 영역 셀의 `isStaticRow` 플래그가 올바르게 설정되지 않던 문제가 수정되었습니다
+- **비반복 영역 수식 처리 개선**: 비반복 영역의 수식 셀이 올바르게 처리되지 않던 문제가 수정되었습니다
+- **비반복 영역 정적 행 플래그 수정**: 비반복 영역 셀의 `isStaticRow` 플래그가 올바르게 설정되지 않던 문제가 수정되었습니다
 - **크로스 시트 중복 마커 그룹핑 수정**: 중복 repeat 마커 감지 시 마커가 위치한 시트가 아닌 대상 시트 기준으로 그룹핑하도록 수정되었습니다
 
 ## 1.1.1
@@ -93,7 +105,7 @@
 - **`CellArea` 타입 도입**: 셀 영역 표현 타입을 도입하고 `RepeatRegionSpec`을 `area: CellArea` 단일 프로퍼티로 통합했습니다
 - `TemplateAnalyzer`를 4단계 분석 구조로 개편했습니다 (수집 -> repeat 중복 제거 -> SheetSpec 생성 -> 셀 마커 중복 제거)
 - 내부 코드 리팩토링 및 KDoc 현행화
-- 같은 행의 다중 독립 repeat 영역 검증 테스트 추가 (XSSF/SXSSF 모드별 매개변수화 테스트)
+- 같은 행의 다중 독립 repeat 영역 검증 테스트 추가
 - 중복 마커 감지 테스트 추가 (repeat 7건 + image 6건)
 
 </details>
@@ -122,7 +134,7 @@
 - 조건부 서식 처리 로직을 개선하고 유틸리티를 추출했습니다
 - BOM 모듈을 추가했습니다
 - Kotlin/Java 샘플 6가지 사용 패턴을 추가했습니다 (기본, 지연 로딩, 비동기, 대용량, 암호화, 메타데이터)
-- XSSF vs SXSSF 성능 벤치마크를 추가했습니다
+- 성능 벤치마크를 추가했습니다
 - 빈 컬렉션 처리 테스트 및 매개변수화 테스트를 도입했습니다
 
 </details>

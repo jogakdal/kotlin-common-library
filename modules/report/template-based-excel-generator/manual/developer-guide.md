@@ -45,8 +45,7 @@ com.hunet.common.tbeg/
 │   └── rendering/                      # 렌더링 엔진
 │       ├── RenderingStrategy.kt
 │       ├── AbstractRenderingStrategy.kt
-│       ├── XssfRenderingStrategy.kt
-│       ├── SxssfRenderingStrategy.kt
+│       ├── StreamingRenderingStrategy.kt
 │       ├── TemplateRenderingEngine.kt
 │       ├── TemplateAnalyzer.kt
 │       ├── PositionCalculator.kt
@@ -70,7 +69,7 @@ com.hunet.common.tbeg/
 ───────────────────────────────────────────────────────────────
                        TbegPipeline
 ───────────────────────────────────────────────────────────────
-   1. ChartExtractProcessor       - 차트 추출 (SXSSF 손실 방지)
+   1. ChartExtractProcessor       - 차트 추출 (스트리밍 처리 시 손실 방지)
    2. PivotExtractProcessor       - 피벗 테이블 정보 추출
    3. TemplateRenderProcessor     - 템플릿 렌더링 (데이터 바인딩)
    4. NumberFormatProcessor       - 숫자 서식 적용
@@ -154,7 +153,7 @@ class TemplateRenderProcessor : ExcelProcessor {
         }
         context.requiredNames = blueprint.extractRequiredNames()
 
-        val engine = TemplateRenderingEngine(context.config.streamingMode)
+        val engine = TemplateRenderingEngine()
         context.resultBytes = engine.process(
             ByteArrayInputStream(context.resultBytes),
             context.dataProvider,
@@ -171,7 +170,7 @@ class TemplateRenderProcessor : ExcelProcessor {
 
 ### 3.1 Strategy 패턴
 
-렌더링 모드(XSSF/SXSSF)에 따라 다른 전략을 사용합니다.
+렌더링은 `StreamingRenderingStrategy` 하나의 전략으로 처리한다. 스트리밍 방식으로 메모리 효율적인 대용량 처리를 지원한다.
 
 ```kotlin
 internal interface RenderingStrategy {
@@ -184,20 +183,10 @@ internal interface RenderingStrategy {
     ): ByteArray
 }
 
-internal class XssfRenderingStrategy : RenderingStrategy
-internal class SxssfRenderingStrategy : RenderingStrategy
+internal class StreamingRenderingStrategy : RenderingStrategy
 ```
 
-### 3.2 XSSF vs SXSSF
-
-| 특성    | XSSF           | SXSSF       |
-|-------|----------------|-------------|
-| 메모리   | 전체 워크북 메모리 로드  | 윈도우 기반 스트리밍 |
-| 행 삽입  | shiftRows() 지원 | 순차 출력만 가능   |
-| 수식 참조 | 자동 조정          | 자동 조정       |
-| 대용량   | 제한적            | 적합          |
-
-### 3.3 AbstractRenderingStrategy
+### 3.2 AbstractRenderingStrategy
 
 공통 로직을 추상 클래스로 분리합니다.
 
@@ -417,7 +406,7 @@ data class RepeatExpansion(
 
 ### 6.1 StreamingDataSource
 
-SXSSF 모드에서 Iterator를 순차적으로 소비합니다.
+스트리밍 렌더링에서 Iterator를 순차적으로 소비한다.
 
 ```kotlin
 internal class StreamingDataSource(
@@ -432,10 +421,7 @@ internal class StreamingDataSource(
 
 ### 6.2 메모리 최적화 원칙
 
-| 모드    | 메모리 정책           |
-|-------|------------------|
-| SXSSF | 현재 아이템만 메모리 유지   |
-| XSSF  | 전체 데이터 메모리 로드 허용 |
+현재 처리 중인 아이템만 메모리에 유지하여 대용량 데이터를 효율적으로 처리한다.
 
 ### 6.3 DataProvider 조건
 

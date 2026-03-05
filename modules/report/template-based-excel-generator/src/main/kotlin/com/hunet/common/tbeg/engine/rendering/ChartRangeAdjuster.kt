@@ -12,7 +12,7 @@ import org.openxmlformats.schemas.drawingml.x2006.chart.*
  * repeat 확장에 따른 차트 데이터 범위 자동 조정
  *
  * 차트 시리즈의 셀 참조(`<c:f>` 태그)를 repeat 확장 결과에 맞게 갱신한다.
- * XSSF/SXSSF 양쪽 모드에서 공용으로 사용한다.
+ * 렌더링 전략에서 공용으로 사용한다.
  */
 internal object ChartRangeAdjuster {
 

@@ -1,8 +1,6 @@
 package com.hunet.common.tbeg.samples
 
 import com.hunet.common.tbeg.ExcelGenerator
-import com.hunet.common.tbeg.StreamingMode
-import com.hunet.common.tbeg.TbegConfig
 import com.hunet.common.tbeg.simpleDataProvider
 import java.nio.file.Files
 import java.nio.file.Path
@@ -85,13 +83,10 @@ object RichSample {
             }
         }
 
-        // XSSF / SXSSF 양쪽 모드로 생성
-        for ((mode, suffix) in listOf(StreamingMode.DISABLED to "xssf", StreamingMode.ENABLED to "sxssf")) {
-            ExcelGenerator(TbegConfig(streamingMode = mode)).use { generator ->
-                val template = loadTemplate("rich_sample_template.xlsx")
-                val result = generator.generateToFile(template, provider, outputDir, "quarterly_report_$suffix")
-                println("[$suffix] Result: $result")
-            }
+        ExcelGenerator().use { generator ->
+            val template = loadTemplate("rich_sample_template.xlsx")
+            val result = generator.generateToFile(template, provider, outputDir, "quarterly_report")
+            println("Result: $result")
         }
 
         println("=" .repeat(60))

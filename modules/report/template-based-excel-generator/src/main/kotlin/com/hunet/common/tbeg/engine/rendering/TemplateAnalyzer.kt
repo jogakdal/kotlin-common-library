@@ -19,6 +19,7 @@ class TemplateAnalyzer {
 
     companion object {
         private val LOG by commonLogger()
+        private val SINGLE_CELL_PATTERN = Regex("""^\$?[A-Za-z]+\$?\d+$""")
     }
 
     /**
@@ -273,8 +274,8 @@ class TemplateAnalyzer {
                 if (bundles[i].area.overlaps(bundles[j].area)) {
                     throw TemplateProcessingException(
                         errorType = TemplateProcessingException.ErrorType.INVALID_PARAMETER_VALUE,
-                        details = "bundle 영역이 중첩됩니다: " +
-                            "${bundles[i].area.start.toCellRefString()}:${bundles[i].area.end.toCellRefString()}와 " +
+                        details = "Bundle regions overlap: " +
+                            "${bundles[i].area.start.toCellRefString()}:${bundles[i].area.end.toCellRefString()} and " +
                             "${bundles[j].area.start.toCellRefString()}:${bundles[j].area.end.toCellRefString()}"
                     )
                 }
@@ -287,8 +288,8 @@ class TemplateAnalyzer {
                 if (bundle.area.overlaps(repeat.area) && !bundle.area.contains(repeat.area)) {
                     throw TemplateProcessingException(
                         errorType = TemplateProcessingException.ErrorType.INVALID_PARAMETER_VALUE,
-                        details = "repeat 영역(${repeat.collection})이 bundle 경계를 부분적으로 걸칩니다. " +
-                            "repeat은 bundle 내부에 완전히 포함되거나 외부에 있어야 합니다."
+                        details = "Repeat region '${repeat.collection}' partially overlaps a bundle boundary. " +
+                            "A repeat must be either fully contained within a bundle or completely outside it."
                     )
                 }
             }
@@ -383,19 +384,18 @@ class TemplateAnalyzer {
         }
 
         // 단일 셀 참조 패턴 체크 (A1, $A$1, H10 등)
-        val singleCellPattern = Regex("""^\$?[A-Za-z]+\$?\d+$""")
-        if (singleCellPattern.matches(rangeWithoutSheet)) {
+        if (SINGLE_CELL_PATTERN.matches(rangeWithoutSheet)) {
             return parseCellRef(rangeWithoutSheet).let { CellArea(it, it) }
         }
 
         // Named Range 조회
         val namedRange = workbook.getName(rangeWithoutSheet)
-            ?: throw IllegalArgumentException("Named Range를 찾을 수 없습니다: $rangeWithoutSheet")
+            ?: throw IllegalArgumentException("Named Range not found: $rangeWithoutSheet")
 
         val formula = namedRange.refersToFormula
         // 참조가 깨진 경우(#REF!) 처리
         if (formula.contains("#REF!")) {
-            throw IllegalArgumentException("Named Range '$rangeWithoutSheet'의 참조가 유효하지 않습니다: $formula")
+            throw IllegalArgumentException("Invalid reference in Named Range '$rangeWithoutSheet': $formula")
         }
 
         val areaRef = AreaReference(formula, workbook.spreadsheetVersion)

@@ -83,15 +83,7 @@ class TbegTest {
     fun `TbegConfig default should have expected values`() {
         val config = TbegConfig.default()
 
-        assertEquals(StreamingMode.ENABLED, config.streamingMode)
         assertEquals("yyyyMMdd_HHmmss", config.timestampFormat)
-    }
-
-    @Test
-    fun `TbegConfig forLargeData should use streaming mode`() {
-        val config = TbegConfig.forLargeData()
-
-        assertEquals(StreamingMode.ENABLED, config.streamingMode)
     }
 
     @Test

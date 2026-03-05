@@ -86,10 +86,9 @@ repeat으로 행이 확장될 때 수식 참조를 자동 조정하는 과정에
 대용량 데이터 처리 시 JVM 메모리가 부족하면 발생합니다.
 
 **해결 단계**:
-1. 스트리밍 모드 확인: `StreamingMode.ENABLED` (기본값)
-2. DataProvider에서 지연 로딩 사용 (`items("name", count) { ... }`)
-3. JVM 힙 메모리 증가: `-Xmx2g` 등
-4. 데이터를 여러 파일로 분할 생성
+1. DataProvider에서 지연 로딩 사용 (`items("name", count) { ... }`)
+2. JVM 힙 메모리 증가: `-Xmx2g` 등
+3. 데이터를 여러 파일로 분할 생성
 
 ---
 
@@ -159,13 +158,7 @@ val employees = employeeRepository.findAll().sortedBy { it.department }
 
 아래 단계를 순서대로 확인하세요.
 
-**1단계: 스트리밍 모드 확인**
-
-```kotlin
-val config = TbegConfig(streamingMode = StreamingMode.ENABLED) // 기본값
-```
-
-**2단계: count 제공 여부 확인**
+**1단계: count 제공 여부 확인**
 
 count를 제공하면 데이터 이중 순회를 방지하여 성능이 개선됩니다.
 
@@ -175,7 +168,7 @@ items("employees", employeeCount) {
 }
 ```
 
-**3단계: 지연 로딩 사용**
+**2단계: 지연 로딩 사용**
 
 모든 데이터를 미리 로드하지 말고 Lambda를 활용하세요.
 
@@ -185,7 +178,7 @@ items("employees") {
 }
 ```
 
-**4단계: DB 스트리밍 사용**
+**3단계: DB 스트리밍 사용**
 
 JPA Stream 또는 MyBatis Cursor를 사용하여 DB에서 대용량 데이터를 스트리밍으로 처리하세요.
 

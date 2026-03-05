@@ -15,7 +15,7 @@ import java.io.ByteArrayOutputStream
 import java.util.*
 
 /**
- * SXSSF 기반 스트리밍 렌더링 전략.
+ * 기본 렌더링 전략.
  *
  * 특징:
  * - 명세 기반 순차 생성
@@ -31,10 +31,10 @@ import java.util.*
  * - 이미 작성된 행 접근 불가
  * - 차트/피벗 테이블은 별도 처리 필요
  */
-internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
-    override val name: String = "SXSSF"
+internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
+    override val name: String = "Default"
 
-    // 템플릿에서 추출한 스타일을 SXSSF 워크북에 매핑
+    // 템플릿에서 추출한 스타일을 스트리밍 워크북에 매핑
     private var styleMap: Map<Short, CellStyle> = emptyMap()
 
     // ========== 추상 메서드 구현 ==========
@@ -80,7 +80,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         context: RenderingContext
     ) {
         val sxssfSheet = sheet as SXSSFSheet
-        processSheetSxssf(sxssfSheet, sheetIndex, blueprint, data, imageLocations, context)
+        processSheet(sxssfSheet, sheetIndex, blueprint, data, imageLocations, context)
     }
 
     @Suppress("UNUSED_PARAMETER")
@@ -102,9 +102,9 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
     override fun finalizeWorkbook(workbook: Workbook): ByteArray =
         ByteArrayOutputStream().apply { workbook.write(this) }.toByteArray().removeAbsPath()
 
-    // ========== SXSSF 특화 로직 ==========
+    // ========== 스트리밍 특화 로직 ==========
 
-    /** SXSSF에서 수식 평가 및 calcChain 정리 */
+    /** 수식 평가 및 calcChain 정리 */
     private fun evaluateFormulasAndClearCalcChain(workbook: SXSSFWorkbook) {
         runCatching { SXSSFFormulaEvaluator.evaluateAllFormulaCells(workbook, false) }
         clearCalcChain(workbook.xssfWorkbook)
@@ -155,7 +155,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         }
     }
 
-    private fun processSheetSxssf(
+    private fun processSheet(
         sheet: SXSSFSheet,
         sheetIndex: Int,
         blueprint: SheetSpec,
@@ -568,7 +568,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                             RepeatDirection.RIGHT -> ctx.rightMergeTracker
                         }
                     } else null
-                    processCellContentSxssfWithCalculator(
+                    processCellContentWithCalculator(
                         ctx, cell, pendingCell.content, pendingCell.itemData ?: ctx.data,
                         repeatInfo, pendingCell.isStaticRow, pendingCell.columnIndex, actualRow,
                         mergeTracker
@@ -663,7 +663,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                 .filter { it.columnIndex in region.area.colRange }
                 .forEach { cellSpec ->
                     val cell = row.createCellWithStyle(cellSpec.columnIndex, cellSpec.styleIndex)
-                    processCellContentSxssfWithCalculator(
+                    processCellContentWithCalculator(
                         ctx, cell, cellSpec.content, itemData, repeatInfo, false, cellSpec.columnIndex, actualRow,
                         mergeTracker
                     )
@@ -679,7 +679,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                     .filter { spec -> allRepeatColRanges.none { spec.columnIndex in it } }
                     .forEach { cellSpec ->
                         val cell = row.createCellWithStyle(cellSpec.columnIndex, cellSpec.styleIndex)
-                        processCellContentSxssfWithCalculator(
+                        processCellContentWithCalculator(
                             ctx, cell, cellSpec.content, ctx.data, RepeatInfo.NONE, true, cellSpec.columnIndex, actualRow
                         )
                     }
@@ -716,7 +716,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                 ?.filter { it.columnIndex !in region.area.colRange }
                 ?.forEach { cellSpec ->
                     val cell = row.createCellWithStyle(cellSpec.columnIndex, cellSpec.styleIndex)
-                    processCellContentSxssfWithCalculator(
+                    processCellContentWithCalculator(
                         ctx, cell, cellSpec.content, ctx.data, RepeatInfo.NONE,
                         true, cellSpec.columnIndex, actualRow
                     )
@@ -833,7 +833,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                             cell.setBlank()
                         } else {
                             val cell = row.createCellWithStyle(cellSpec.columnIndex, cellSpec.styleIndex)
-                            processCellContentSxssfWithCalculator(
+                            processCellContentWithCalculator(
                                 ctx, cell, cellSpec.content, ctx.data, RepeatInfo.NONE,
                                 true, cellSpec.columnIndex, actualRow
                             )
@@ -969,7 +969,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
     /**
      * StaticRow의 각 셀을 PositionCalculator로 계산된 위치에 수집한다.
      *
-     * SXSSF는 순차적 행 작성만 지원하므로, 셀 정보만 수집하고
+     * 순차적 행 작성만 지원하므로, 셀 정보만 수집하고
      * 실제 작성은 processSheetWithPendingRows의 정렬된 루프에서 수행된다.
      * emptyRange 영역의 셀 처리는 writePendingCells()에서 셀 단위로 수행된다.
      */
@@ -994,7 +994,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
     }
 
     /**
-     * 대기 중인 셀 정보 (SXSSF 순차 작성용)
+     * 대기 중인 셀 정보 (순차 작성용)
      */
     private data class PendingCell(
         val columnIndex: Int,
@@ -1010,8 +1010,8 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         val repeatDirection: RepeatDirection = RepeatDirection.DOWN
     )
 
-    /** SXSSF용 셀 내용 처리 (PositionCalculator 기반) */
-    private fun processCellContentSxssfWithCalculator(
+    /** 셀 내용 처리 (PositionCalculator 기반) */
+    private fun processCellContentWithCalculator(
         ctx: RowWriteContext,
         cell: Cell,
         content: CellContent,
@@ -1022,7 +1022,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         actualRowIndex: Int,
         mergeTracker: MergeTracker? = null
     ) = when (content) {
-        is CellContent.Formula -> processFormulaSxssfWithCalculator(
+        is CellContent.Formula -> processFormulaWithCalculator(
             ctx, cell, content, repeatInfo.index, isStaticRow, columnIndex, actualRowIndex
         )
 
@@ -1058,7 +1058,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         )
     }
 
-    /** SXSSF에서 이미지 마커를 처리한다 (PositionCalculator 기반) */
+    /** 이미지 마커를 처리한다 (PositionCalculator 기반) */
     private fun processImageMarkerWithCalculator(
         cell: Cell,
         content: CellContent.ImageMarker,
@@ -1102,8 +1102,8 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
     private fun adjustCellRefWithCalculator(ref: String, calculator: PositionCalculator) =
         calculator.getFinalPosition(parseCellRef(ref)).toCellRefString()
 
-    /** SXSSF에서 수식을 처리한다 (PositionCalculator 기반) */
-    private fun processFormulaSxssfWithCalculator(
+    /** 수식을 처리한다 (PositionCalculator 기반) */
+    private fun processFormulaWithCalculator(
         ctx: RowWriteContext,
         cell: Cell,
         content: CellContent.Formula,
@@ -1237,7 +1237,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                     )
 
                     val cell = row.createCellWithStyle(targetColIdx, cellSpec.styleIndex)
-                    writeCellContentSxssf(
+                    writeCellContent(
                         ctx, cell, adjustedContent, itemData, colShiftAmount, itemIdx,
                         ctx.rightMergeTracker
                     )
@@ -1282,7 +1282,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
                         cellSpec.content, ctx.calculator, ctx.blueprint.repeatRegions, expansionProvider
                     )
                     val cell = row.createCellWithStyle(finalPos.col, cellSpec.styleIndex)
-                    writeCellContentSxssf(ctx, cell, adjustedContent)
+                    writeCellContent(ctx, cell, adjustedContent)
                 }
         }
     }
@@ -1325,7 +1325,7 @@ internal class SxssfRenderingStrategy : AbstractRenderingStrategy() {
         }
     }
 
-    private fun writeCellContentSxssf(
+    private fun writeCellContent(
         ctx: RowWriteContext,
         cell: Cell,
         content: CellContent,

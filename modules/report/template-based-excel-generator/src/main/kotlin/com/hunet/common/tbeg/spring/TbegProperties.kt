@@ -14,7 +14,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * ```yaml
  * hunet:
  *   tbeg:
- *     streaming-mode: enabled         # enabled, disabled
  *     file-naming-mode: timestamp     # none, timestamp
  *     timestamp-format: yyyyMMdd_HHmmss
  *     file-conflict-policy: sequence  # error, sequence
@@ -29,9 +28,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 data class TbegProperties(
     /**
      * 스트리밍 모드 설정.
-     * - enabled: SXSSF 스트리밍 사용 (기본값, 대용량 최적화)
-     * - disabled: 항상 XSSF 사용
+     *
+     * 1.2.0부터 항상 스트리밍 모드로 동작하며, 이 설정은 무시된다.
      */
+    @Deprecated("Since 1.2.0, streaming mode is always used. This setting will be removed in a future version.")
     var streamingMode: StreamingModeProperty = StreamingModeProperty.ENABLED,
 
     /**
@@ -84,7 +84,6 @@ data class TbegProperties(
      * TbegConfig로 변환한다.
      */
     fun toConfig(): TbegConfig = TbegConfig(
-        streamingMode = streamingMode.toStreamingMode(),
         fileNamingMode = fileNamingMode.toFileNamingMode(),
         timestampFormat = timestampFormat,
         fileConflictPolicy = fileConflictPolicy.toFileConflictPolicy(),
@@ -98,10 +97,14 @@ data class TbegProperties(
 
 /**
  * 스트리밍 모드 프로퍼티 (application.yml 바인딩용).
+ *
+ * 1.2.0부터 항상 스트리밍 모드로 동작하며, 이 enum은 향후 버전에서 제거된다.
  */
+@Deprecated("Since 1.2.0, only streaming mode is supported. This enum will be removed in a future version.")
 enum class StreamingModeProperty {
     ENABLED, DISABLED;
 
+    @Deprecated("No longer used since 1.2.0.")
     fun toStreamingMode(): StreamingMode = when (this) {
         ENABLED -> StreamingMode.ENABLED
         DISABLED -> StreamingMode.DISABLED

@@ -480,7 +480,7 @@ internal class PivotTableProcessor(
                 pivotTableStyleInfo = info.pivotTableStyleInfo
             ))
         }.onFailure {
-            throw IllegalStateException("피벗 테이블 재생성 실패: ${info.pivotTableName}", it)
+            throw IllegalStateException("Failed to recreate pivot table: ${info.pivotTableName}", it)
         }
     }
 
@@ -533,7 +533,7 @@ internal class PivotTableProcessor(
 
         val headerRow = ctx.sourceSheet.getRow(ctx.sourceRange.firstRow)
             ?: throw IllegalStateException(
-                "피벗 테이블 소스 헤더 행이 없습니다: 행 ${ctx.sourceRange.firstRow + 1}, 시트 '${ctx.sourceSheet.sheetName}'"
+                "Pivot table source header row not found: row ${ctx.sourceRange.firstRow + 1}, sheet '${ctx.sourceSheet.sheetName}'"
             )
         val headers = (ctx.sourceRange.firstColumn..ctx.sourceRange.lastColumn).map { colIdx ->
             headerRow.getCell(colIdx)?.stringValue ?: "Field$colIdx"

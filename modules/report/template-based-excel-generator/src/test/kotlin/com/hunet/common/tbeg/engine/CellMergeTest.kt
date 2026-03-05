@@ -1,16 +1,13 @@
 package com.hunet.common.tbeg.engine
 
 import com.hunet.common.tbeg.ExcelGenerator
-import com.hunet.common.tbeg.StreamingMode
-import com.hunet.common.tbeg.TbegConfig
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.XSSFCell
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.params.ParameterizedTest
-import org.junit.jupiter.params.provider.EnumSource
+import org.junit.jupiter.api.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 
@@ -19,23 +16,16 @@ import java.io.ByteArrayOutputStream
  */
 class CellMergeTest {
 
-    private lateinit var xssfGenerator: ExcelGenerator
-    private lateinit var sxssfGenerator: ExcelGenerator
+    private lateinit var generator: ExcelGenerator
 
     @BeforeEach
     fun setUp() {
-        xssfGenerator = ExcelGenerator(
-            TbegConfig.builder().streamingMode(StreamingMode.DISABLED).build()
-        )
-        sxssfGenerator = ExcelGenerator(
-            TbegConfig.builder().streamingMode(StreamingMode.ENABLED).build()
-        )
+        generator = ExcelGenerator()
     }
 
     @AfterEach
     fun tearDown() {
-        xssfGenerator.close()
-        sxssfGenerator.close()
+        generator.close()
     }
 
     // ========== 테스트 데이터 클래스 ==========
@@ -44,9 +34,8 @@ class CellMergeTest {
 
     // ========== 1. 기본 merge -- 단일 열 연속 같은 값 병합 ==========
 
-    @ParameterizedTest(name = "{0} 모드: 기본 merge 테스트")
-    @EnumSource(StreamingMode::class)
-    fun `basic merge - same values merged vertically`(mode: StreamingMode) {
+    @Test
+    fun `basic merge - same values merged vertically`() {
         val template = createBasicMergeTemplate()
         val data = mapOf<String, Any>(
             "employees" to listOf(
@@ -57,7 +46,7 @@ class CellMergeTest {
             )
         )
 
-        val bytes = generator(mode).generate(ByteArrayInputStream(template), data)
+        val bytes = generator.generate(ByteArrayInputStream(template), data)
 
         XSSFWorkbook(ByteArrayInputStream(bytes)).use { wb ->
             val sheet = wb.getSheetAt(0)
@@ -85,9 +74,8 @@ class CellMergeTest {
 
     // ========== 2. 다중 열 merge -- 부서 + 팀 다중 레벨 병합 ==========
 
-    @ParameterizedTest(name = "{0} 모드: 다중 레벨 merge 테스트")
-    @EnumSource(StreamingMode::class)
-    fun `multi-level merge - department and team`(mode: StreamingMode) {
+    @Test
+    fun `multi-level merge - department and team`() {
         val template = createMultiLevelMergeTemplate()
         val data = mapOf<String, Any>(
             "employees" to listOf(
@@ -98,7 +86,7 @@ class CellMergeTest {
             )
         )
 
-        val bytes = generator(mode).generate(ByteArrayInputStream(template), data)
+        val bytes = generator.generate(ByteArrayInputStream(template), data)
 
         XSSFWorkbook(ByteArrayInputStream(bytes)).use { wb ->
             val sheet = wb.getSheetAt(0)
@@ -118,15 +106,14 @@ class CellMergeTest {
 
     // ========== 3. 빈 컬렉션 -- merge가 있는 repeat의 빈 컬렉션 처리 ==========
 
-    @ParameterizedTest(name = "{0} 모드: 빈 컬렉션에서의 merge")
-    @EnumSource(StreamingMode::class)
-    fun `empty collection with merge marker`(mode: StreamingMode) {
+    @Test
+    fun `empty collection with merge marker`() {
         val template = createBasicMergeTemplate()
         val data = mapOf<String, Any>(
             "employees" to emptyList<Employee>()
         )
 
-        val bytes = generator(mode).generate(ByteArrayInputStream(template), data)
+        val bytes = generator.generate(ByteArrayInputStream(template), data)
 
         XSSFWorkbook(ByteArrayInputStream(bytes)).use { wb ->
             val sheet = wb.getSheetAt(0)
@@ -140,9 +127,8 @@ class CellMergeTest {
 
     // ========== 4. 단일 아이템 -- 1개 아이템이면 병합 없음 ==========
 
-    @ParameterizedTest(name = "{0} 모드: 단일 아이템에서 merge 없음")
-    @EnumSource(StreamingMode::class)
-    fun `single item should not create merge`(mode: StreamingMode) {
+    @Test
+    fun `single item should not create merge`() {
         val template = createBasicMergeTemplate()
         val data = mapOf<String, Any>(
             "employees" to listOf(
@@ -150,7 +136,7 @@ class CellMergeTest {
             )
         )
 
-        val bytes = generator(mode).generate(ByteArrayInputStream(template), data)
+        val bytes = generator.generate(ByteArrayInputStream(template), data)
 
         XSSFWorkbook(ByteArrayInputStream(bytes)).use { wb ->
             val sheet = wb.getSheetAt(0)
@@ -163,9 +149,8 @@ class CellMergeTest {
 
     // ========== 5. 모든 값이 같은 경우 -- 전체 병합 ==========
 
-    @ParameterizedTest(name = "{0} 모드: 모든 값이 같으면 전체 병합")
-    @EnumSource(StreamingMode::class)
-    fun `all same values should merge all`(mode: StreamingMode) {
+    @Test
+    fun `all same values should merge all`() {
         val template = createBasicMergeTemplate()
         val data = mapOf<String, Any>(
             "employees" to listOf(
@@ -175,7 +160,7 @@ class CellMergeTest {
             )
         )
 
-        val bytes = generator(mode).generate(ByteArrayInputStream(template), data)
+        val bytes = generator.generate(ByteArrayInputStream(template), data)
 
         XSSFWorkbook(ByteArrayInputStream(bytes)).use { wb ->
             val sheet = wb.getSheetAt(0)
@@ -189,9 +174,8 @@ class CellMergeTest {
 
     // ========== 6. 모든 값이 다른 경우 -- 병합 없음 ==========
 
-    @ParameterizedTest(name = "{0} 모드: 모든 값이 다르면 병합 없음")
-    @EnumSource(StreamingMode::class)
-    fun `all different values should not merge`(mode: StreamingMode) {
+    @Test
+    fun `all different values should not merge`() {
         val template = createBasicMergeTemplate()
         val data = mapOf<String, Any>(
             "employees" to listOf(
@@ -201,7 +185,7 @@ class CellMergeTest {
             )
         )
 
-        val bytes = generator(mode).generate(ByteArrayInputStream(template), data)
+        val bytes = generator.generate(ByteArrayInputStream(template), data)
 
         XSSFWorkbook(ByteArrayInputStream(bytes)).use { wb ->
             val sheet = wb.getSheetAt(0)
@@ -212,9 +196,8 @@ class CellMergeTest {
 
     // ========== 7. null 값 -- 병합하지 않음 ==========
 
-    @ParameterizedTest(name = "{0} 모드: null 값은 병합하지 않음")
-    @EnumSource(StreamingMode::class)
-    fun `null values should not be merged`(mode: StreamingMode) {
+    @Test
+    fun `null values should not be merged`() {
         val template = createBasicMergeTemplate()
         val data = mapOf<String, Any>(
             "employees" to listOf(
@@ -224,7 +207,7 @@ class CellMergeTest {
             )
         )
 
-        val bytes = generator(mode).generate(ByteArrayInputStream(template), data)
+        val bytes = generator.generate(ByteArrayInputStream(template), data)
 
         XSSFWorkbook(ByteArrayInputStream(bytes)).use { wb ->
             val sheet = wb.getSheetAt(0)
@@ -235,10 +218,10 @@ class CellMergeTest {
         }
     }
 
-    // ========== 8. XSSF/SXSSF 양쪽 동일 결과 ==========
+    // ========== 8. merge 결과 검증 ==========
 
-    @org.junit.jupiter.api.Test
-    fun `XSSF and SXSSF should produce same merge results`() {
+    @Test
+    fun `merge should produce correct merge regions`() {
         val template = createBasicMergeTemplate()
         val data = mapOf<String, Any>(
             "employees" to listOf(
@@ -248,33 +231,23 @@ class CellMergeTest {
             )
         )
 
-        val xssfBytes = xssfGenerator.generate(ByteArrayInputStream(template), data)
-        val sxssfBytes = sxssfGenerator.generate(ByteArrayInputStream(template), data)
+        val bytes = generator.generate(ByteArrayInputStream(template), data)
+        val merges = extractMergeRegions(bytes)
 
-        val xssfMerges = extractMergeRegions(xssfBytes)
-        val sxssfMerges = extractMergeRegions(sxssfBytes)
-
-        // 동일한 열의 병합 영역 비교 (col A, row >= 1)
-        val xssfAutoMerges = xssfMerges.filter { it.firstColumn == 0 && it.firstRow >= 1 }
-            .sortedBy { it.firstRow }
-        val sxssfAutoMerges = sxssfMerges.filter { it.firstColumn == 0 && it.firstRow >= 1 }
+        // A열(부서) 병합 영역 확인 (col A, row >= 1)
+        val autoMerges = merges.filter { it.firstColumn == 0 && it.firstRow >= 1 }
             .sortedBy { it.firstRow }
 
-        assertEquals(xssfAutoMerges.size, sxssfAutoMerges.size,
-            "XSSF와 SXSSF의 merge 영역 수가 같아야 합니다")
-        xssfAutoMerges.zip(sxssfAutoMerges).forEach { (xssf, sxssf) ->
-            assertEquals(xssf.firstRow, sxssf.firstRow)
-            assertEquals(xssf.lastRow, sxssf.lastRow)
-            assertEquals(xssf.firstColumn, sxssf.firstColumn)
-            assertEquals(xssf.lastColumn, sxssf.lastColumn)
-        }
+        // 영업부 2행 병합이 있어야 함
+        assertTrue(autoMerges.isNotEmpty(), "merge 영역이 존재해야 합니다")
+        assertTrue(autoMerges.any { it.firstRow == 1 && it.lastRow == 2 },
+            "영업부 2행 병합이 있어야 합니다. 실제: $autoMerges")
     }
 
     // ========== 9. 수식 마커 형태 (=TBEG_MERGE) ==========
 
-    @ParameterizedTest(name = "{0} 모드: 수식 형태 merge 마커")
-    @EnumSource(StreamingMode::class)
-    fun `formula-style merge marker should work`(mode: StreamingMode) {
+    @Test
+    fun `formula-style merge marker should work`() {
         val template = createFormulaMergeTemplate()
         val data = mapOf<String, Any>(
             "employees" to listOf(
@@ -284,7 +257,7 @@ class CellMergeTest {
             )
         )
 
-        val bytes = generator(mode).generate(ByteArrayInputStream(template), data)
+        val bytes = generator.generate(ByteArrayInputStream(template), data)
 
         XSSFWorkbook(ByteArrayInputStream(bytes)).use { wb ->
             val sheet = wb.getSheetAt(0)
@@ -297,9 +270,8 @@ class CellMergeTest {
 
     // ========== 10. 다중 행 repeat에서의 merge ==========
 
-    @ParameterizedTest(name = "{0} 모드: 다중 행 repeat에서 merge")
-    @EnumSource(StreamingMode::class)
-    fun `merge in multi-row repeat`(mode: StreamingMode) {
+    @Test
+    fun `merge in multi-row repeat`() {
         val template = createMultiRowRepeatMergeTemplate()
         val data = mapOf<String, Any>(
             "employees" to listOf(
@@ -309,7 +281,7 @@ class CellMergeTest {
             )
         )
 
-        val bytes = generator(mode).generate(ByteArrayInputStream(template), data)
+        val bytes = generator.generate(ByteArrayInputStream(template), data)
 
         XSSFWorkbook(ByteArrayInputStream(bytes)).use { wb ->
             val sheet = wb.getSheetAt(0)
@@ -323,9 +295,8 @@ class CellMergeTest {
 
     // ========== 11. RIGHT 방향 repeat에서의 가로 병합 ==========
 
-    @ParameterizedTest(name = "{0} 모드: RIGHT repeat에서 가로 병합")
-    @EnumSource(StreamingMode::class)
-    fun `merge in RIGHT repeat should merge horizontally`(mode: StreamingMode) {
+    @Test
+    fun `merge in RIGHT repeat should merge horizontally`() {
         val template = createRightRepeatMergeTemplate()
         val data = mapOf<String, Any>(
             "items" to listOf(
@@ -335,7 +306,7 @@ class CellMergeTest {
             )
         )
 
-        val bytes = generator(mode).generate(ByteArrayInputStream(template), data)
+        val bytes = generator.generate(ByteArrayInputStream(template), data)
 
         XSSFWorkbook(ByteArrayInputStream(bytes)).use { wb ->
             val sheet = wb.getSheetAt(0)
@@ -453,9 +424,6 @@ class CellMergeTest {
     }
 
     // ========== 유틸리티 ==========
-
-    private fun generator(mode: StreamingMode) =
-        if (mode == StreamingMode.DISABLED) xssfGenerator else sxssfGenerator
 
     private fun createTemplate(block: (XSSFWorkbook, org.apache.poi.ss.usermodel.Sheet) -> Unit): ByteArray =
         XSSFWorkbook().use { wb ->

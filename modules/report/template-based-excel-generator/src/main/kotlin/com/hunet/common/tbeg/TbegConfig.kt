@@ -3,7 +3,7 @@ package com.hunet.common.tbeg
 /**
  * TBEG 설정.
  *
- * @property streamingMode 스트리밍 모드 (기본: ENABLED)
+ * @property streamingMode 스트리밍 모드 (1.2.0부터 deprecated, 항상 스트리밍 모드로 동작)
  * @property fileNamingMode 파일명 생성 모드 (기본: TIMESTAMP)
  * @property timestampFormat 파일명에 추가되는 타임스탬프 형식 (기본: yyyyMMdd_HHmmss)
  * @property fileConflictPolicy 파일명 충돌 시 처리 정책 (기본: SEQUENCE)
@@ -14,6 +14,7 @@ package com.hunet.common.tbeg
  * @property missingDataBehavior 템플릿에 정의된 데이터가 없을 때의 동작 (기본: WARN)
  */
 data class TbegConfig(
+    @Deprecated("Since 1.2.0, streaming mode is always used. This property will be removed in a future version.")
     val streamingMode: StreamingMode = StreamingMode.ENABLED,
     val fileNamingMode: FileNamingMode = FileNamingMode.TIMESTAMP,
     val timestampFormat: String = "yyyyMMdd_HHmmss",
@@ -36,17 +37,17 @@ data class TbegConfig(
          */
         @JvmStatic
         fun forLargeData(): TbegConfig = TbegConfig(
-            streamingMode = StreamingMode.ENABLED,
             progressReportInterval = 500
         )
 
         /**
          * 소량 데이터 처리에 최적화된 설정을 반환한다.
+         *
+         * 1.2.0부터 `default()`와 동일하게 동작한다.
          */
+        @Deprecated("Since 1.2.0, this behaves identically to default(). Use default() instead.", ReplaceWith("default()"))
         @JvmStatic
-        fun forSmallData(): TbegConfig = TbegConfig(
-            streamingMode = StreamingMode.DISABLED
-        )
+        fun forSmallData(): TbegConfig = TbegConfig()
 
         /**
          * Builder를 반환한다. (Java에서 사용하기 편리)
@@ -69,6 +70,7 @@ data class TbegConfig(
         private var pivotDecimalFormatIndex: Short = 4
         private var missingDataBehavior: MissingDataBehavior = MissingDataBehavior.WARN
 
+        @Deprecated("Since 1.2.0, streaming mode is always used. This method will be removed in a future version.")
         fun streamingMode(mode: StreamingMode) = apply { this.streamingMode = mode }
         fun fileNamingMode(mode: FileNamingMode) = apply { this.fileNamingMode = mode }
         fun timestampFormat(format: String) = apply { this.timestampFormat = format }
@@ -95,6 +97,7 @@ data class TbegConfig(
     /**
      * 설정을 수정한 새 인스턴스를 반환한다.
      */
+    @Deprecated("Since 1.2.0, streaming mode is always used. This method will be removed in a future version.")
     fun withStreamingMode(mode: StreamingMode): TbegConfig =
         copy(streamingMode = mode)
 
@@ -122,7 +125,3 @@ data class TbegConfig(
     fun withMissingDataBehavior(behavior: MissingDataBehavior): TbegConfig =
         copy(missingDataBehavior = behavior)
 }
-
-/** 하위 호환성을 위한 타입 별칭 */
-@Deprecated("TbegConfig로 이름이 변경되었습니다.", ReplaceWith("TbegConfig"))
-typealias ExcelGeneratorConfig = TbegConfig

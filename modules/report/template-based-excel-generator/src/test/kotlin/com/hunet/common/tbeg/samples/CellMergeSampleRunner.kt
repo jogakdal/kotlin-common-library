@@ -1,8 +1,6 @@
 package com.hunet.common.tbeg.samples
 
 import com.hunet.common.tbeg.ExcelGenerator
-import com.hunet.common.tbeg.StreamingMode
-import com.hunet.common.tbeg.TbegConfig
 import org.apache.poi.ss.usermodel.BorderStyle
 import org.apache.poi.ss.usermodel.FillPatternType
 import org.apache.poi.ss.usermodel.HorizontalAlignment

@@ -1,22 +1,41 @@
 # TBEG 마이그레이션 가이드
 
-## 1.0.x -> 1.1.0
+## 1.1.x -> 1.2.0
 
-### 클래스 리네이밍
+### StreamingMode 폐지
 
-`ExcelGeneratorConfig`가 `TbegConfig`로 리네이밍되었습니다. 기존 이름은 타입 별칭으로 제공되므로 기존 코드는 그대로 동작합니다.
+1.2.0부터 항상 스트리밍 모드로 동작합니다. 기존 `StreamingMode.DISABLED` 설정은 무시됩니다.
 
-**권장**: 새 이름으로 변경하세요. 타입 별칭은 향후 제거될 수 있습니다.
+**마이그레이션:**
+- `TbegConfig(streamingMode = StreamingMode.DISABLED)` -> `TbegConfig()` (또는 `TbegConfig.default()`)
+- `TbegConfig.forSmallData()` -> `TbegConfig.default()`
+- Spring 설정 `streaming-mode: disabled` -> 설정 제거
+- `TemplateRenderingEngine(StreamingMode.xxx)` -> `TemplateRenderingEngine()`
+
+deprecated API는 하위 호환성을 위해 유지되지만, 향후 버전에서 제거됩니다.
+
+---
+
+## 1.1.1 -> 1.1.2
+
+### 버그 수정
+
+1.1.2는 비반복 영역 처리와 크로스 시트 마커 그룹핑의 버그 수정 릴리스입니다.
+
+### 업그레이드 방법
+
+의존성 버전만 변경하면 됩니다. API 변경은 없습니다.
 
 ```kotlin
-// 기존 코드 (동작하지만 비권장)
-val config = ExcelGeneratorConfig(streamingMode = StreamingMode.ENABLED)
-
-// 권장
-val config = TbegConfig(streamingMode = StreamingMode.ENABLED)
+// build.gradle.kts
+dependencies {
+    implementation("com.hunet.common:tbeg:1.1.2")
+}
 ```
 
 ---
+
+## 1.0.x -> 1.1.0
 
 ### 새 기능
 

@@ -442,25 +442,9 @@ return ResponseEntity.accepted().body(mapOf("jobId" to job.jobId))
 
 ## 5. 대용량 데이터 처리
 
-### 5.1 스트리밍 모드
+### 5.1 스트리밍 처리
 
-TBEG은 기본적으로 스트리밍 모드(SXSSF)를 사용하여 대용량 데이터를 메모리 효율적으로 처리합니다.
-
-```kotlin
-import com.hunet.common.tbeg.ExcelGenerator
-import com.hunet.common.tbeg.TbegConfig
-import com.hunet.common.tbeg.StreamingMode
-
-// 스트리밍 모드 (기본값)
-val config = TbegConfig(
-    streamingMode = StreamingMode.ENABLED
-)
-
-// 비스트리밍 모드 (소량 데이터, 복잡한 수식)
-val configNonStreaming = TbegConfig(
-    streamingMode = StreamingMode.DISABLED
-)
-```
+TBEG은 대용량 데이터를 메모리 효율적으로 처리합니다. 별도의 설정 없이 기본 동작으로 최적의 성능을 제공합니다.
 
 ### 5.2 지연 로딩 + count 제공 (권장)
 
@@ -546,7 +530,6 @@ class ReportService(
 
 ```kotlin
 val config = TbegConfig(
-    streamingMode = StreamingMode.ENABLED,    // 스트리밍 모드 활성화
     progressReportInterval = 1000              // 1000행마다 진행률 보고
 )
 

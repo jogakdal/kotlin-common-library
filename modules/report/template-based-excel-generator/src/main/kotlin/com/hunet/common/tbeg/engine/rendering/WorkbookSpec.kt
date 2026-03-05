@@ -249,65 +249,6 @@ data class RepeatRegionSpec(
 )
 
 /**
- * 열 그룹 - 열 범위가 겹치는 repeat 영역들의 모음
- *
- * 같은 열 그룹 내의 repeat 영역들은 서로 영향을 주지만,
- * 다른 열 그룹의 repeat 영역들과는 독립적으로 확장된다.
- */
-data class ColumnGroup(
-    val groupId: Int,
-    val colRange: ColRange,
-    val repeatRegions: List<RepeatRegionSpec>
-) {
-    companion object {
-        /**
-         * repeat 영역들을 열 그룹으로 분류
-         */
-        fun fromRepeatRegions(regions: List<RepeatRegionSpec>): List<ColumnGroup> {
-            if (regions.isEmpty()) return emptyList()
-
-            // DOWN 방향 repeat만 그룹화 대상
-            val downRepeats = regions.filter { it.direction == RepeatDirection.DOWN }
-            if (downRepeats.isEmpty()) return emptyList()
-
-            // Union-Find로 겹치는 영역들을 그룹화
-            val groups = mutableListOf<MutableList<RepeatRegionSpec>>()
-
-            for (region in downRepeats) {
-                // 기존 그룹 중 열 범위가 겹치는 그룹 찾기
-                val overlappingGroups = groups.filter { group ->
-                    group.any { it.area.overlapsColumns(region.area) }
-                }
-
-                when (overlappingGroups.size) {
-                    0 -> {
-                        // 새 그룹 생성
-                        groups.add(mutableListOf(region))
-                    }
-                    1 -> {
-                        // 기존 그룹에 추가
-                        overlappingGroups[0].add(region)
-                    }
-                    else -> {
-                        // 여러 그룹 병합
-                        val merged = mutableListOf(region)
-                        overlappingGroups.forEach { merged.addAll(it) }
-                        groups.removeAll(overlappingGroups)
-                        groups.add(merged)
-                    }
-                }
-            }
-
-            return groups.mapIndexed { index, regionsInGroup ->
-                val minCol = regionsInGroup.minOf { it.area.start.col }
-                val maxCol = regionsInGroup.maxOf { it.area.end.col }
-                ColumnGroup(index, ColRange(minCol, maxCol), regionsInGroup.toList())
-            }
-        }
-    }
-}
-
-/**
  * 조건부 서식 정보 (SXSSF 모드용)
  *
  * 템플릿의 조건부 서식을 저장하고, 반복 영역 확장 시 복제에 사용된다.

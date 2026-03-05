@@ -39,9 +39,9 @@
 │                                               ▼             │
 │                                    ┌──────────────────┐     │
 │                                    │ RenderingEngine  │     │
-│                                    │ ┌──────┬───────┐ │     │
-│                                    │ │ XSSF │ SXSSF │ │     │
-│                                    │ └──────┴───────┘ │     │
+│                                    │ ┌──────────────┐ │     │
+│                                    │ │   Default    │ │     │
+│                                    │ └──────────────┘ │     │
 │                                    └──────────────────┘     │
 │                                               │             │
 │  ┌──────────────┐   ┌──────────────┐   ┌──────▼───────┐     │
@@ -55,21 +55,20 @@
 
 | 순서 | 프로세서               | 클래스                           | 역할                      | 실행 조건    |
 |----|--------------------|-------------------------------|-------------------------|----------|
-| 1  | ChartExtract       | `ChartExtractProcessor`       | 차트 정보 추출 및 임시 제거        | SXSSF 모드 |
+| 1  | ChartExtract       | `ChartExtractProcessor`       | 차트 정보 추출 및 임시 제거        | 항상       |
 | 2  | PivotExtract       | `PivotExtractProcessor`       | 피벗 테이블 정보 추출            | 항상       |
-| 3  | TemplateRender     | `TemplateRenderProcessor`     | 템플릿 렌더링 (XSSF/SXSSF 전략) | 항상       |
+| 3  | TemplateRender     | `TemplateRenderProcessor`     | 템플릿 렌더링                 | 항상       |
 | 4  | NumberFormat       | `NumberFormatProcessor`       | 숫자 서식 자동 적용             | 항상       |
 | 5  | XmlVariableReplace | `XmlVariableReplaceProcessor` | XML 내 변수 치환             | 항상       |
 | 6  | PivotRecreate      | `PivotRecreateProcessor`      | 피벗 테이블 재생성              | 피벗 존재 시  |
 | 7  | ChartRestore       | `ChartRestoreProcessor`       | 차트 복원 및 데이터 범위 조정       | 차트 존재 시  |
 | 8  | Metadata           | `MetadataProcessor`           | 문서 메타데이터 적용             | 항상       |
 
-### 렌더링 전략 (Strategy Pattern)
+### 렌더링 전략
 
-| 전략    | 클래스                      | 사용 조건         | 특징                  |
-|-------|--------------------------|---------------|---------------------|
-| SXSSF | `SxssfRenderingStrategy` | 스트리밍 모드 (기본값) | 100행 버퍼, 메모리 효율적    |
-| XSSF  | `XssfRenderingStrategy`  | 비스트리밍 모드      | 전체 메모리 로드, 모든 기능 지원 |
+| 클래스                          | 특징                                           |
+|------------------------------|----------------------------------------------|
+| `StreamingRenderingStrategy` | 내부적으로 Apache POI SXSSF 모드를 사용하여 메모리 효율적으로 처리 |
 
 ---
 
@@ -115,8 +114,7 @@ src/main/kotlin/com/hunet/common/tbeg/
 │   └── rendering/                          # 렌더링 전략
 │       ├── RenderingStrategy.kt            # 렌더링 전략 인터페이스
 │       ├── AbstractRenderingStrategy.kt    # 공통 로직
-│       ├── XssfRenderingStrategy.kt        # XSSF (비스트리밍)
-│       ├── SxssfRenderingStrategy.kt       # SXSSF (스트리밍)
+│       ├── StreamingRenderingStrategy.kt     # 기본 렌더링 전략
 │       ├── TemplateRenderingEngine.kt      # 렌더링 엔진
 │       ├── TemplateAnalyzer.kt             # 템플릿 분석기
 │       ├── parser/                         # 마커 파서 (통합)
@@ -176,10 +174,10 @@ src/main/kotlin/com/hunet/common/tbeg/
 
 ### 스트리밍 지원
 
-| 클래스                      | 역할                    |
-|--------------------------|-----------------------|
-| `SxssfRenderingStrategy` | SXSSF 기반 스트리밍 렌더링     |
-| `StreamingDataSource`    | Iterator 기반 데이터 순차 소비 |
+| 클래스                        | 역할              |
+|----------------------------|-----------------|
+| `StreamingRenderingStrategy` | 스트리밍 기반 렌더링     |
+| `StreamingDataSource`      | Iterator 기반 데이터 순차 소비 |
 
 ### 비동기 처리
 
@@ -558,21 +556,15 @@ RenderingStrategy.processSheet()
 
 #### 처리 위치
 
-| 모드                  | 처리 함수                                                    |
-|---------------------|----------------------------------------------------------|
-| XSSF                | `XssfRenderingStrategy.writeEmptyRangeContent()`         |
-| SXSSF (streaming)   | `SxssfRenderingStrategy.writeRepeatCellsForRow()`        |
-| SXSSF (pendingRows) | `SxssfRenderingStrategy.collectEmptyRangeContentCells()` |
+| 처리 경로         | 처리 함수                                                      |
+|---------------|--------------------------------------------------------------|
+| streaming     | `StreamingRenderingStrategy.writeRepeatCellsForRow()`          |
+| pendingRows   | `StreamingRenderingStrategy.collectEmptyRangeContentCells()`   |
 
-### 2. 메모리 관리 원칙 (SXSSF 모드)
+### 2. 메모리 관리 원칙
 
 #### 2.1 컬렉션 전체 메모리 로드 금지
-SXSSF 모드에서는 대용량 데이터 처리를 위해 컬렉션 전체를 메모리에 올리지 않습니다.
-
-| 모드    | 메모리 정책              | 이유            |
-|-------|---------------------|---------------|
-| SXSSF | 컬렉션 전체를 메모리에 올리지 않음 | 대용량 데이터 처리 목적 |
-| XSSF  | 전체 메모리 로드 허용        | 소량 데이터 전용 모드  |
+대용량 데이터 처리를 위해 컬렉션 전체를 메모리에 올리지 않는다.
 
 #### 2.2 DataProvider 재호출 방식
 같은 컬렉션이 여러 repeat 영역에서 사용되면 DataProvider를 재호출합니다.
@@ -613,7 +605,7 @@ repeat 영역에 포함된 수식과 범위 참조는 확장량만큼 자동 조
 - `SheetExpansionInfo`에 시트별 `expansions`와 `collectionSizes` 포함
 - 시트 이름 추출: `Sheet1!` -> `"Sheet1"`, `'Sheet Name'!` -> `"Sheet Name"`
 
-**repeat 영역 밖 참조 시프트 (SXSSF):**
+**repeat 영역 밖 참조 시프트:**
 
 repeat 영역 **내부** 수식이 영역 **밖**의 셀을 참조하는 경우, `$` 유무와 무관하게 동일하게 처리됩니다.
 - 복사 단계(`adjustForRepeatIndex`)에서 이동하지 않음
@@ -744,8 +736,7 @@ RIGHT 방향 repeat에 대해서도 동일한 원리를 적용한다. 방향만 
 
 ##### 3.2.10 적용 범위
 
-- **SXSSF(스트리밍) 모드**에서만 적용한다
-- XSSF 모드는 고려하지 않는다 (폐지 예정)
+- 스트리밍 렌더링 전략(`StreamingRenderingStrategy`)에서 적용한다
 
 ##### 3.2.11 bundle (요소 묶음)
 
@@ -850,7 +841,7 @@ bundle 있으면:
 
 | 옵션                        | 기본값                 | 설명                                |
 |---------------------------|---------------------|-----------------------------------|
-| `streamingMode`           | `ENABLED`           | ENABLED (SXSSF) / DISABLED (XSSF) |
+| `streamingMode`           | `ENABLED`           | **deprecated** (값이 무시됨)            |
 | `fileNamingMode`          | `TIMESTAMP`         | TIMESTAMP / NONE                  |
 | `timestampFormat`         | `"yyyyMMdd_HHmmss"` | DateTimeFormatter 패턴              |
 | `fileConflictPolicy`      | `SEQUENCE`          | SEQUENCE / ERROR                  |
@@ -865,11 +856,10 @@ bundle 있으면:
 ```kotlin
 // 대용량 처리 최적화
 TbegConfig.forLargeData()
-// streamingMode = ENABLED, progressReportInterval = 500
+// progressReportInterval = 500
 
-// 소량 처리
+// 소량 처리 (deprecated -- default()와 동일)
 TbegConfig.forSmallData()
-// streamingMode = DISABLED
 ```
 
 ### Spring Boot 설정 (application.yml)
@@ -877,7 +867,6 @@ TbegConfig.forSmallData()
 ```yaml
 hunet:
   tbeg:
-    streaming-mode: enabled
     file-naming-mode: timestamp
     timestamp-format: yyyyMMdd_HHmmss
     file-conflict-policy: sequence
@@ -890,7 +879,7 @@ hunet:
 
 ## 제한사항
 
-### SXSSF (스트리밍) 모드
+### 지원 기능
 
 | 항목               | 지원 여부 | 비고                        |
 |------------------|-------|---------------------------|
@@ -911,7 +900,7 @@ hunet:
 
 | 상수          | 값           | 위치                             |
 |-------------|-------------|--------------------------------|
-| SXSSF 버퍼 크기 | 100행        | `SxssfRenderingStrategy.kt:49` |
+| SXSSF 버퍼 크기 | 100행        | `StreamingRenderingStrategy.kt` |
 | 이미지 마진      | 1px         | `ImageInserter.kt`             |
 | EMU 변환율     | 9525 EMU/px | `ImageInserter.kt`             |
 
@@ -941,7 +930,7 @@ hunet:
 
 수식 재계산 오류를 방지합니다.
 
-- XSSF/SXSSF 모두 `clearCalcChain()` 호출
+- `clearCalcChain()` 호출
 - Excel에서 파일 열 때 수식 재계산 트리거
 
 ---
@@ -1058,17 +1047,17 @@ src/test/
 
 **테스트 환경**: Java 21, macOS, 3개 컬럼 repeat + SUM 수식
 
-| 데이터 크기   | DISABLED (XSSF) | ENABLED (SXSSF) | 속도 향상    |
-|----------|-----------------|-----------------|----------|
-| 1,000행   | 172ms           | 147ms           | 1.2배     |
-| 10,000행  | 1,801ms         | 663ms           | **2.7배** |
-| 30,000행  | -               | 1,057ms         | -        |
-| 50,000행  | -               | 1,202ms         | -        |
-| 100,000행 | -               | 3,154ms         | -        |
+| 데이터 크기   | 소요 시간    |
+|----------|---------|
+| 1,000행   | 147ms   |
+| 10,000행  | 663ms   |
+| 30,000행  | 1,057ms |
+| 50,000행  | 1,202ms |
+| 100,000행 | 3,154ms |
 
 ### 타 라이브러리 비교 (30,000행)
 
 | 라이브러리    | 소요 시간    | 비고                                                          |
 |----------|----------|-------------------------------------------------------------|
-| **TBEG** | **1.1초** | 스트리밍 모드                                                     |
+| **TBEG** | **1.1초** |                                                             |
 | JXLS     | 5.2초     | [벤치마크 출처](https://github.com/jxlsteam/jxls/discussions/203) |

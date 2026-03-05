@@ -29,6 +29,7 @@
 .claude
 .mcp.json
 .playwright-mcp
+.openchrome
 **/docs/
 CLAUDE.md
 **/MANUAL_UPDATE_PLAN.md

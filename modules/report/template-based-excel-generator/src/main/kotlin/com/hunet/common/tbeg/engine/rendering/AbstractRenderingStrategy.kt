@@ -13,7 +13,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import org.openxmlformats.schemas.spreadsheetml.x2006.main.STCellType
 
 /**
- * XSSF/SXSSF 렌더링 전략의 공통 기능을 제공하는 추상 베이스 클래스.
+ * 렌더링 전략의 공통 기능을 제공하는 추상 베이스 클래스.
  *
  * 템플릿 메서드 패턴을 사용하여:
  * - render(): 알고리즘의 골격 정의
