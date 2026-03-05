@@ -22,6 +22,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *     pivot-integer-format-index: 37  # 피벗 테이블 정수 필드 포맷 인덱스
  *     pivot-decimal-format-index: 39  # 피벗 테이블 소수점 필드 포맷 인덱스
  *     missing-data-behavior: warn     # warn, throw
+ *     image-url-cache-ttl-seconds: 0  # 이미지 URL 캐시 TTL (초, 0=캐싱 안 함)
  * ```
  */
 @ConfigurationProperties(prefix = "hunet.tbeg")
@@ -78,7 +79,13 @@ data class TbegProperties(
      * - warn: 경고 로그 출력 후 마커 그대로 유지 (기본값)
      * - throw: MissingTemplateDataException 발생
      */
-    var missingDataBehavior: MissingDataBehaviorProperty = MissingDataBehaviorProperty.WARN
+    var missingDataBehavior: MissingDataBehaviorProperty = MissingDataBehaviorProperty.WARN,
+
+    /**
+     * 이미지 URL 다운로드 결과의 캐시 TTL (초).
+     * 0이면 호출 간 캐싱을 하지 않는다 (기본값).
+     */
+    var imageUrlCacheTtlSeconds: Long = 0
 ) {
     /**
      * TbegConfig로 변환한다.
@@ -91,7 +98,8 @@ data class TbegProperties(
         preserveTemplateLayout = preserveTemplateLayout,
         pivotIntegerFormatIndex = pivotIntegerFormatIndex,
         pivotDecimalFormatIndex = pivotDecimalFormatIndex,
-        missingDataBehavior = missingDataBehavior.toMissingDataBehavior()
+        missingDataBehavior = missingDataBehavior.toMissingDataBehavior(),
+        imageUrlCacheTtlSeconds = imageUrlCacheTtlSeconds
     )
 }
 

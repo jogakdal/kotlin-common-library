@@ -224,6 +224,9 @@ fun main() {
     val provider = simpleDataProvider {
         value("company", "(주)휴넷")
         image("logo", logoBytes)
+
+        // URL로도 이미지를 지정할 수 있습니다 (렌더링 시 자동 다운로드)
+        imageUrl("banner", "https://example.com/banner.png")
     }
 
     ExcelGenerator().use { generator ->
@@ -233,6 +236,8 @@ fun main() {
     }
 }
 ```
+
+> URL 이미지는 `generate()` 호출 시 다운로드되어 Excel 파일에 임베딩됩니다. 같은 호출 내에서 동일 URL은 한 번만 다운로드됩니다. 다운로드 실패 시에도 Excel 생성은 정상적으로 완료됩니다. 상세 설정은 [이미지 URL 문법](./reference/template-syntax.md#36-url-이미지) 및 [캐시 설정](./reference/configuration.md#imageurlcachettlseconds)을 참조하세요.
 
 ### 2.4 파일 저장
 
@@ -286,8 +291,11 @@ val provider = simpleDataProvider {
         employeeRepository.findAll().iterator()
     }
 
-    // 이미지
+    // 이미지 (ByteArray)
     image("logo", logoBytes)
+
+    // 이미지 (URL - 렌더링 시 자동 다운로드)
+    imageUrl("banner", "https://example.com/banner.png")
 
     // 문서 메타데이터
     metadata {

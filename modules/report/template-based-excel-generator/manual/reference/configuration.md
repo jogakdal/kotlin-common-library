@@ -28,6 +28,7 @@ com.hunet.common.tbeg.TbegConfig
 | `pivotIntegerFormatIndex` | `Short`               | `3`                 | 정수 숫자 서식 인덱스 (`#,##0`)   |
 | `pivotDecimalFormatIndex` | `Short`               | `4`                 | 소수 숫자 서식 인덱스 (`#,##0.00`) |
 | `missingDataBehavior`     | `MissingDataBehavior` | `WARN`              | 데이터 누락 시 동작              |
+| `imageUrlCacheTtlSeconds` | `Long`                | `0`                 | 이미지 URL 캐시 TTL (초, 0=캐싱 안 함) |
 
 ---
 
@@ -127,6 +128,22 @@ TbegConfig(
 TbegConfig(missingDataBehavior = MissingDataBehavior.THROW)
 ```
 
+#### imageUrlCacheTtlSeconds
+
+이미지 데이터로 URL을 지정했을 때, 다운로드 결과를 호출 간에 캐싱하는 TTL(초)입니다.
+
+| 값 | 동작 |
+|---|------|
+| `0` | 호출 간 캐싱 안 함 (기본값). 동일 URL이라도 매번 다운로드 |
+| `> 0` | 지정 시간 동안 캐싱. 같은 URL을 여러 번 생성하는 경우 효과적 |
+
+> [!NOTE]
+> 단일 `generate()` 호출 내에서는 TTL 설정과 무관하게 같은 URL을 중복 다운로드하지 않습니다.
+
+```kotlin
+TbegConfig(imageUrlCacheTtlSeconds = 60)  // 60초간 캐싱
+```
+
 ---
 
 ### 생성 방법
@@ -190,6 +207,9 @@ hunet:
 
     # 데이터 누락 시 동작: warn, throw
     missing-data-behavior: warn
+
+    # 이미지 URL 캐시 TTL (초, 0=캐싱 안 함)
+    image-url-cache-ttl-seconds: 0
 ```
 
 ### 프로퍼티 매핑
@@ -205,6 +225,7 @@ hunet:
 | `pivot-integer-format-index`  | `pivotIntegerFormatIndex`  |
 | `pivot-decimal-format-index`  | `pivotDecimalFormatIndex`  |
 | `missing-data-behavior`       | `missingDataBehavior`      |
+| `image-url-cache-ttl-seconds` | `imageUrlCacheTtlSeconds`  |
 
 ---
 

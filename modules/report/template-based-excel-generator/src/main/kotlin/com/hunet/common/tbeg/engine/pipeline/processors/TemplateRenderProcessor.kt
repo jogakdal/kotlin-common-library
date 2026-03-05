@@ -46,7 +46,9 @@ internal class TemplateRenderProcessor : ExcelProcessor {
         }
 
         // 템플릿 렌더링
-        val engine = TemplateRenderingEngine()
+        val engine = TemplateRenderingEngine(
+            imageUrlCacheTtlSeconds = context.config.imageUrlCacheTtlSeconds
+        )
         context.resultBytes = engine.process(
             ByteArrayInputStream(context.resultBytes),
             context.dataProvider,

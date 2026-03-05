@@ -12,6 +12,7 @@ package com.hunet.common.tbeg
  * @property pivotIntegerFormatIndex 숫자 자동 서식의 정수 필드에 적용할 Excel 내장 포맷 인덱스 (기본: 3, "#,##0")
  * @property pivotDecimalFormatIndex 숫자 자동 서식의 소수점 필드에 적용할 Excel 내장 포맷 인덱스 (기본: 4, "#,##0.00")
  * @property missingDataBehavior 템플릿에 정의된 데이터가 없을 때의 동작 (기본: WARN)
+ * @property imageUrlCacheTtlSeconds 이미지 URL 다운로드 결과의 캐시 TTL (초, 기본: 0 = 호출 간 캐싱 안 함)
  */
 data class TbegConfig(
     @Deprecated("Since 1.2.0, streaming mode is always used. This property will be removed in a future version.")
@@ -23,7 +24,8 @@ data class TbegConfig(
     val preserveTemplateLayout: Boolean = true,
     val pivotIntegerFormatIndex: Short = 3,
     val pivotDecimalFormatIndex: Short = 4,
-    val missingDataBehavior: MissingDataBehavior = MissingDataBehavior.WARN
+    val missingDataBehavior: MissingDataBehavior = MissingDataBehavior.WARN,
+    val imageUrlCacheTtlSeconds: Long = 0
 ) {
     companion object {
         /**
@@ -69,6 +71,7 @@ data class TbegConfig(
         private var pivotIntegerFormatIndex: Short = 3
         private var pivotDecimalFormatIndex: Short = 4
         private var missingDataBehavior: MissingDataBehavior = MissingDataBehavior.WARN
+        private var imageUrlCacheTtlSeconds: Long = 0
 
         @Deprecated("Since 1.2.0, streaming mode is always used. This method will be removed in a future version.")
         fun streamingMode(mode: StreamingMode) = apply { this.streamingMode = mode }
@@ -80,6 +83,7 @@ data class TbegConfig(
         fun pivotIntegerFormatIndex(index: Short) = apply { this.pivotIntegerFormatIndex = index }
         fun pivotDecimalFormatIndex(index: Short) = apply { this.pivotDecimalFormatIndex = index }
         fun missingDataBehavior(behavior: MissingDataBehavior) = apply { this.missingDataBehavior = behavior }
+        fun imageUrlCacheTtlSeconds(ttl: Long) = apply { this.imageUrlCacheTtlSeconds = ttl }
 
         fun build() = TbegConfig(
             streamingMode = streamingMode,
@@ -90,7 +94,8 @@ data class TbegConfig(
             preserveTemplateLayout = preserveTemplateLayout,
             pivotIntegerFormatIndex = pivotIntegerFormatIndex,
             pivotDecimalFormatIndex = pivotDecimalFormatIndex,
-            missingDataBehavior = missingDataBehavior
+            missingDataBehavior = missingDataBehavior,
+            imageUrlCacheTtlSeconds = imageUrlCacheTtlSeconds
         )
     }
 
@@ -124,4 +129,7 @@ data class TbegConfig(
 
     fun withMissingDataBehavior(behavior: MissingDataBehavior): TbegConfig =
         copy(missingDataBehavior = behavior)
+
+    fun withImageUrlCacheTtlSeconds(ttl: Long): TbegConfig =
+        copy(imageUrlCacheTtlSeconds = ttl)
 }

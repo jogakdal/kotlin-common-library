@@ -29,7 +29,9 @@ import java.lang.reflect.Method
  * 명세 기반 순차 생성 (청사진 기반) 방식으로 동작한다.
  * 내부적으로 [StreamingRenderingStrategy]를 사용한다.
  */
-class TemplateRenderingEngine {
+class TemplateRenderingEngine(
+    private val imageUrlCacheTtlSeconds: Long = 0
+) {
     private val analyzer = TemplateAnalyzer()
     private val variableProcessor = VariableProcessor(emptyList())
     private val imageInserter = ImageInserter()
@@ -60,7 +62,8 @@ class TemplateRenderingEngine {
         evaluateText = ::evaluateText,
         resolveFieldPath = ::resolveFieldPath,
         streamingDataSource = streamingDataSource,
-        collectionSizes = collectionSizes
+        collectionSizes = collectionSizes,
+        imageUrlCacheTtlSeconds = imageUrlCacheTtlSeconds
     )
 
     /**
@@ -102,7 +105,9 @@ class TemplateRenderingEngine {
                 dataProvider.getValue(name)?.let { put(name, it) }
             }
             requiredNames?.images?.forEach { name ->
-                dataProvider.getImage(name)?.let { put("image.$name", it) }
+                val imageData = dataProvider.getImage(name)
+                    ?: dataProvider.getValue("image.$name")  // URL 문자열 등 대체 소스
+                imageData?.let { put("image.$name", it) }
             }
         }
 

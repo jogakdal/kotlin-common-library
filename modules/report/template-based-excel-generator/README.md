@@ -80,6 +80,7 @@ val data = simpleDataProvider {
     value("subtitle_emp", "Employee Performance Details")
     image("logo", logoBytes)
     image("ci", ciBytes)
+    imageUrl("chart", "https://example.com/chart.png")  // URL도 가능
     items("depts") { deptList.iterator() }
     items("products") { productList.iterator() }
     items("employees") { employeeList.iterator() }

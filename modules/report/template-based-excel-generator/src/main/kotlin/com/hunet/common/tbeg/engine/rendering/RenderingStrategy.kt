@@ -55,5 +55,7 @@ internal data class RenderingContext(
      * 시트별 repeat 확장 정보 수집기 (차트 범위 조정용).
      * RenderingStrategy가 채우고, TemplateRenderingEngine이 외부로 전달한다.
      */
-    val repeatExpansionInfos: MutableMap<String, List<RepeatExpansionInfo>> = mutableMapOf()
+    val repeatExpansionInfos: MutableMap<String, List<RepeatExpansionInfo>> = mutableMapOf(),
+    /** 이미지 URL 다운로드 캐시 TTL (초). 0이면 호출 간 캐싱 안 함. */
+    val imageUrlCacheTtlSeconds: Long = 0
 )

@@ -1,5 +1,6 @@
 package com.hunet.common.tbeg.engine.rendering
 
+import com.hunet.common.logging.commonLogger
 import com.hunet.common.tbeg.engine.core.findMergedRegion
 import com.hunet.common.tbeg.engine.core.parseCellRef
 import org.apache.poi.ss.usermodel.Cell
@@ -11,6 +12,9 @@ import org.apache.poi.xssf.usermodel.XSSFCell
 import org.apache.poi.xssf.usermodel.XSSFCellStyle
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import org.openxmlformats.schemas.spreadsheetml.x2006.main.STCellType
+import java.net.HttpURLConnection
+import java.net.URI
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 렌더링 전략의 공통 기능을 제공하는 추상 베이스 클래스.
@@ -290,6 +294,9 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
 
     /**
      * 수집된 이미지 위치에 이미지를 삽입한다.
+     *
+     * 데이터 값으로 `ByteArray`(바이너리) 또는 `String`(URL)을 지원한다.
+     * URL인 경우 HTTP(S)로 다운로드하며, 같은 URL은 호출 내/호출 간 캐싱된다.
      */
     protected fun insertImages(
         workbook: Workbook,
@@ -297,9 +304,11 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
         data: Map<String, Any>,
         context: RenderingContext
     ) {
+        // 호출 내 캐시 (TTL과 무관하게 항상 동작)
+        val localCache = mutableMapOf<String, ByteArray>()
+
         for (location in imageLocations) {
-            val imageBytes = data["image.${location.imageName}"] as? ByteArray
-                ?: data[location.imageName] as? ByteArray
+            val imageBytes = resolveImageBytes(data, location.imageName, localCache, context.imageUrlCacheTtlSeconds)
                 ?: continue
 
             val sheet = workbook.getSheetAt(location.sheetIndex)
@@ -314,6 +323,120 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
                 location.hAlign, location.vAlign
             )
         }
+    }
+
+    /**
+     * 이미지 데이터를 해석한다.
+     * - ByteArray: 그대로 사용
+     * - String (http/https URL): 다운로드하여 ByteArray로 변환 (TTL 캐싱 적용)
+     */
+    private fun resolveImageBytes(
+        data: Map<String, Any>,
+        imageName: String,
+        localCache: MutableMap<String, ByteArray>,
+        cacheTtlSeconds: Long
+    ): ByteArray? {
+        val value = data["image.$imageName"] ?: data[imageName] ?: return null
+
+        return when (value) {
+            is ByteArray -> value
+            is String -> if (value.startsWith("http://") || value.startsWith("https://")) {
+                downloadWithCache(value, localCache, cacheTtlSeconds)
+            } else {
+                LOG.warn("이미지 '{}' 값이 ByteArray도 URL도 아닙니다: {}", imageName, value)
+                null
+            }
+            else -> {
+                LOG.warn("이미지 '{}' 값의 타입이 지원되지 않습니다: {}", imageName, value::class.simpleName)
+                null
+            }
+        }
+    }
+
+    /**
+     * URL 이미지를 캐시를 활용하여 다운로드한다.
+     *
+     * 조회 우선순위:
+     * 1. 호출 내 로컬 캐시 (항상)
+     * 2. TTL 기반 글로벌 캐시 (cacheTtlSeconds > 0일 때)
+     * 3. 실제 다운로드
+     */
+    private fun downloadWithCache(
+        url: String,
+        localCache: MutableMap<String, ByteArray>,
+        cacheTtlSeconds: Long
+    ): ByteArray? {
+        // 1. 호출 내 로컬 캐시
+        localCache[url]?.let { return it }
+
+        // 2. TTL 기반 글로벌 캐시
+        if (cacheTtlSeconds > 0) {
+            val cached = globalImageCache[url]
+            if (cached != null && System.currentTimeMillis() - cached.cachedAt < cacheTtlSeconds * 1000) {
+                localCache[url] = cached.bytes
+                return cached.bytes
+            }
+        }
+
+        // 3. 다운로드
+        val bytes = downloadImage(url) ?: return null
+        localCache[url] = bytes
+        if (cacheTtlSeconds > 0) {
+            globalImageCache[url] = CachedImage(bytes, System.currentTimeMillis())
+            evictExpiredEntries(cacheTtlSeconds)
+        }
+        return bytes
+    }
+
+    /**
+     * URL에서 이미지를 다운로드한다.
+     * 리다이렉트를 최대 3회까지 따라간다.
+     */
+    private fun downloadImage(url: String, maxRedirects: Int = 3): ByteArray? {
+        var currentUrl = url
+        var redirectCount = 0
+
+        while (redirectCount <= maxRedirects) {
+            val connection = URI(currentUrl).toURL().openConnection() as HttpURLConnection
+            try {
+                connection.connectTimeout = DOWNLOAD_CONNECT_TIMEOUT_MS
+                connection.readTimeout = DOWNLOAD_READ_TIMEOUT_MS
+                connection.instanceFollowRedirects = false
+
+                when (val code = connection.responseCode) {
+                    HttpURLConnection.HTTP_OK -> {
+                        val contentType = connection.contentType ?: ""
+                        if (!contentType.startsWith("image/")) {
+                            LOG.warn("이미지 URL의 Content-Type이 image/*가 아닙니다: url={}, contentType={}", url, contentType)
+                        }
+                        return connection.inputStream.use { it.readBytes() }
+                    }
+                    HttpURLConnection.HTTP_MOVED_PERM,
+                    HttpURLConnection.HTTP_MOVED_TEMP,
+                    HttpURLConnection.HTTP_SEE_OTHER,
+                    307, 308 -> {
+                        currentUrl = connection.getHeaderField("Location")
+                            ?: run {
+                                LOG.warn("이미지 다운로드 실패: 리다이렉트 응답에 Location 헤더가 없습니다 (url={})", url)
+                                return null
+                            }
+                        redirectCount++
+                    }
+                    else -> {
+                        LOG.warn("이미지 다운로드 실패: HTTP {} (url={})", code, url)
+                        return null
+                    }
+                }
+            } catch (e: Exception) {
+                LOG.warn("이미지 다운로드 실패: {} (url={})", e.message, url)
+                return null
+            } finally {
+                connection.disconnect()
+            }
+        }
+
+        LOG.warn("이미지 다운로드 실패: 최대 리다이렉트 횟수 초과 (url={})", url)
+        return null
     }
 
     // ========== calcChain 정리 ==========
@@ -334,9 +457,27 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
     // ========== 숫자 형식 스타일 유틸리티 ==========
 
     companion object {
+        private val LOG by commonLogger()
+
         // Excel 내장 숫자 형식 인덱스
         protected const val NUMBER_FORMAT_INTEGER: Short = 3  // #,##0
         protected const val NUMBER_FORMAT_DECIMAL: Short = 4  // #,##0.00
+
+        // 이미지 다운로드 타임아웃
+        private const val DOWNLOAD_CONNECT_TIMEOUT_MS = 5_000
+        private const val DOWNLOAD_READ_TIMEOUT_MS = 10_000
+
+        // TTL 기반 글로벌 이미지 URL 캐시 (호출 간 공유)
+        private val globalImageCache = ConcurrentHashMap<String, CachedImage>()
+
+        private data class CachedImage(val bytes: ByteArray, val cachedAt: Long)
+
+        /** 만료된 캐시 엔트리를 제거한다. */
+        private fun evictExpiredEntries(ttlSeconds: Long) {
+            val now = System.currentTimeMillis()
+            val ttlMs = ttlSeconds * 1000
+            globalImageCache.entries.removeIf { now - it.value.cachedAt >= ttlMs }
+        }
     }
 
     /**
