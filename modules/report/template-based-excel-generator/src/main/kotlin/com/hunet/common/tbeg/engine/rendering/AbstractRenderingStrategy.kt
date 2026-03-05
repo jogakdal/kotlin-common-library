@@ -406,10 +406,25 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
                 when (val code = connection.responseCode) {
                     HttpURLConnection.HTTP_OK -> {
                         val contentType = connection.contentType ?: ""
+                        // CDN이 잘못된 Content-Type을 반환하는 경우가 있어 경고만 출력하고 다운로드는 진행한다
                         if (!contentType.startsWith("image/")) {
                             LOG.warn("이미지 URL의 Content-Type이 image/*가 아닙니다: url={}, contentType={}", url, contentType)
                         }
-                        return connection.inputStream.use { it.readBytes() }
+                        return connection.inputStream.use { stream ->
+                            val buffer = java.io.ByteArrayOutputStream()
+                            val chunk = ByteArray(8192)
+                            var total = 0
+                            var read: Int
+                            while (stream.read(chunk).also { read = it } != -1) {
+                                total += read
+                                if (total > MAX_IMAGE_SIZE) {
+                                    LOG.warn("이미지 다운로드 중단: 크기 제한 초과 (url={}, limit={}bytes)", url, MAX_IMAGE_SIZE)
+                                    return null
+                                }
+                                buffer.write(chunk, 0, read)
+                            }
+                            buffer.toByteArray()
+                        }
                     }
                     HttpURLConnection.HTTP_MOVED_PERM,
                     HttpURLConnection.HTTP_MOVED_TEMP,
@@ -463,20 +478,29 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
         protected const val NUMBER_FORMAT_INTEGER: Short = 3  // #,##0
         protected const val NUMBER_FORMAT_DECIMAL: Short = 4  // #,##0.00
 
-        // 이미지 다운로드 타임아웃
+        // 이미지 다운로드 타임아웃 및 크기 제한
         private const val DOWNLOAD_CONNECT_TIMEOUT_MS = 5_000
         private const val DOWNLOAD_READ_TIMEOUT_MS = 10_000
+        private const val MAX_IMAGE_SIZE = 10 * 1024 * 1024  // 10MB
 
         // TTL 기반 글로벌 이미지 URL 캐시 (호출 간 공유)
+        private const val MAX_CACHE_SIZE = 100
         private val globalImageCache = ConcurrentHashMap<String, CachedImage>()
 
-        private data class CachedImage(val bytes: ByteArray, val cachedAt: Long)
+        private class CachedImage(val bytes: ByteArray, val cachedAt: Long)
 
-        /** 만료된 캐시 엔트리를 제거한다. */
+        /** 만료된 캐시 엔트리를 제거하고, 최대 크기를 초과하면 오래된 순으로 제거한다. */
         private fun evictExpiredEntries(ttlSeconds: Long) {
             val now = System.currentTimeMillis()
             val ttlMs = ttlSeconds * 1000
             globalImageCache.entries.removeIf { now - it.value.cachedAt >= ttlMs }
+
+            if (globalImageCache.size > MAX_CACHE_SIZE) {
+                globalImageCache.entries
+                    .sortedBy { it.value.cachedAt }
+                    .take(globalImageCache.size - MAX_CACHE_SIZE)
+                    .forEach { globalImageCache.remove(it.key) }
+            }
         }
     }
 

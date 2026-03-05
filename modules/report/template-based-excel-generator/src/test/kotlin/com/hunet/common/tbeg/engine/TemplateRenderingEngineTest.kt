@@ -622,75 +622,73 @@ class TemplateRenderingEngineTest {
 
     // ==================== Rich Sample 멀티 리피트 + 멀티 차트 통합 테스트 ====================
 
-    // TODO: cell_merge 기능 완료 후 주석 해제 필요
-//    @Test
-//    fun `Rich Sample 멀티 리피트가 올바르게 처리된다`() {
-//        // Given: 왼쪽 depts(5개) + 오른쪽 products(4개) 멀티 리피트
-//        val template = javaClass.getResourceAsStream("/templates/rich_sample_template.xlsx")!!
-//        val data = richSampleData()
-//
-//        // When
-//        val engine = TemplateRenderingEngine()
-//        val resultBytes = engine.process(template, data)
-//
-//        // Then
-//        assertTrue(resultBytes.isNotEmpty(), "결과가 비어있지 않아야 함")
-//
-//        XSSFWorkbook(ByteArrayInputStream(resultBytes)).use { workbook ->
-//            val sheet = workbook.getSheetAt(0)
-//            assertEquals("Sales Report", sheet.sheetName)
-//
-//            // 왼쪽 repeat (depts 5개): B8~B12 (row 7~11)
-//            assertEquals("Common Platform", sheet.getRow(7).getCell(1).stringCellValue, "depts[0]")
-//            assertEquals("Content Dev", sheet.getRow(11).getCell(1).stringCellValue, "depts[4]")
-//
-//            // 오른쪽 repeat (products 4개): I8~I11 (row 7~10)
-//            assertEquals("Online Courses", sheet.getRow(7).getCell(8).stringCellValue, "products[0]")
-//            assertEquals("Contents License", sheet.getRow(10).getCell(8).stringCellValue, "products[3]")
-//        }
-//
-//        // 결과 파일 저장 (수동 검증용)
-//        val samplesDir = Path.of("build/samples/rich-sample-multi-repeat")
-//        java.nio.file.Files.createDirectories(samplesDir)
-//        samplesDir.resolve("rich_sample_result.xlsx").toFile().writeBytes(resultBytes)
-//    }
+    @Test
+    fun `Rich Sample 멀티 리피트가 올바르게 처리된다`() {
+        // Given: 왼쪽 depts(5개) + 오른쪽 products(4개) 멀티 리피트
+        val template = javaClass.getResourceAsStream("/templates/rich_sample_template.xlsx")!!
+        val data = richSampleData()
 
-    // TODO: cell_merge 기능 완료 후 주석 해제 필요
-//    @Test
-//    fun `Rich Sample의 repeat 내부 수식에서 외부 참조가 시프트된다`() {
-//        // Given: K8 수식 = J8/J9, products 4개 -> J9이 J12로 시프트되어야 함
-//        val template = javaClass.getResourceAsStream("/templates/rich_sample_template.xlsx")!!
-//        val data = richSampleData()
-//
-//        // When
-//        val engine = TemplateRenderingEngine()
-//        val resultBytes = engine.process(template, data)
-//
-//        // Then: K8~K11의 수식에서 J9(상대 참조)이 J12로 시프트
-//        XSSFWorkbook(ByteArrayInputStream(resultBytes)).use { workbook ->
-//            val sheet = workbook.getSheetAt(0)
-//
-//            // products 4개: row 7~10 (0-based), K열 = col 10
-//            for (rowIdx in 7..10) {
-//                val cell = sheet.getRow(rowIdx).getCell(10)
-//                assertEquals(
-//                    org.apache.poi.ss.usermodel.CellType.FORMULA,
-//                    cell.cellType,
-//                    "K${rowIdx + 1}이 수식이어야 함"
-//                )
-//                assertEquals(
-//                    "J${rowIdx + 1}/J12",
-//                    cell.cellFormula,
-//                    "K${rowIdx + 1} 수식: products 확장(3행)으로 Total 행이 9->12로 이동"
-//                )
-//            }
-//        }
-//
-//        // 결과 파일 저장 (수동 검증용)
-//        val samplesDir = Path.of("build/samples/absolute-ref-shift")
-//        java.nio.file.Files.createDirectories(samplesDir)
-//        samplesDir.resolve("rich_sample_result.xlsx").toFile().writeBytes(resultBytes)
-//    }
+        // When
+        val engine = TemplateRenderingEngine()
+        val resultBytes = engine.process(template, data)
+
+        // Then
+        assertTrue(resultBytes.isNotEmpty(), "결과가 비어있지 않아야 함")
+
+        XSSFWorkbook(ByteArrayInputStream(resultBytes)).use { workbook ->
+            val sheet = workbook.getSheetAt(0)
+            assertEquals("Sales Report", sheet.sheetName)
+
+            // 왼쪽 repeat (depts 5개): B8~B12 (row 7~11)
+            assertEquals("Common Platform", sheet.getRow(7).getCell(1).stringCellValue, "depts[0]")
+            assertEquals("Content Dev", sheet.getRow(11).getCell(1).stringCellValue, "depts[4]")
+
+            // 오른쪽 repeat (products 4개): I8~I11 (row 7~10)
+            assertEquals("Online Courses", sheet.getRow(7).getCell(8).stringCellValue, "products[0]")
+            assertEquals("Contents License", sheet.getRow(10).getCell(8).stringCellValue, "products[3]")
+        }
+
+        // 결과 파일 저장 (수동 검증용)
+        val samplesDir = Path.of("build/samples/rich-sample-multi-repeat")
+        java.nio.file.Files.createDirectories(samplesDir)
+        samplesDir.resolve("rich_sample_result.xlsx").toFile().writeBytes(resultBytes)
+    }
+
+    @Test
+    fun `Rich Sample의 repeat 내부 수식에서 외부 참조가 시프트된다`() {
+        // Given: K8 수식 = J8/J9, products 4개 -> J9이 J12로 시프트되어야 함
+        val template = javaClass.getResourceAsStream("/templates/rich_sample_template.xlsx")!!
+        val data = richSampleData()
+
+        // When
+        val engine = TemplateRenderingEngine()
+        val resultBytes = engine.process(template, data)
+
+        // Then: K8~K11의 수식에서 J9(상대 참조)이 J12로 시프트
+        XSSFWorkbook(ByteArrayInputStream(resultBytes)).use { workbook ->
+            val sheet = workbook.getSheetAt(0)
+
+            // products 4개: row 7~10 (0-based), K열 = col 10
+            for (rowIdx in 7..10) {
+                val cell = sheet.getRow(rowIdx).getCell(10)
+                assertEquals(
+                    org.apache.poi.ss.usermodel.CellType.FORMULA,
+                    cell.cellType,
+                    "K${rowIdx + 1}이 수식이어야 함"
+                )
+                assertEquals(
+                    "J${rowIdx + 1}/J12",
+                    cell.cellFormula,
+                    "K${rowIdx + 1} 수식: products 확장(3행)으로 Total 행이 9->12로 이동"
+                )
+            }
+        }
+
+        // 결과 파일 저장 (수동 검증용)
+        val samplesDir = Path.of("build/samples/absolute-ref-shift")
+        java.nio.file.Files.createDirectories(samplesDir)
+        samplesDir.resolve("rich_sample_result.xlsx").toFile().writeBytes(resultBytes)
+    }
 
     @Test
     fun `Rich Sample의 이미지 마커가 올바르게 처리된다`() {
@@ -722,32 +720,31 @@ class TemplateRenderingEngineTest {
         }
     }
 
-    // TODO: cell_merge 기능 완료 후 주석 해제 필요
-//    @Test
-//    fun `repeat 확장 후 BLANK 셀의 테두리 스타일이 보존된다`() {
-//        // Given: Rich Sample 템플릿에서 F10, G10은 값 없이 테두리만 있는 BLANK 셀
-//        val template = javaClass.getResourceAsStream("/templates/rich_sample_template.xlsx")!!
-//        val data = richSampleData()
-//
-//        // When
-//        val engine = TemplateRenderingEngine()
-//        val resultBytes = engine.process(template, data)
-//
-//        // Then: depts 5개로 4행 확장 -> Row 10 -> Row 14 (idx 13)
-//        // F14(col 5), G14(col 6)의 테두리가 보존되어야 함
-//        XSSFWorkbook(ByteArrayInputStream(resultBytes)).use { workbook ->
-//            val sheet = workbook.getSheetAt(0)
-//            for (colIdx in 5..6) {
-//                val cell = sheet.getRow(13)?.getCell(colIdx)
-//                assertNotNull(cell, "Row 14, col ${colIdx + 1} 셀이 존재해야 함")
-//                assertNotEquals(
-//                    BorderStyle.NONE,
-//                    cell!!.cellStyle.borderBottom,
-//                    "Row 14, col ${colIdx + 1} 하단 테두리가 보존되어야 함"
-//                )
-//            }
-//        }
-//    }
+    @Test
+    fun `repeat 확장 후 BLANK 셀의 테두리 스타일이 보존된다`() {
+        // Given: Rich Sample 템플릿에서 F10, G10은 값 없이 테두리만 있는 BLANK 셀
+        val template = javaClass.getResourceAsStream("/templates/rich_sample_template.xlsx")!!
+        val data = richSampleData()
+
+        // When
+        val engine = TemplateRenderingEngine()
+        val resultBytes = engine.process(template, data)
+
+        // Then: depts 5개로 4행 확장 -> Row 10 -> Row 14 (idx 13)
+        // F14(col 5), G14(col 6)의 테두리가 보존되어야 함
+        XSSFWorkbook(ByteArrayInputStream(resultBytes)).use { workbook ->
+            val sheet = workbook.getSheetAt(0)
+            for (colIdx in 5..6) {
+                val cell = sheet.getRow(13)?.getCell(colIdx)
+                assertNotNull(cell, "Row 14, col ${colIdx + 1} 셀이 존재해야 함")
+                assertNotEquals(
+                    org.apache.poi.ss.usermodel.BorderStyle.NONE,
+                    cell!!.cellStyle.borderBottom,
+                    "Row 14, col ${colIdx + 1} 하단 테두리가 보존되어야 함"
+                )
+            }
+        }
+    }
 
     @Test
     fun `셀이 없는 행의 커스텀 높이가 보존된다`() {

@@ -6,7 +6,7 @@ import org.apache.poi.ss.util.CellRangeAddress
  * 자동 셀 병합 추적기.
  *
  * repeat 확장 시 연속된 같은 값의 셀을 추적하고, 병합 영역을 생성한다.
- * 인라인 방식으로 동작하여 XSSF/SXSSF 모두에서 동일하게 사용 가능하다.
+ * 인라인 방식으로 동작하여 스트리밍 렌더링 중에도 사용 가능하다.
  *
  * - DOWN repeat: 열(col)별로 행 방향 병합 추적
  * - RIGHT repeat: 행(row)별로 열 방향 병합 추적
