@@ -513,7 +513,7 @@ src/test/
 │   │   └── TemplateRenderingEngineSample.kt
 │   ├── benchmark/                          # 벤치마크 코드
 │   │   ├── PerformanceBenchmark.kt         # 대용량 벤치마크
-│   │   └── PerformanceBenchmarkTest.kt     # XSSF vs SXSSF 비교
+│   │   └── PerformanceBenchmarkTest.kt     # 처리 속도 벤치마크
 │   └── ...                                 # 테스트 코드
 ├── java/com/hunet/common/tbeg/samples/     # 샘플 코드 (Java)
 │   ├── TbegJavaSample.java
