@@ -13,7 +13,7 @@
 | RestDocs 설정 | `@AutoConfigureRestDocs` + `RestDocumentationExtension` 등록 |
 | JSON Path 검증 헬퍼 | `ResultActions.checkData()`, `checkSize()` |
 | Pretty Print 헬퍼 | 테스트 중 가독성 높은 JSON 출력 |
-| DTO QueryParam 변환 | `dtoToQueryParams()` – 컬렉션/배열 처리 지원 |
+| DTO QueryParam 변환 | `dtoToQueryParams()` -- 컬렉션/배열 처리 지원 |
 
 ## 3. 의존성 추가
 소비 프로젝트(예: Gradle Kotlin DSL):

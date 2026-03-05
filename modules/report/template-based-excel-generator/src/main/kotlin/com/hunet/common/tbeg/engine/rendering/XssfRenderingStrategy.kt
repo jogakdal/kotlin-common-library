@@ -28,8 +28,9 @@ import java.io.ByteArrayInputStream
 internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
     companion object {
         private val REPEAT_MARKER_PATTERN = Regex("""\$\{repeat\s*\(""", RegexOption.IGNORE_CASE)
+        private val MERGE_MARKER_PATTERN = Regex("""\$\{merge\s*\(""", RegexOption.IGNORE_CASE)
         // TBEG_SIZE는 수식을 문자열로 변환하여 변수 치환 단계에서 처리
-        private val FORMULA_MARKER_PATTERN = Regex("""TBEG_(REPEAT|IMAGE)\s*\(""", RegexOption.IGNORE_CASE)
+        private val FORMULA_MARKER_PATTERN = Regex("""TBEG_(REPEAT|IMAGE|MERGE)\s*\(""", RegexOption.IGNORE_CASE)
         private val SIZE_MARKER_PATTERN = Regex("""TBEG_SIZE\s*\(""", RegexOption.IGNORE_CASE)
     }
 
@@ -168,10 +169,18 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         ChartRangeAdjuster.adjustChartsInSheet(sheet, sheet.sheetName, sortedExpansions)
         ChartRangeAdjuster.adjustAnchorsInSheet(sheet, sortedExpansions)
 
+        val downMergeTracker = MergeTracker(RepeatDirection.DOWN)
+        val rightMergeTracker = MergeTracker(RepeatDirection.RIGHT)
+
         substituteVariablesXssfWithCalculator(
             sheet, blueprint, data, rowOffsets, imageLocations, context,
-            columnGroups, repeatToColumnGroup, calculator, repeatRegions
+            columnGroups, repeatToColumnGroup, calculator, repeatRegions,
+            downMergeTracker, rightMergeTracker
         )
+
+        // 자동 셀 병합 적용
+        (downMergeTracker.finalizeAll() + rightMergeTracker.finalizeAll())
+            .forEach { sheet.addMergedRegion(it) }
 
         // emptyRange 원본 셀 클리어 (같은 시트에 있는 경우만)
         clearEmptyRangeCells(sheet, repeatRegions)
@@ -364,7 +373,8 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
                 when (cell.cellType) {
                     CellType.STRING -> {
                         val text = cell.stringCellValue ?: return@forEach
-                        if (REPEAT_MARKER_PATTERN.containsMatchIn(text)) {
+                        if (REPEAT_MARKER_PATTERN.containsMatchIn(text) ||
+                            MERGE_MARKER_PATTERN.containsMatchIn(text)) {
                             cell.setBlank()
                         }
                     }
@@ -412,7 +422,9 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         columnGroups: List<ColumnGroup>,
         repeatToColumnGroup: Map<RepeatKey, ColumnGroup?>,
         calculator: PositionCalculator,
-        repeatRegions: List<RepeatRegionSpec>
+        repeatRegions: List<RepeatRegionSpec>,
+        downMergeTracker: MergeTracker,
+        rightMergeTracker: MergeTracker
     ) {
         val sheetIndex = sheet.workbook.getSheetIndex(sheet)
 
@@ -436,7 +448,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
             val regions = regionsByStartRow[templateRow]
 
             when {
-                // repeat 영역 시작 행 → 각 region 처리
+                // repeat 영역 시작 행 -> 각 region 처리
                 regions != null && processedRepeatStartRows.add(templateRow) -> {
                     var isFirstRepeatInRow = true
 
@@ -462,7 +474,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
                                 processDownRepeatWithCalculator(
                                     sheet, region, items, isEmpty, blueprint, data, sheetIndex,
                                     imageLocations, context, currentOffset, rowOffsets, columnGroup, calculator,
-                                    allRepeatColRanges, isFirstRepeatInRow
+                                    allRepeatColRanges, isFirstRepeatInRow, downMergeTracker
                                 )
 
                                 // 열 그룹이 있으면 해당 region의 실제 expansion을 사용
@@ -485,7 +497,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
                             RepeatDirection.RIGHT -> {
                                 processRightRepeat(
                                     sheet, region, items, blueprint, data, sheetIndex,
-                                    imageLocations, context, defaultOffset
+                                    imageLocations, context, defaultOffset, rightMergeTracker
                                 )
                             }
                         }
@@ -494,7 +506,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
                     }
                 }
 
-                // repeat 영역 내부 행 (continuation) → 건너뜀
+                // repeat 영역 내부 행 (continuation) -> 건너뜀
                 templateRow in repeatRowIndices -> Unit
 
                 // 정적 행
@@ -609,7 +621,8 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         columnGroup: ColumnGroup?,
         calculator: PositionCalculator,
         allRepeatColRanges: List<ColRange> = listOf(region.area.colRange),
-        isFirstRepeatInRow: Boolean = true
+        isFirstRepeatInRow: Boolean = true,
+        mergeTracker: MergeTracker? = null
     ) {
         val totalRepeatOffset = rowOffsets[region.area.start.row] ?: 0
 
@@ -680,7 +693,8 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
                             imageLocations, context,
                             rowOffset = currentOffset + totalRepeatOffset,
                             repeatItemIndex = itemIdx,
-                            calculator = calculator
+                            calculator = calculator,
+                            mergeTracker = mergeTracker
                         )
                     }
                 }
@@ -745,7 +759,8 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         sheetIndex: Int,
         imageLocations: MutableList<ImageLocation>,
         context: RenderingContext,
-        currentOffset: Int
+        currentOffset: Int,
+        mergeTracker: MergeTracker? = null
     ) {
         val colShiftAmount = (items.size - 1) * region.area.colRange.count
 
@@ -773,7 +788,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
                     processCellContentXssf(
                         cell, cellSpec.content, itemData, sheetIndex, imageLocations, context,
                         rowOffset = currentOffset, colOffset = colShiftAmount,
-                        repeatItemIndex = itemIdx
+                        repeatItemIndex = itemIdx, mergeTracker = mergeTracker
                     )
                 }
             }
@@ -805,7 +820,8 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         rowOffset: Int = 0,
         colOffset: Int = 0,
         repeatItemIndex: Int = 0,
-        calculator: PositionCalculator? = null
+        calculator: PositionCalculator? = null,
+        mergeTracker: MergeTracker? = null
     ) {
         // 이미지 마커는 calculator를 사용하여 직접 처리
         if (content is CellContent.ImageMarker) {
@@ -819,7 +835,7 @@ internal class XssfRenderingStrategy : AbstractRenderingStrategy() {
         // 부모 클래스의 공통 처리 (Formula는 XSSF에서 특별 처리 필요 없음 - POI가 자동 조정)
         processCellContent(
             cell, content, data, sheetIndex, imageLocations, context,
-            rowOffset, colOffset, repeatItemIndex
+            rowOffset, colOffset, repeatItemIndex, mergeTracker
         )
     }
 

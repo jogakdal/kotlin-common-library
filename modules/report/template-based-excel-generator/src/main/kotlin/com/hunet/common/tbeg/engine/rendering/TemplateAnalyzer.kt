@@ -4,6 +4,7 @@ import com.hunet.common.logging.commonLogger
 import com.hunet.common.tbeg.engine.core.*
 import com.hunet.common.tbeg.engine.core.CellArea
 import com.hunet.common.tbeg.engine.rendering.parser.UnifiedMarkerParser
+import com.hunet.common.tbeg.exception.TemplateProcessingException
 import org.apache.poi.ss.usermodel.*
 import org.apache.poi.ss.util.AreaReference
 import org.apache.poi.ss.util.CellRangeAddress
@@ -40,10 +41,20 @@ class TemplateAnalyzer {
         // Phase 2: 중복 제거 (같은 컬렉션 + 같은 대상 시트 + 같은 영역)
         val dedupedBySheet = deduplicateRepeatRegions(allRegions)
 
+        // Phase 2.5: bundle 마커 수집
+        val bundlesBySheet = (0 until workbook.numberOfSheets).associate { index ->
+            val sheet = workbook.getSheetAt(index)
+            sheet.sheetName to collectBundleRegions(workbook, sheet)
+        }
+
         // Phase 3: SheetSpec 생성
         val sheets = (0 until workbook.numberOfSheets).map { index ->
             val sheet = workbook.getSheetAt(index)
-            analyzeSheet(workbook, sheet, index, dedupedBySheet[sheet.sheetName] ?: emptyList())
+            analyzeSheet(
+                workbook, sheet, index,
+                dedupedBySheet[sheet.sheetName] ?: emptyList(),
+                bundlesBySheet[sheet.sheetName] ?: emptyList()
+            )
         }
 
         // Phase 4: 셀 단위 범위 마커 중복 제거 (image 등)
@@ -54,13 +65,15 @@ class TemplateAnalyzer {
         workbook: XSSFWorkbook,
         sheet: Sheet,
         sheetIndex: Int,
-        rawRepeatRegions: List<RepeatRegionSpec>
+        rawRepeatRegions: List<RepeatRegionSpec>,
+        bundleRegions: List<BundleRegionSpec> = emptyList()
     ): SheetSpec {
         val repeatRegions = rawRepeatRegions.map { region ->
-            // emptyRange가 있으면 해당 셀 내용을 미리 읽어둠
-            val emptyRangeContent = region.emptyRange?.let { readEmptyRangeContent(workbook, sheet, it) }
-            region.copy(emptyRangeContent = emptyRangeContent)
+            region.copy(emptyRangeContent = region.emptyRange?.let { readEmptyRangeContent(workbook, sheet, it) })
         }
+
+        // bundle 검증
+        validateBundleRegions(bundleRegions, repeatRegions)
 
         return SheetSpec(
             sheetName = sheet.sheetName,
@@ -72,7 +85,8 @@ class TemplateAnalyzer {
             headerFooter = extractHeaderFooter(sheet),
             printSetup = extractPrintSetup(sheet),
             conditionalFormattings = extractConditionalFormattings(sheet),
-            repeatRegions = repeatRegions
+            repeatRegions = repeatRegions,
+            bundleRegions = bundleRegions
         )
     }
 
@@ -228,6 +242,60 @@ class TemplateAnalyzer {
     }
 
     /**
+     * 시트 내 bundle 마커를 수집한다
+     */
+    private fun collectBundleRegions(workbook: Workbook, sheet: Sheet): List<BundleRegionSpec> =
+        buildList {
+            sheet.forEach { row ->
+                row.forEach { cell ->
+                    val (text, isFormula) = when (cell.cellType) {
+                        CellType.STRING -> cell.stringCellValue to false
+                        CellType.FORMULA -> cell.cellFormula to true
+                        else -> return@forEach
+                    }
+                    text ?: return@forEach
+
+                    val content = UnifiedMarkerParser.parse(text, isFormula, null)
+                    if (content is CellContent.BundleMarker) {
+                        add(BundleRegionSpec(area = parseRange(workbook, content.range)))
+                    }
+                }
+            }
+        }
+
+    /**
+     * bundle 영역 검증: 중첩 금지, repeat 경계 걸침 금지
+     */
+    private fun validateBundleRegions(bundles: List<BundleRegionSpec>, repeats: List<RepeatRegionSpec>) {
+        // bundle 중첩 검증
+        for (i in bundles.indices) {
+            for (j in i + 1 until bundles.size) {
+                if (bundles[i].area.overlaps(bundles[j].area)) {
+                    throw TemplateProcessingException(
+                        errorType = TemplateProcessingException.ErrorType.INVALID_PARAMETER_VALUE,
+                        details = "bundle 영역이 중첩됩니다: " +
+                            "${bundles[i].area.start.toCellRefString()}:${bundles[i].area.end.toCellRefString()}와 " +
+                            "${bundles[j].area.start.toCellRefString()}:${bundles[j].area.end.toCellRefString()}"
+                    )
+                }
+            }
+        }
+
+        // repeat이 bundle 경계를 부분적으로 걸치는지 검증
+        for (bundle in bundles) {
+            for (repeat in repeats) {
+                if (bundle.area.overlaps(repeat.area) && !bundle.area.contains(repeat.area)) {
+                    throw TemplateProcessingException(
+                        errorType = TemplateProcessingException.ErrorType.INVALID_PARAMETER_VALUE,
+                        details = "repeat 영역(${repeat.collection})이 bundle 경계를 부분적으로 걸칩니다. " +
+                            "repeat은 bundle 내부에 완전히 포함되거나 외부에 있어야 합니다."
+                    )
+                }
+            }
+        }
+    }
+
+    /**
      * 시트 내 repeat 마커를 수집하고, 범위의 대상 시트 정보를 함께 반환
      */
     private fun collectRepeatRegions(workbook: Workbook, sheet: Sheet): List<RepeatRegionWithContext> =
@@ -260,7 +328,7 @@ class TemplateAnalyzer {
      * 같은 컬렉션과 같은 대상 범위(시트+영역)를 가진 중복 repeat 마커를 감지하여
      * 경고 로그 출력 후 마지막 마커만 유지한다.
      *
-     * @return 대상 시트 이름 → 중복 제거된 RepeatRegionSpec 리스트
+     * @return 대상 시트 이름 -> 중복 제거된 RepeatRegionSpec 리스트
      */
     private fun deduplicateRepeatRegions(
         allRegions: List<RepeatRegionWithContext>

@@ -627,7 +627,7 @@ object TbegSample {
 
         // FormulaExpansionException 발생 시 데이터 수를 줄여서 재시도
         if (formulaError != null && dataCount > retryDataCount) {
-            println("\n\t⚠️ 수식 확장 실패로 인해 ${retryDataCount}건으로 재시도합니다...")
+            println("\n\t[!] 수식 확장 실패로 인해 ${retryDataCount}건으로 재시도합니다...")
             return runLargeAsyncWithRetry(
                 generator = generator,
                 outputDir = outputDir,

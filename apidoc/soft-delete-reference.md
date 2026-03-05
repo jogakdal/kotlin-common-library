@@ -52,7 +52,7 @@ jpa-repository-extension: 1.2.0-SNAPSHOT
 ### 2.3 업데이트 / 업서트 / 복구(업데이트 기반)
 | 메서드        | 시그니처(개략)               | 반환           | TX | Alive 필터 | 예외(대표)                          | 주의 / 비고                                 |
 |------------|------------------------|--------------|----|----------|---------------------------------|-----------------------------------------|
-| updateById | updateById(id, fields) | Int          | 필수 | N/A      | DataAccessException             | 복구 시 deleted_at ← MIN_DATETIME / NULL   |
+| updateById | updateById(id, fields) | Int          | 필수 | N/A      | DataAccessException             | 복구 시 deleted_at <- MIN_DATETIME / NULL   |
 | upsert     | upsert(entity)         | Entity / Int | 필수 | 자동 적용    | DataIntegrityViolationException | NullMergePolicy = IGNORE / OVERWRITE 적용 |
 | upsertAll  | upsertAll(list)        | Int          | 필수 | 자동 적용    | DataIntegrityViolationException | flush-interval 성능 / 메모리 트레이드 오프         |
 
@@ -129,7 +129,7 @@ jpa-repository-extension: 1.2.0-SNAPSHOT
   - exists / find 정책 혼선 -> alive 전용 / 필드 기반 메서드로 일관성
   - 락 / 배치 혼용 -> 접근 순서 / 범위 최소화 / 재시도
 
-자세한 설명은 사용자 가이드의 “7. JpaRepository 교차 사용”을 참고하세요.
+자세한 설명은 사용자 가이드의 "7. JpaRepository 교차 사용"을 참고하세요.
 
 ## 7. Appendix
 - 벤더별 최소 DATETIME 값, 타임존/정밀도 일치 권고, 운영 모니터링(삭제 시각 분석) 팁

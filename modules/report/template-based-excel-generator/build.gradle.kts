@@ -90,6 +90,14 @@ tasks.register<JavaExec>("runMultiRepeatSample") {
     mainClass.set("com.hunet.common.tbeg.MultiRepeatSample")
 }
 
+// 셀 병합 샘플 실행 태스크
+tasks.register<JavaExec>("runCellMergeSample") {
+    group = "application"
+    description = "셀 병합 샘플 실행"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.hunet.common.tbeg.samples.CellMergeSampleRunner")
+}
+
 // 성능 벤치마크 실행 태스크
 tasks.register<JavaExec>("runBenchmark") {
     group = "application"

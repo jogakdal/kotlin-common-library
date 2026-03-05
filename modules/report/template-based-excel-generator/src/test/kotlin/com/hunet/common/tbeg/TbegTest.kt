@@ -819,7 +819,7 @@ class TbegTest {
 
             // 누락된 데이터 확인
             assertTrue(exception.missingVariables.isNotEmpty() || exception.missingCollections.isNotEmpty())
-            assertTrue(exception.message!!.contains("누락"))
+            assertTrue(exception.message!!.contains("missing", ignoreCase = true))
         }
     }
 

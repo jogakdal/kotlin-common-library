@@ -128,7 +128,8 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
         context: RenderingContext,
         rowOffset: Int = 0,
         colOffset: Int = 0,
-        repeatItemIndex: Int = 0
+        repeatItemIndex: Int = 0,
+        mergeTracker: MergeTracker? = null
     ): Boolean {
         when (content) {
             is CellContent.Empty -> {
@@ -181,6 +182,23 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
 
             is CellContent.SizeMarker -> {
                 processSizeMarker(cell, content, data, context)
+            }
+
+            is CellContent.MergeField -> {
+                val item = data[content.itemVariable]
+                val value = context.resolveFieldPath(item, content.fieldPath)
+                if (mergeTracker != null) {
+                    if (mergeTracker.track(cell.columnIndex, cell.rowIndex, value)) {
+                        setCellValue(cell, value)  // 새 그룹 시작 -> 값 쓰기
+                    }
+                    // false면 셀을 비워둠 (병합될 예정)
+                } else {
+                    setCellValue(cell, value)  // tracker 없으면 단순 치환
+                }
+            }
+
+            is CellContent.BundleMarker -> {
+                cell.setBlank()  // bundle 마커는 분석 후 사용되므로 셀은 비운다
             }
         }
         sanitizeCellXml(cell)

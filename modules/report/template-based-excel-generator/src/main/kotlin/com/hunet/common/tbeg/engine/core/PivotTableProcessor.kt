@@ -550,7 +550,7 @@ internal class PivotTableProcessor(
         if (dataRows.isEmpty()) return
 
         val axisFieldIdx = ctx.rowLabelFields.first()
-        // O(n) 그룹화로 O(n²) 필터링 제거
+        // O(n) 그룹화로 O(n^2) 필터링 제거
         val groupedData = dataRows.groupBy { it.values[axisFieldIdx]?.toString() }
         val uniqueValues = groupedData.keys.filterNotNull()
         if (uniqueValues.isEmpty()) return

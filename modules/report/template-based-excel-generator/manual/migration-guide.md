@@ -1,6 +1,6 @@
 # TBEG 마이그레이션 가이드
 
-## 1.0.x → 1.1.0
+## 1.0.x -> 1.1.0
 
 ### 클래스 리네이밍
 
@@ -45,14 +45,14 @@ ${repeat(employees, A2:C2, emp, DOWN, A10:C10)}
 다른 시트의 repeat 영역을 참조하는 수식이 자동으로 확장됩니다.
 
 ```
-=SUM(Sheet2!B3:B3) → =SUM(Sheet2!B3:B5)  // Sheet2의 repeat이 3행 확장된 경우
+=SUM(Sheet2!B3:B3) -> =SUM(Sheet2!B3:B5)  // Sheet2의 repeat이 3행 확장된 경우
 ```
 
 자세한 내용: [템플릿 문법 - 관련 요소 자동 조정](./reference/template-syntax.md#28-관련-요소-자동-조정)
 
 ---
 
-## 1.1.0 → 1.1.1
+## 1.1.0 -> 1.1.1
 
 ### 버그 수정
 
@@ -81,4 +81,5 @@ dependencies {
 ## 다음 단계
 
 - [변경 이력](../CHANGELOG.md) - 전체 버전별 변경 내역
+- [모범 사례](./best-practices.md) - 최신 기능 활용 팁
 - [사용자 가이드](./user-guide.md) - TBEG 사용법

@@ -82,7 +82,7 @@ class NonRepeatFormulaCellTest {
 
             println("[$mode] D2 수식: $formula")
 
-            // 5명 데이터이므로 B2:B2 → B2:B6 확장
+            // 5명 데이터이므로 B2:B2 -> B2:B6 확장
             assertEquals("SUM(B2:B6)", formula, "[$mode] repeat 영역을 참조하는 수식의 범위가 확장되어야 한다")
         }
     }
@@ -176,7 +176,7 @@ class NonRepeatFormulaCellTest {
             val engine = TemplateRenderingEngine(mode)
             val result = engine.process(ByteArrayInputStream(createTemplate()), data)
 
-            // 5명 데이터: 마커1행 + 데이터5행 + 합계1행 = 7행 → 합계는 row 6 (0-indexed)
+            // 5명 데이터: 마커1행 + 데이터5행 + 합계1행 = 7행 -> 합계는 row 6 (0-indexed)
             val formula = extractFormula(result, 6, 1) // B7 (0-indexed: row 6, col 1)
 
             println("[$mode] B7 수식: $formula")

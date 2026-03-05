@@ -57,7 +57,8 @@ data class SheetSpec(
     val headerFooter: HeaderFooterSpec? = null,
     val printSetup: PrintSetupSpec? = null,
     val conditionalFormattings: List<ConditionalFormattingSpec> = emptyList(),
-    val repeatRegions: List<RepeatRegionSpec> = emptyList()
+    val repeatRegions: List<RepeatRegionSpec> = emptyList(),
+    val bundleRegions: List<BundleRegionSpec> = emptyList()
 ) {
     /** templateRowIndex로 RowSpec을 빠르게 조회하기 위한 맵 */
     val rowsByTemplateIndex: Map<Int, RowSpec> by lazy {
@@ -191,6 +192,35 @@ sealed class CellContent {
         val collectionName: String,
         val originalText: String
     ) : CellContent()
+
+    /**
+     * 자동 병합 마커 -- ${merge(item.field)} 또는 =TBEG_MERGE(item.field)
+     *
+     * repeat 영역 내에서 연속된 같은 값의 셀을 자동으로 병합한다.
+     *
+     * @param itemVariable 아이템 변수명 (예: "emp")
+     * @param fieldPath 필드 경로 (예: "dept")
+     * @param originalText 원본 텍스트
+     */
+    data class MergeField(
+        val itemVariable: String,
+        val fieldPath: String,
+        val originalText: String
+    ) : CellContent()
+
+    /**
+     * Bundle 마커 -- ${bundle(range)} 또는 =TBEG_BUNDLE(range)
+     *
+     * 지정 범위 내의 모든 요소를 하나의 넓은 요소로 묶어
+     * 밀려남 계산 시 독립된 단위로 참여하게 한다.
+     *
+     * @param range 번들 범위 (예: "A1:H10")
+     * @param originalText 원본 텍스트
+     */
+    data class BundleMarker(
+        val range: String,
+        val originalText: String
+    ) : CellContent()
 }
 
 /**
@@ -200,6 +230,11 @@ enum class RepeatDirection {
     DOWN,   // 아래로 확장 (기본값)
     RIGHT   // 오른쪽으로 확장
 }
+
+/**
+ * Bundle 영역 정보 -- 밀려남 계산에서 하나의 단위로 취급되는 범위
+ */
+data class BundleRegionSpec(val area: CellArea)
 
 /**
  * 반복 영역 정보
@@ -344,7 +379,7 @@ data class EmptyRangeSpec(
 /**
  * 빈 컬렉션일 때 표시할 셀 내용 (미리 읽어둔 스냅샷)
  *
- * @property cells 행/열 순서로 저장된 셀 스냅샷 (행 인덱스 → 열 인덱스 순)
+ * @property cells 행/열 순서로 저장된 셀 스냅샷 (행 인덱스 -> 열 인덱스 순)
  * @property mergedRegions 병합 영역 목록 (상대 좌표: emptyRange 시작 기준)
  * @property rowHeights 행 높이 목록
  * @property conditionalFormattings 조건부 서식 목록 (상대 좌표: emptyRange 시작 기준)

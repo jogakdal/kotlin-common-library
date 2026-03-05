@@ -135,7 +135,7 @@ class ChartRepeatIntegrationTest {
                 println("  Series $idx val: ${ser.`val`?.numRef?.f}")
             }
 
-            // 카테고리 범위: 끝 행이 7이어야 한다 (5개 아이템 * 1행 템플릿 → 행 3~7)
+            // 카테고리 범위: 끝 행이 7이어야 한다 (5개 아이템 * 1행 템플릿 -> 행 3~7)
             val catRef = barChart.serList[0].cat?.strRef?.f
                 ?: barChart.serList[0].cat?.numRef?.f
             assertNotNull(catRef, "카테고리 참조가 존재해야 한다")
@@ -147,7 +147,7 @@ class ChartRepeatIntegrationTest {
             assertEndRow(valRef!!, 7, "매출")
 
             // 앵커 위치 검증: repeat 확장(4행)에 따라 시프트되어야 한다
-            // 원본 anchor: row1=5, row2=20 → repeat(row2, 5items, 1row) → expansion=4
+            // 원본 anchor: row1=5, row2=20 -> repeat(row2, 5items, 1row) -> expansion=4
             // 조정 후: row1=9, row2=24
             val anchor = drawing.first().anchor as XSSFClientAnchor
             assertEquals(9, anchor.row1, "차트 앵커 row1이 시프트되어야 한다 (5+4=9)")
@@ -256,7 +256,7 @@ class ChartRepeatIntegrationTest {
 
     /** 차트 수식 참조의 끝 행이 expectedRow인지 검증 */
     private fun assertEndRow(ref: String, expectedRow: Int, label: String) {
-        // 범위의 끝 부분에서 행 번호 추출 (예: Sheet1!$A$3:$A$7 → 7)
+        // 범위의 끝 부분에서 행 번호 추출 (예: Sheet1!$A$3:$A$7 -> 7)
         val endRowPattern = Regex("""\$?[A-Z]+\$?(\d+)$""")
         val match = endRowPattern.find(ref)
         assertNotNull(match, "$label 참조에서 끝 행을 추출할 수 없다: $ref")

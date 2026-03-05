@@ -271,7 +271,7 @@ class ImageInserter {
         // XSSFDrawing 획득 (SXSSF 호환)
         val xssfDrawing = resolveXssfDrawing(workbook, sheet)
 
-        // 표준 API로 임시 이미지 생성 (drawing↔image PackageRelationship 설정 목적)
+        // 표준 API로 임시 이미지 생성 (drawing<->image PackageRelationship 설정 목적)
         val tempPicture = xssfDrawing.createPicture(
             XSSFClientAnchor(0, 0, 0, 0, 0, 0, 0, 0), pictureIdx
         )

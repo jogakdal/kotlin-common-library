@@ -89,6 +89,8 @@ object UnifiedMarkerParser {
             "repeat" -> convertRepeatMarker(marker)
             "image" -> convertImageMarker(marker)
             "size" -> convertSizeMarker(marker)
+            "merge" -> convertMergeMarker(marker)
+            "bundle" -> convertBundleMarker(marker)
             else -> CellContent.StaticString(marker.originalText)
         }
     }
@@ -129,6 +131,36 @@ object UnifiedMarkerParser {
         }
 
         return CellContent.StaticString(text)
+    }
+
+    /**
+     * bundle 마커를 CellContent.BundleMarker로 변환 (검증 포함)
+     */
+    private fun convertBundleMarker(marker: ParsedMarker): CellContent.BundleMarker {
+        val range = marker.require("range")
+        validateRange(range, "range", marker.originalText)
+        return CellContent.BundleMarker(range = range, originalText = marker.originalText)
+    }
+
+    /**
+     * merge 마커를 CellContent.MergeField로 변환 (검증 포함)
+     */
+    private fun convertMergeMarker(marker: ParsedMarker): CellContent.MergeField {
+        val field = marker.require("field")
+
+        val dotIndex = field.indexOf('.')
+        if (dotIndex < 0) {
+            throw MarkerValidationException(
+                "field 파라미터는 'item.field' 형태여야 합니다. " +
+                "입력값: '$field', 마커: ${marker.originalText}"
+            )
+        }
+
+        return CellContent.MergeField(
+            itemVariable = field.substring(0, dotIndex),
+            fieldPath = field.substring(dotIndex + 1),
+            originalText = marker.originalText
+        )
     }
 
     // === 검증 패턴 ===

@@ -8,7 +8,7 @@ import com.hunet.common.util.getDirectAnnotation
 import kotlin.reflect.KClass
 
 /**
- * 엔티티 클래스의 @Table(name=…) 값을 반환합니다.
+ * 엔티티 클래스의 @Table(name=...) 값을 반환합니다.
  * - 프록시(CGLIB) 가능성 고려: 현재 클래스에 없으면 즉시 슈퍼 클래스(Kotlin KClass 변환)에서 한 번 더 조회.
  * - getAnnotation (통합 탐색) 대신 KClass 직접 선언 우선 + 슈퍼 클래스 fallback.
  *   필요 시 더 깊은 상속 체인 탐색은 의도적으로 제외(과도한 비용/예상치 못한 상속 혼동 방지).
@@ -25,7 +25,7 @@ inline val Any.nativeTableName: String
         val superK = kClass.java.superclass?.kotlin
         superK?.getDirectAnnotation<Table>()?.name?.let { return it }
         superK?.getAnnotation<Table>()?.name?.let { return it }
-        throw IllegalStateException("엔티티 ${kClass.simpleName}에 @Table(name=…)이 없습니다")
+        throw IllegalStateException("엔티티 ${kClass.simpleName}에 @Table(name=...)이 없습니다")
     }
 
 /**

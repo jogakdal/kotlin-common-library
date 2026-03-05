@@ -198,7 +198,7 @@ class ForwardReferenceTest {
         if (sxssfFormula == expectedFormula) {
             println("✅ 아래 행 참조 수식이 올바르게 확장됨: $sxssfFormula")
         } else {
-            println("⚠️ 수식이 확장되지 않음!")
+            println("[!] 수식이 확장되지 않음!")
             println("   기대값: $expectedFormula")
             println("   실제값: $sxssfFormula")
             println("   이것이 'SXSSF 아래 행 참조 수식 제한'의 실제 사례입니다.")
@@ -311,7 +311,7 @@ class ForwardReferenceTest {
         if (expansion != null) {
             println("  ✅ expansion found: rowExpansion=${expansion.rowExpansion}, itemCount=${expansion.itemCount}")
         } else {
-            println("  ❌ expansion is null!")
+            println("  [X] expansion is null!")
         }
 
         // FormulaAdjuster.expandToRangeWithCalculator 테스트
