@@ -31,7 +31,7 @@ abstract class AbstractControllerTest {
 | `@SpringBootTest` | 전체 컨텍스트 로딩 (빈 자동 구성 포함) |
 | `@AutoConfigureMockMvc` | MockMvc 자동 주입; 필터 활성화(addFilters=true) |
 | `@AutoConfigureRestDocs` | Spring REST Docs 스니펫 생성 지원 |
-| `@ExtendWith(RestDocumentationExtension, SpringExtension)` | JUnit5 확장 – RestDocs + Spring TestContext |
+| `@ExtendWith(RestDocumentationExtension, SpringExtension)` | JUnit5 확장 -- RestDocs + Spring TestContext |
 | `@ActiveProfiles("local")` | `application-local.*` 프로파일 활성 |
 | `@TestMethodOrder(OrderAnnotation::class)` | 메서드 순서 지정 필요 시 지원 |
 

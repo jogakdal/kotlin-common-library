@@ -32,8 +32,8 @@
 ### 1.2 주요 피쳐(Feature)
 | Feature    | 설명                                        | 대표 기능 |
 |------------|-------------------------------------------|-----------|
-| 표준 응답 생성   | 서버에서 모든 응답을 `StandardResponse<T>` 포맷으로 생성 | 빌더/콜백, duration 자동 측정, 페이지·커서 리스트 지원, 상태/오류 표준화 |
-| 표준 응답 역직렬화 | 외부/내부 표준 JSON 문자열을 DTO로 역직렬화 | Canonical Key, Alias/Case 변형 허용, 중첩·컬렉션 지원 |
+| 표준 응답 생성   | 서버에서 모든 응답을 `StandardResponse<T>` 포맷으로 생성 | 빌더/콜백, duration 자동 측정, 페이지/커서 리스트 지원, 상태/오류 표준화 |
+| 표준 응답 역직렬화 | 외부/내부 표준 JSON 문자열을 DTO로 역직렬화 | Canonical Key, Alias/Case 변형 허용, 중첩/컬렉션 지원 |
 | 보조 기능      | 출력 케이스 변환 & Java 상호 운용, 성능 최적화 | CaseConvention 변환, `@NoCaseTransform`, 캐시, Java 헬퍼 |
 
 ### 1.3 모듈 구성
@@ -95,7 +95,7 @@ StatusPayload 예시:
   "payload": { "code": "pong", "message": "성공" }
 }
 ```
-ErrorPayload 예시 (최상위 code/message 필드 없음 – 첫 오류를 대표로 사용):
+ErrorPayload 예시 (최상위 code/message 필드 없음 -- 첫 오류를 대표로 사용):
 ```json
 {
   "status": "FAILURE",
@@ -263,7 +263,7 @@ val user: UserDto? = anyResp.getRealPayload<UserDto>() // 타입 불일치 시 n
 | 영역 | 안전 메커니즘 | 이점 |
 |------|---------------|------|
 | 실패 처리 | 역직렬화 예외 -> `status=FAILURE` + `ErrorPayload` (첫 `errors[0]` = `E_DESERIALIZE_FAIL`) | 호출측 try/catch 최소화, 표준 오류 코드 일관성 |
-| Canonical/Alias | 케이스/구분자 변형 허용 | 외부 시스템 표기 편차 허용 -> 호환성 ↑ |
+| Canonical/Alias | 케이스/구분자 변형 허용 | 외부 시스템 표기 편차 허용 -> 호환성 ^ |
 | BEST_MATCH 전략 | (WARN+BEST_MATCH) 충돌 시 실제 입력 키와 가장 유사 alias 선택 | 다수 alias 혼재 상황에서도 자동 분기 |
 | 부분 다운캐스팅 | `getRealPayload<T>()` | 잘못된 캐스팅 예외 회피 |
 | Wrapper 분리 | 상위 메타 파싱 실패 시에도 payload 영향 국한 | 손상 JSON 일부라도 최대 정보 확보 |
@@ -281,7 +281,7 @@ val user: UserDto? = anyResp.getRealPayload<UserDto>() // 타입 불일치 시 n
 | `PageableList<T>` / `PageListPayload<T>` | 페이지 기반 리스트 |
 | `IncrementalList<T,P>` / `IncrementalListPayload<T,P>` | 커서 기반 리스트 |
 | `Items<T>` | `total` / `current` / `list` 메타 |
-| `PageInfo`, `OrderInfo`, `OrderBy` | 페이지·정렬 메타 |
+| `PageInfo`, `OrderInfo`, `OrderBy` | 페이지/정렬 메타 |
 | `CursorInfo<P>` | 커서(start/end/expandable) 메타 |
 | `@InjectDuration` | duration 자동 주입 표시 |
 | `StandardCallbackResult` | 콜백 빌더 반환 컨테이너 |
@@ -543,9 +543,9 @@ surname / familyName / lastName -> lastName
 ```
 
 #### 4.5.2 Canonical 키 규칙
-입력 키에서 영문/숫자만 추출 -> 소문자화 -> 연결한 문자열을 Canonical. 구분자(`_`, `-`)·대소문자 차이 제거됨.
+입력 키에서 영문/숫자만 추출 -> 소문자화 -> 연결한 문자열을 Canonical. 구분자(`_`, `-`)/대소문자 차이 제거됨.
 예: `FIRST-NAME`, `First_Name`, `firstName` -> canonical: `firstname` (충돌 시 경고 로깅 후 매핑 우선순위 규칙 적용)
-- 변형 처리: `_` ↔ `-` 교차 변형도 canonical 후보로 등록하여 충돌 후보 집합(`conflictCandidates`) 구축.
+- 변형 처리: `_` <-> `-` 교차 변형도 canonical 후보로 등록하여 충돌 후보 집합(`conflictCandidates`) 구축.
 - 충돌 해소 전략: `AliasConflictMode=ERROR` 시 즉시 예외; `WARN` + `AliasConflictResolution=BEST_MATCH` 시 입력 실제 key와 alias 후보 유사도 기반 선택.
 
 #### 4.5.3 중첩/컬렉션/맵
@@ -585,13 +585,13 @@ JSON: `items-map` / `child-name` -> 각각 `items` / `childName` 매핑
 ## 5. 케이스 컨벤션 변환
 ### 5.1 개요
 응답 JSON 직렬화(DTO -> JSON) 시 필드 키를 `snake_case`, `kebab-case`, `SCREAMING_SNAKE_CASE` 등으로 변환.
-(역직렬화는 Canonical/Alias 매핑 로직이 별도 처리됨 – 케이스 변환 설정 비영향)
+(역직렬화는 Canonical/Alias 매핑 로직이 별도 처리됨 -- 케이스 변환 설정 비영향)
 
 ### 5.2 동작 순서
 기존 순서 교정 및 alias 단계 명시:
 1. Jackson 기본 직렬화 (원본 DTO -> JSON Tree)
 2. Alias serializationMap 적용(필드별 최종 출력 alias로 치환) + `@NoCaseTransform` 대상 skip 키 수집
-3. 선택된 CaseConvention에 따라 변환(IDENTITY 이외) – skip 키는 원본 유지
+3. 선택된 CaseConvention에 따라 변환(IDENTITY 이외) -- skip 키는 원본 유지
 4. Pretty 옵션 여부에 따라 최종 문자열 생성
 > (주의) <br>
 > `StandardResponse.toJson(case=...)`는 전역 default 케이스 설정을 사용하지 않습니다.<br>
@@ -628,7 +628,7 @@ data class Sample(
     val normalField: String
 ): BasePayload
 ```
-`apiKey`는 전역 변환 영향 제외 – alias 그대로 출력.
+`apiKey`는 전역 변환 영향 제외 -- alias 그대로 출력.
 
 ### 5.6 전역 설정 (application.yml)
 ```yaml
@@ -704,7 +704,7 @@ Callback 내부에서 `StandardCallbackResult`를 반환해야 하며, `status` 
 #### 도입 배경 & 장점
 | 항목 | 설명 | 효과 |
 |------|------|------|
-| Lazy 계산 | 응답 직전까지 도메인 작업 지연 | 불필요 연산 최소화, duration 측정 정확도 ↑ |
+| Lazy 계산 | 응답 직전까지 도메인 작업 지연 | 불필요 연산 최소화, duration 측정 정확도 ^ |
 | 단일 선언 지점 | payload + status + version 한 곳에서 확정 | 가독성/코드 리뷰 용이 |
 | 실패/성공 분기 단순화 | if/else 내부에서 `StandardCallbackResult`만 교체 | 예외 남발/중첩 축소 |
 | 일관된 duration 측정 | 빌더가 callback 전/후 시각 측정 | 코드 중복 제거, 실측치 반영 |
@@ -749,7 +749,7 @@ class UserServiceControllerExample {
 }
 ```
 
-#### Controller ↔ Service 연계 패턴
+#### Controller <-> Service 연계 패턴
 Service가 `StandardCallbackResult`를 직접 반환하도록 하여 Controller가 그대로 감싸는 패턴.
 ```kotlin
 @Service
@@ -809,7 +809,7 @@ fun batch(items: List<String>): StandardResponse<BasePayload> = StandardResponse
 ---
 ## 8. 실 서비스 적용 패턴
 
-### 8.1 Controller ↔ Service ↔ Response 흐름
+### 8.1 Controller <-> Service <-> Response 흐름
 | 레이어 | 역할 | 패턴 |
 |--------|------|------|
 | Controller | 엔드포인트 정의, 컨텍스트 추출 | `StandardResponse.build { service.method(...) }` |

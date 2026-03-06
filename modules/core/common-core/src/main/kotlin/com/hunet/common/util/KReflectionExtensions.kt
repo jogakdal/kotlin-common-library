@@ -153,7 +153,7 @@ fun clearReflectionAnnotationCaches() {
 /**
  * ===== Direct annotation access (no cross Kotlin/Java traversal) =====
  * 목적:
- *  - 기존 getAnnotation/hasAnnotation 은 Kotlin Property ↔ Java Field/Getter/Constructor Parameter 간 확장 탐색을 수행.
+ *  - 기존 getAnnotation/hasAnnotation 은 Kotlin Property <-> Java Field/Getter/Constructor Parameter 간 확장 탐색을 수행.
  *  - 아래 direct 계열은 해당 요소 자체(declaration site)에 붙은 어노테이션만 빠르게 확인.
  * 활용 시나리오:
  *  - 성능 미세 최적화 (대량 루프에서 불필요한 매핑 탐색 회피)

@@ -60,7 +60,7 @@ ExcelGenerator().use { generator ->
 
 > [!TIP]
 > **TBEG의 설계 철학**: Excel이 이미 잘하는 기능은 재구현하지 않고 그대로 살립니다.
-> 집계는 `=SUM()`으로, 조건부 강조는 조건부 서식으로, 시각화는 차트로 — 익숙한 Excel 기능을 그대로 활용하세요.
+> 집계는 `=SUM()`으로, 조건부 강조는 조건부 서식으로, 시각화는 차트로 -- 익숙한 Excel 기능을 그대로 활용하세요.
 > TBEG은 여기에 동적 데이터 바인딩을 더하고, 데이터가 확장되어도 이 기능들이 의도대로 동작하도록 조정합니다.
 
 ### 실제로 이렇게 동작합니다
@@ -79,10 +79,12 @@ val data = simpleDataProvider {
     value("period", "Jan 2026 ~ Mar 2026")
     value("author", "Yongho Hwang")
     value("reportDate", LocalDate.now().toString())
+    value("subtitle_emp", "Employee Performance Details")
     image("logo", logoBytes)
     image("ci", ciBytes)
     items("depts") { deptList.iterator() }
     items("products") { productList.iterator() }
+    items("employees") { employeeList.iterator() }
 }
 
 ExcelGenerator().use { generator ->
@@ -97,12 +99,14 @@ ExcelGenerator().use { generator ->
 ![결과](../src/main/resources/sample/screenshot_result.png)
 
 TBEG이 자동으로 처리한 항목:
-- **변수 치환** — 제목, 기간, 작성자, 날짜
-- **이미지 삽입** — 로고, CI
-- **반복 데이터 확장** — 부서별 실적 행, 제품 카테고리 행
-- **수식 범위 자동 조정** — SUM, AVERAGE 등의 범위가 확장된 데이터에 맞춰 갱신
-- **조건부 서식 복제** — 달성률 색상이 모든 행에 적용
-- **차트 데이터 범위 반영** — 차트가 확장된 데이터를 올바르게 참조
+- **변수 치환** -- 제목, 기간, 작성자, 날짜, 소제목
+- **이미지 삽입** -- 로고, CI
+- **반복 데이터 확장** -- 부서별 실적 행, 제품 카테고리 행, 직원별 실적 행
+- **자동 셀 병합** -- 같은 부서명/팀명이 연속된 셀을 자동 병합
+- **요소 묶음** -- 직원 실적 영역이 부서 실적 확장에 영향받지 않도록 보호
+- **수식 범위 자동 조정** -- SUM, AVERAGE 등의 범위가 확장된 데이터에 맞춰 갱신
+- **조건부 서식 복제** -- 달성률 색상이 모든 행에 적용
+- **차트 데이터 범위 반영** -- 차트가 확장된 데이터를 올바르게 참조
 
 > 전체 코드와 템플릿 다운로드는 [종합 예제](./examples/advanced-examples.md#11-종합-예제--분기-매출-실적-보고서)를 참조하세요.
 
@@ -228,6 +232,8 @@ fun main() {
 | `${repeat(컬렉션, 범위, 변수)}` | 반복 처리 | `${repeat(items, A2:C2, item)}` |
 | `${image(이름)}` | 이미지 삽입 | `${image(logo)}` |
 | `${size(컬렉션)}` | 컬렉션 크기 | `${size(items)}` |
+| `${merge(item.필드)}` | 자동 셀 병합 | `${merge(emp.dept)}` |
+| `${bundle(범위)}` | 요소 묶음 | `${bundle(A5:H12)}` |
 
 ---
 

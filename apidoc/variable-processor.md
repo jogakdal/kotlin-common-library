@@ -80,12 +80,12 @@ val r = vp.process(
 ### 지원 표현식
 | 표현식                  | 설명      | 예시                                   |
 |----------------------|---------|--------------------------------------|
-| `${variable}`        | 단순 변수   | `${name}` → `data["name"]`           |
-| `${object.property}` | 프로퍼티 접근 | `${user.name}` → `data["user"].name` |
+| `${variable}`        | 단순 변수   | `${name}` -> `data["name"]`           |
+| `${object.property}` | 프로퍼티 접근 | `${user.name}` -> `data["user"].name` |
 
 ### 프로퍼티 접근 순서
 1. Map인 경우: 키로 직접 접근
-2. 일반 객체: 필드 → getter(`getXxx`) → is getter(`isXxx`) → Kotlin 프로퍼티
+2. 일반 객체: 필드 -> getter(`getXxx`) -> is getter(`isXxx`) -> Kotlin 프로퍼티
 
 ### Kotlin 사용 예
 ```kotlin
