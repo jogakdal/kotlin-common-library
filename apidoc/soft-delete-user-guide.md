@@ -23,7 +23,7 @@ jpa-repository-extension: 1.2.0-SNAPSHOT
 4. 설정/프로퍼티
 5. Quick Start
 6. 고급 사용법
-7. JpaRepository 교차 사용 주의사항·장단점·한계
+7. JpaRepository 교차 사용 주의사항/장단점/한계
 8. FAQ
 9. Appendix
 
@@ -181,10 +181,10 @@ ALTER TABLE users
   - 삭제 시각이 기록되어 운영/분석 용이
 - 주의사항
   - 최소 DateTime 값은 벤더 / 모드에 따라 다름(`0000-00-00` 금지 모드 등). 환경에 맞는 최소 유효값을 선택.
-  - 타임존 / 정밀도(소수점) 차이로 비교 실패를 막기 위해 컬럼과 NOW 함수 정밀도를 일치(DATETIME(6) ↔ NOW(6)).
+  - 타임존 / 정밀도(소수점) 차이로 비교 실패를 막기 위해 컬럼과 NOW 함수 정밀도를 일치(DATETIME(6) <-> NOW(6)).
   - 애플리케이션 / DB 모두 UTC 사용을 권장.
 
-## 7. JpaRepository 교차 사용 주의사항·장단점·한계
+## 7. JpaRepository 교차 사용 주의사항/장단점/한계
 교차 사용 시 다음 규칙을 따르십시오.
 
 - 대체 API 매핑(요약)
@@ -204,7 +204,7 @@ ALTER TABLE users
   - [Don't] BULK 후 영속성 컨텍스트 동기화를 누락하지 않는다
 
 - 위험 시나리오와 회피책
-  - 하드 삭제 호출: 데이터 보존·관계 일관성 붕괴 -> softDelete*로 치환
+  - 하드 삭제 호출: 데이터 보존/관계 일관성 붕괴 -> softDelete*로 치환
   - Alive 조건 누락(`@Query`): 삭제된 행 노출 / 통계 왜곡 -> where에 Alive 조건 포함, strict=true 설정
   - `existsById()` / `findById()` 정책 혼선: 삭제 마크 행 처리 정의 부재 -> `existsAliveById()` / `findOneById()`로 일관성 확보
   - 락 / 배치 혼용: 데드락/타임아웃 -> 접근 순서 통일 / 잠금 범위 최소화 / 재시도 도입

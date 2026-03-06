@@ -26,7 +26,7 @@ import kotlin.reflect.full.memberProperties
  * @ResponseDescriptable, @ResponseDescription, @Schema 어노테이션 정보를 기반으로
  * FieldDescriptor 리스트를 자동 생성하고,
  * ResourceSnippetParameters에 tag/summary/description,
- * 경로(pathParameters)·쿼리(queryParameters) 파라미터 정의를 바인딩한 뒤
+ * 경로(pathParameters)/쿼리(queryParameters) 파라미터 정의를 바인딩한 뒤
  * MockMvcRestDocumentationWrapper.document(...) 호출값 반환
  *
  * @param identifier       스니펫 식별자(예: "get-user")

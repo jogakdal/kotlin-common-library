@@ -19,7 +19,7 @@
 `payload`는 **단일 도메인 DTO(BasePayload)** 또는 **표준 리스트 컨테이너(PageableList, IncrementalList)** 혹은 **이들을 조합한 사용자 정의 Payload**가 될 수 있습니다.
 
 추가 기능:
-- 케이스(필드명) 변환 (Camel ↔ Snake 등) + 필드 단위 예외(`@NoCaseTransform`)
+- 케이스(필드명) 변환 (Camel <-> Snake 등) + 필드 단위 예외(`@NoCaseTransform`)
 - Jackson Alias(`@JsonProperty`, `@JsonAlias`) 수집 및 Canonical Key 기반 느슨한 역직렬화
 - Duration 자동 측정/주입(`@InjectDuration` + Filter)
 - 페이지/커서(Incremental) 기반 목록 포맷 및 헬퍼
@@ -162,8 +162,8 @@ typealias DefaultResponse = StandardResponse<BasePayload>
 ## 6. Case Convention 적용 규칙
 1. 적용 위치: `StandardApiResponseAdvice.beforeBodyWrite` (JSON 직렬화 직전)
 2. 결정 우선순위 (높음->낮음):
-   1) Query Parameter (`?case=...`) – `stdapi.response.case.query-override=true`
-   2) Header (`X-Response-Case`) – `stdapi.response.case.header-override=true`
+   1) Query Parameter (`?case=...`) -- `stdapi.response.case.query-override=true`
+   2) Header (`X-Response-Case`) -- `stdapi.response.case.header-override=true`
    3) Payload 클래스 `@ResponseCase`
    4) 설정 기본값 `stdapi.response.case.default`
    5) Fallback: `IDENTITY`
@@ -216,7 +216,7 @@ typealias DefaultResponse = StandardResponse<BasePayload>
 
 | 원본 요소 | 추가되는 skipCaseKeys 항목 |
 |-----------|---------------------------|
-| 기본명 `user_id` | `user_id`, `user-id` (underscore ↔ hyphen variant) |
+| 기본명 `user_id` | `user_id`, `user-id` (underscore <-> hyphen variant) |
 | Alias `user-id` | `user-id`, `user_id` (역변환) |
 | Canonical 비교 | 모두 동일 canonical(`userid`) -> case 변환 제외 |
 
@@ -280,8 +280,8 @@ Edge Case 처리:
 ## 9. Duration 자동 주입 메커니즘
 | 구성 | 설명 |
 |------|------|
-| Filter | `RequestTimingFilter` – `System.nanoTime()` 시작값 Request Attribute 저장 |
-| Advice | `StandardApiResponseAdvice` – `StandardResponse` 탐지 후 `@InjectDuration` 필드 주입 |
+| Filter | `RequestTimingFilter` -- `System.nanoTime()` 시작값 Request Attribute 저장 |
+| Advice | `StandardApiResponseAdvice` -- `StandardResponse` 탐지 후 `@InjectDuration` 필드 주입 |
 | 지원 타입 | Long / Int / Double / String / java.time.Duration / kotlin.time.Duration |
 | 단위 지정 | `@InjectDuration(unit=TimeUnit.X)` |
 | 활성화 | `stdapi.response.auto-duration-calculation.active=true` |
@@ -309,7 +309,7 @@ Edge Case 처리:
 | 총 페이지 | `(totalItems + pageSize - 1) / pageSize` (`pageSize <= 0` -> `totalItems` 1페이지 취급) |
 | Cursor end | `start + (min(howMany, total - start) - 1)` (음수/0 보정) |
 | expandable | `start + howMany < total` 일 때 true |
-| Generic 커서 | `CursorInfo.buildFromTotalGeneric` – 커스텀 인덱스 타입 변환 람다 |
+| Generic 커서 | `CursorInfo.buildFromTotalGeneric` -- 커스텀 인덱스 타입 변환 람다 |
 
 ### 11.1 Cursor 계산 상세
 | 단계 | 설명 | 코드 대응 |
@@ -361,7 +361,7 @@ GlobalAliasMaps 구성:
 - `canonicalAliasToProp`: canonical(alias) -> propertyName
 - `skipCaseKeys`: 변환 제외 키 집합
 - `conflictCandidates`: canonical 충돌 발생 시 후보 property 집합 (BEST_MATCH 전략 선택 참고)
-- `propertyAliasLower`: property 별 alias(소문자) 전체 세트 – BEST_MATCH 실제 key 비교에 활용
+- `propertyAliasLower`: property 별 alias(소문자) 전체 세트 -- BEST_MATCH 실제 key 비교에 활용
 
 ---
 ## 13. 구성 프로퍼티 Reference

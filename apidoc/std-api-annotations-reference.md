@@ -10,7 +10,7 @@
 ## 1. 제공 어노테이션 & 인터페이스 개요
 | 이름 | 타입 | 대상 | 용도 요약 |
 |------|------|------|----------|
-| `@EnumConstant` | Annotation | enum class | 표준 문서/스키마에서 열거형을 ‘표준 enum’으로 식별 (정적 수집/문서화) |
+| `@EnumConstant` | Annotation | enum class | 표준 문서/스키마에서 열거형을 '표준 enum'으로 식별 (정적 수집/문서화) |
 | `DescriptiveEnum` | Interface | enum 구현 | value / description / describable 제공 + 커스텀 (역)직렬화 지원 |
 | `ExceptionCode` | Interface | enum 구현 | `DescriptiveEnum` 확장 + `code`/`message` 필드(예외/오류 코드 표현) |
 | `@SwaggerDescribable` | Annotation (Deprecated) | class | (Deprecated) -> 클래스 문서화 시 @Schema 사용 권장 |
