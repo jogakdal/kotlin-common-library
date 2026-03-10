@@ -5,7 +5,7 @@ import kotlin.reflect.full.memberProperties
 import kotlin.reflect.jvm.isAccessible
 
 val String.isDigit: Boolean get() {
-    if (length == 0) return false
+    if (isEmpty()) return false
 
     forEachIndexed { index, it ->
         if (index == 0) {
@@ -23,7 +23,7 @@ fun getDiffRate(curr: Long, before: Long, infinityValue: Float? = null): Float? 
 }
 
 fun isEmptyOrNull(str: String?): Boolean {
-    return str == null || str.isEmpty()
+    return str.isNullOrEmpty()
 }
 
 fun isNotEmpty(str: String?): Boolean {
@@ -74,6 +74,19 @@ fun String.unquote(): String {
         else -> trimmed
     }
 }
+
+// ========== XML 유틸리티 ==========
+
+/**
+ * XML 특수 문자를 이스케이프합니다.
+ * &, <, >, ", ' 를 각각의 XML 엔티티로 변환합니다.
+ */
+fun String.escapeXml(): String = this
+    .replace("&", "&amp;")
+    .replace("<", "&lt;")
+    .replace(">", "&gt;")
+    .replace("\"", "&quot;")
+    .replace("'", "&apos;")
 
 // ========== 이미지 타입 감지 유틸리티 ==========
 

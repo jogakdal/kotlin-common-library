@@ -131,6 +131,13 @@ tasks.register<JavaExec>("runEmptyCollectionSample") {
     mainClass.set("com.hunet.common.tbeg.samples.EmptyCollectionSample")
 }
 
+tasks.register<JavaExec>("runFormulaSubstitutionSample") {
+    group = "application"
+    description = "변수형 마커 수식 치환 샘플 실행"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.hunet.common.tbeg.samples.FormulaSubstitutionSample")
+}
+
 // 테스트 클래스패스 출력 (java 명령 실행용)
 tasks.register("printTestClasspath") {
     doLast {
