@@ -16,7 +16,7 @@
 8. [오른쪽 방향 반복](#8-오른쪽-방향-반복)
 9. [빈 컬렉션 처리](#9-빈-컬렉션-처리)
 10. [다국어 지원 (I18N)](#10-다국어-지원-i18n)
-11. [종합 예제 -- 분기 매출 실적 보고서](#11-종합-예제--분기-매출-실적-보고서)
+11. [종합 예제 -- 분기 매출 실적 보고서](#11-종합-예제----분기-매출-실적-보고서)
 12. [자동 셀 병합 활용](#12-자동-셀-병합-활용)
 13. [요소 묶음 (Bundle)](#13-요소-묶음-bundle)
 
@@ -1051,15 +1051,13 @@ fun main() {
 ```kotlin
 import com.hunet.common.tbeg.ExcelGenerator
 import com.hunet.common.tbeg.TbegConfig
-import com.hunet.common.tbeg.StreamingMode
 import com.hunet.common.tbeg.simpleDataProvider
 import java.nio.file.Path
 
 fun main() {
     // 대용량 데이터용 설정
     val config = TbegConfig(
-        streamingMode = StreamingMode.ENABLED,  // 스트리밍 모드 활성화
-        progressReportInterval = 1000           // 1000행마다 진행률 보고
+        progressReportInterval = 1000  // 1000행마다 진행률 보고
     )
 
     // 데이터 개수 (DB COUNT 쿼리로 조회)
