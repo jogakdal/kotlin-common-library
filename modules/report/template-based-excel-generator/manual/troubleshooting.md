@@ -38,6 +38,26 @@
 
 ---
 
+### hideable 마커가 repeat 영역 밖에 있습니다
+
+**증상**: "hideable 마커가 어떤 repeat 영역에도 속하지 않습니다" 오류가 발생합니다.
+
+**원인**: hideable 마커가 repeat 영역 밖에 배치되어 있습니다.
+
+**해결**: hideable 마커를 repeat 범위 안으로 이동하세요. hideable은 반드시 repeat 영역 내에 배치해야 합니다.
+
+---
+
+### bundle 열 범위가 hideable 셀과 일치하지 않습니다
+
+**증상**: "bundle 열 범위가 hideable 셀의 열 범위와 일치하지 않습니다" 오류가 발생합니다.
+
+**원인**: bundle 범위의 열이 hideable 마커 셀(또는 병합 셀)의 열과 다릅니다.
+
+**해결**: bundle 범위의 열을 hideable 마커 셀과 동일하게 조정하세요. 예를 들어, hideable 마커가 C2에 있다면 bundle 범위도 C열을 포함해야 합니다 (예: `C1:C3`).
+
+---
+
 ## 2. 실행 시 오류
 
 ### `TemplateProcessingException`
@@ -171,6 +191,24 @@ val employees = employeeRepository.findAll().sortedBy { it.department }
 > ```kotlin
 > TbegConfig(imageUrlCacheTtlSeconds = 60)  // 60초간 캐싱
 > ```
+
+---
+
+### hideFields를 지정했지만 필드가 숨겨지지 않습니다
+
+**증상**: `hideFields()`로 숨길 필드를 지정했지만 결과 파일에서 필드가 숨겨지지 않습니다.
+
+**원인**: 템플릿에 해당 필드의 hideable 마커가 없습니다.
+
+**해결**: 템플릿에 `${hideable(value=item.필드명)}` 마커를 추가하세요. `unmarkedHidePolicy`가 `WARN_AND_HIDE`로 설정된 경우 마커 없이도 숨겨지지만, 경고 로그가 출력됩니다.
+
+---
+
+### DIM 모드에서 타이틀/합계 행이 비활성화됩니다
+
+**증상**: DIM 모드를 사용했는데 타이틀이나 합계 행까지 비활성화 스타일이 적용된 것처럼 보입니다.
+
+**참고**: DIM 모드는 repeat 데이터 영역 내부만 비활성화 처리합니다. bundle로 지정된 범위 중 repeat 밖에 있는 행(타이틀, 합계 등)은 원본이 그대로 유지됩니다.
 
 ---
 
