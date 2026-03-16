@@ -12,6 +12,7 @@ TBEG은 Excel 템플릿에 데이터를 바인딩하여 보고서, 명세서 등
 - **반복 데이터 처리**: 리스트 데이터를 행 또는 열로 확장
 - **이미지 삽입**: 템플릿의 지정된 위치에 이미지 삽입
 - **차트/피벗 테이블 자동 반영**: 데이터 확장 시 차트 데이터 범위와 피벗 테이블 소스 범위를 자동 조정 (파일을 열 때 별도의 새로고침 불필요)
+- **선택적 필드 노출**: 상황에 따라 특정 필드의 노출을 제한
 - **대용량 처리**: 스트리밍 모드로 메모리 효율적인 대용량 데이터 처리
 - **비동기 처리**: Coroutine, CompletableFuture, 백그라운드 작업 지원
 
@@ -120,7 +121,7 @@ TBEG이 자동으로 처리한 항목:
 | 디자이너가 제공한 Excel 양식에 데이터 채우기 | 적합 |
 | 복잡한 서식(조건부 서식, 차트, 피벗 테이블)이 필요한 보고서 | 적합 |
 | 수만~수십만 행의 대용량 데이터 처리 | 적합 |
-| 열 구조가 동적으로 변하는 Excel | 비적합 |
+| 열 구조가 동적으로 변하는 Excel | 적합 (RIGHT repeat, 선택적 필드 노출) |
 | Excel 파일 읽기/파싱 | 비적합 (TBEG은 생성 전용) |
 
 > [!TIP]
@@ -170,7 +171,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.hunet.common:tbeg:1.2.1")
+    implementation("com.hunet.common:tbeg:1.2.2")
 }
 ```
 
@@ -226,6 +227,7 @@ fun main() {
 - [개발자 가이드](./developer-guide.md) - 내부 아키텍처 및 확장 방법
 
 ### 별첨
+- [용어집](./glossary.md) - TBEG 문서에서 사용하는 주요 용어 정리
 - [타 라이브러리 비교](./appendix/library-comparison.md) - Excel 보고서 라이브러리 간 기능 비교
 
 ---
@@ -241,6 +243,7 @@ fun main() {
 | `${size(컬렉션)}` | 컬렉션 크기 | `${size(items)}` |
 | `${merge(item.필드)}` | 자동 셀 병합 | `${merge(emp.dept)}` |
 | `${bundle(범위)}` | 요소 묶음 | `${bundle(A5:H12)}` |
+| `${hideable(값, 범위)}` | 선택적 필드 노출 | `${hideable(emp.salary, C1:C3)}` |
 
 ---
 

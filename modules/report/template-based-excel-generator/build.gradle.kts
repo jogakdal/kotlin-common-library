@@ -107,14 +107,6 @@ tasks.register<JavaExec>("runBenchmark") {
     maxHeapSize = "2g"
 }
 
-// Rich Sample 템플릿 생성 태스크
-tasks.register<JavaExec>("generateRichSampleTemplate") {
-    group = "application"
-    description = "Rich Sample 템플릿(rich_sample_template.xlsx)을 POI로 생성"
-    classpath = sourceSets["test"].runtimeClasspath
-    mainClass.set("com.hunet.common.tbeg.samples.RichSampleTemplateGenerator")
-}
-
 // Rich Sample 실행 태스크 (시각적 데모용)
 tasks.register<JavaExec>("runRichSample") {
     group = "application"
@@ -136,6 +128,13 @@ tasks.register<JavaExec>("runFormulaSubstitutionSample") {
     description = "변수형 마커 수식 치환 샘플 실행"
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.hunet.common.tbeg.samples.FormulaSubstitutionSample")
+}
+
+tasks.register<JavaExec>("runHideableSample") {
+    group = "application"
+    description = "hideable 기능 샘플 실행"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.hunet.common.tbeg.samples.HideableSample")
 }
 
 // 테스트 클래스패스 출력 (java 명령 실행용)

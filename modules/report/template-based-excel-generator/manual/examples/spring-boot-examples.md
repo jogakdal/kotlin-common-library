@@ -24,7 +24,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.hunet.common:tbeg:1.2.1")
+    implementation("com.hunet.common:tbeg:1.2.2")
 }
 ```
 
