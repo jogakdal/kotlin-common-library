@@ -4,7 +4,7 @@
 
 ### 새 기능
 
-- **필드 숨기기 (hideable)**: repeat 영역 내 특정 필드(컬럼)를 동적으로 숨길 수 있습니다. `${hideable(value=emp.salary, bundle=C1:C3, mode=dim)}` 또는 `=TBEG_HIDEABLE(...)` 수식 마커로 사용합니다
+- **선택적 필드 노출 (hideable)**: 상황에 따라 특정 필드의 노출을 제한할 수 있습니다. `${hideable(value=emp.salary, bundle=C1:C3, mode=dim)}` 또는 `=TBEG_HIDEABLE(...)` 수식 마커로 사용합니다
   - **HideMode**: `DELETE`(물리적 삭제 + 시프트, 기본값) 또는 `DIM`(비활성화 스타일 + 값 제거) 중 선택할 수 있습니다
   - **UnmarkedHidePolicy**: hideable 마커가 없는 필드를 숨기려 할 때의 동작을 설정합니다. `WARN_AND_HIDE`(경고 후 숨김, 기본값) 또는 `ERROR`(예외 발생)를 지원합니다
   - **API**: `ExcelDataProvider.getHiddenFields()`로 숨길 필드 목록을 지정하고, `SimpleDataProvider.Builder.hideFields()`로 간편하게 설정할 수 있습니다

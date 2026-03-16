@@ -361,8 +361,8 @@ class HidePreprocessor(
     /**
      * DIM 모드로 숨길 영역을 처리한다.
      *
-     * repeat 데이터 영역 내의 셀에만 비활성화 스타일(회색 배경 + 연한 글자색)을 적용하고 값을 제거한다.
-     * bundle로 묶인 나머지 영역(타이틀, 합계 등)은 스타일과 값 모두 원래 상태를 유지한다.
+     * - repeat 데이터 영역: 비활성화 스타일(회색 배경 + 연한 글자색)을 적용하고 값을 제거한다.
+     * - bundle의 repeat 밖 영역(필드 타이틀 등): 글자색만 연한 색으로 변경하고, 배경과 값은 유지한다.
      */
     private fun processDimHide(
         workbook: XSSFWorkbook,
@@ -371,6 +371,7 @@ class HidePreprocessor(
         repeats: List<RepeatInfo>
     ) {
         val dimStyleCache = mutableMapOf<Short, CellStyle>()
+        val dimFontOnlyStyleCache = mutableMapOf<Short, CellStyle>()
         targets.forEach { target ->
             val repeat = repeats.find {
                 it.range.containsCell(target.markerCell.firstRow, target.markerCell.firstColumn)
@@ -378,23 +379,33 @@ class HidePreprocessor(
 
             val rowRange = target.effectiveRange.firstRow..target.effectiveRange.lastRow
             val colRange = target.effectiveRange.firstColumn..target.effectiveRange.lastColumn
+            val repeatRowRange = repeat.range.firstRow..repeat.range.lastRow
+            val repeatColRange = repeat.range.firstColumn..repeat.range.lastColumn
             for (rowIdx in rowRange) {
-                if (rowIdx !in repeat.range.firstRow..repeat.range.lastRow) continue
                 val row = sheet.getRow(rowIdx) ?: sheet.createRow(rowIdx)
+                val inRepeat = rowIdx in repeatRowRange
                 for (colIdx in colRange) {
-                    if (colIdx !in repeat.range.firstColumn..repeat.range.lastColumn) continue
+                    if (inRepeat && colIdx !in repeatColRange) continue
                     val cell = row.getCell(colIdx) ?: row.createCell(colIdx)
-                    cell.cellStyle = dimStyleCache.getOrPut(cell.cellStyle.index) {
-                        createDimStyle(workbook, cell.cellStyle as XSSFCellStyle)
+                    if (inRepeat) {
+                        // repeat 데이터 영역: 배경 + 글자색 + 값 제거
+                        cell.cellStyle = dimStyleCache.getOrPut(cell.cellStyle.index) {
+                            createDimStyle(workbook, cell.cellStyle as XSSFCellStyle)
+                        }
+                        cell.setBlank()
+                    } else {
+                        // repeat 밖 bundle 영역: 글자색만 변경
+                        cell.cellStyle = dimFontOnlyStyleCache.getOrPut(cell.cellStyle.index) {
+                            createDimFontOnlyStyle(workbook, cell.cellStyle as XSSFCellStyle)
+                        }
                     }
-                    cell.setBlank()
                 }
             }
         }
     }
 
     /**
-     * DIM 스타일을 생성한다.
+     * DIM 스타일을 생성한다 (repeat 데이터 영역용).
      *
      * 원본 스타일을 복제하고 배경색(#D9D9D9) + 글자색(#BFBFBF)을 적용한다.
      */
@@ -404,18 +415,34 @@ class HidePreprocessor(
             cloneStyleFrom(sourceStyle)
             setFillForegroundColor(XSSFColor(DIM_BACKGROUND_RGB))
             fillPattern = FillPatternType.SOLID_FOREGROUND
-            setFont((workbook.createFont() as XSSFFont).apply {
-                fontName = sourceFont.fontName
-                fontHeightInPoints = sourceFont.fontHeightInPoints
-                bold = sourceFont.bold
-                italic = sourceFont.italic
-                strikeout = sourceFont.strikeout
-                underline = sourceFont.underline
-                typeOffset = sourceFont.typeOffset
-                setColor(XSSFColor(DIM_FONT_RGB))
-            })
+            setFont(createDimFont(workbook, sourceFont))
         }
     }
+
+    /**
+     * DIM 글자색만 적용한 스타일을 생성한다 (repeat 밖 bundle 영역용).
+     *
+     * 원본 스타일을 복제하고 글자색(#BFBFBF)만 적용한다. 배경색과 값은 유지한다.
+     */
+    private fun createDimFontOnlyStyle(workbook: XSSFWorkbook, sourceStyle: XSSFCellStyle): XSSFCellStyle {
+        val sourceFont = sourceStyle.font
+        return (workbook.createCellStyle() as XSSFCellStyle).apply {
+            cloneStyleFrom(sourceStyle)
+            setFont(createDimFont(workbook, sourceFont))
+        }
+    }
+
+    private fun createDimFont(workbook: XSSFWorkbook, sourceFont: XSSFFont) =
+        (workbook.createFont() as XSSFFont).apply {
+            fontName = sourceFont.fontName
+            fontHeightInPoints = sourceFont.fontHeightInPoints
+            bold = sourceFont.bold
+            italic = sourceFont.italic
+            strikeout = sourceFont.strikeout
+            underline = sourceFont.underline
+            typeOffset = sourceFont.typeOffset
+            setColor(XSSFColor(DIM_FONT_RGB))
+        }
 
     /**
      * RIGHT repeat의 hide 대상을 처리한다.

@@ -282,7 +282,7 @@ class MyDataProvider : ExcelDataProvider {
 ```
 
 > [!TIP]
-> `hideable` 마커의 상세 문법은 [템플릿 문법 레퍼런스](./template-syntax.md#10-필드-숨기기-hideable)를 참조하세요.
+> `hideable` 마커의 상세 문법은 [템플릿 문법 레퍼런스](./template-syntax.md#10-선택적-필드-노출-hideable)를 참조하세요.
 
 ---
 
@@ -466,7 +466,7 @@ SimpleDataProvider provider = SimpleDataProvider.builder()
 ```
 
 > [!TIP]
-> `hideable` 마커의 상세 문법은 [템플릿 문법 레퍼런스](./template-syntax.md#10-필드-숨기기-hideable)를 참조하세요.
+> `hideable` 마커의 상세 문법은 [템플릿 문법 레퍼런스](./template-syntax.md#10-선택적-필드-노출-hideable)를 참조하세요.
 
 #### metadata
 

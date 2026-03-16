@@ -2,9 +2,9 @@
 
 ## 1.2.1 -> 1.2.2
 
-### 새 기능: 필드 숨기기 (hideable)
+### 새 기능: 선택적 필드 노출 (hideable)
 
-repeat 영역 내 특정 필드를 동적으로 숨기는 기능이 추가되었습니다.
+상황에 따라 특정 필드의 노출을 제한할 수 있는 기능이 추가되었습니다.
 
 - 신규 마커: `${hideable(value=emp.salary, bundle=C1:C3, mode=dim)}`
 - 신규 API: `ExcelDataProvider.getHiddenFields()` (기본 구현 제공, 기존 코드 영향 없음)

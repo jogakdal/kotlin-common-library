@@ -12,6 +12,7 @@ import org.apache.poi.ss.usermodel.CellType
 import org.apache.poi.ss.usermodel.FillPatternType
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.XSSFColor
+import org.apache.poi.xssf.usermodel.XSSFFont
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
@@ -437,18 +438,34 @@ class HideableIntegrationTest {
             assertEquals("급여", headerRow.getCell(2)?.stringCellValue)
             assertEquals("나이", headerRow.getCell(3)?.stringCellValue)
 
-            // 타이틀 행(repeat 밖)은 DIM 스타일이 적용되지 않아야 한다
+            // 타이틀 행(repeat 밖): 배경은 DIM 적용 안 됨, 글자색만 DIM 적용
             val headerStyle = headerRow.getCell(2)?.cellStyle as? org.apache.poi.xssf.usermodel.XSSFCellStyle
             if (headerStyle != null) {
                 assertNotEquals(
                     FillPatternType.SOLID_FOREGROUND, headerStyle.fillPattern,
-                    "repeat 밖 셀에는 DIM 스타일이 적용되지 않아야 한다"
+                    "repeat 밖 셀에는 DIM 배경이 적용되지 않아야 한다"
+                )
+                val headerFont = headerStyle.font as? XSSFFont
+                assertNotNull(headerFont, "repeat 밖 셀의 폰트가 존재해야 한다")
+                assertArrayEquals(
+                    byteArrayOf(0xBF.toByte(), 0xBF.toByte(), 0xBF.toByte()),
+                    headerFont!!.xssfColor?.rgb,
+                    "repeat 밖 bundle 영역의 글자색은 DIM 색상(#BFBFBF)이어야 한다"
                 )
             }
 
-            // 합계 행도 repeat 영역 밖이므로 원래 텍스트/스타일 유지
+            // 합계 행도 repeat 영역 밖: 텍스트 유지 + 글자색만 DIM 적용
             val sumRow = sheet.getRow(2 + 1) // 데이터 2건이므로 repeat 확장 후 합계는 행 3
             assertEquals("합계", sumRow?.getCell(0)?.stringCellValue)
+            val sumCellStyle = sumRow?.getCell(2)?.cellStyle as? org.apache.poi.xssf.usermodel.XSSFCellStyle
+            if (sumCellStyle != null) {
+                val sumFont = sumCellStyle.font as? XSSFFont
+                assertArrayEquals(
+                    byteArrayOf(0xBF.toByte(), 0xBF.toByte(), 0xBF.toByte()),
+                    sumFont?.xssfColor?.rgb,
+                    "합계 행의 글자색도 DIM 색상(#BFBFBF)이어야 한다"
+                )
+            }
 
             // 데이터 행(repeat 내): salary(C열)는 DIM 처리 -- 값 비움 + 스타일 적용
             val dataRow1 = sheet.getRow(1)
