@@ -527,11 +527,11 @@ ExcelGenerator().use { generator ->
 
 |   | A                                  | B               | C                                          | D                |
 |---|------------------------------------|-----------------|--------------------------------------------|------------------|
-| 1 | ${repeat(employees, A3:D3, emp)}   |                 | ${hideable(emp.salary, C1:C3)}             |                  |
+| 1 | ${repeat(employees, A3:D3, emp)}   |                 |                                            |                  |
 | 2 | 이름                                 | 부서              | 급여                                         | 입사일              |
-| 3 | ${emp.name}                        | ${emp.dept}     | ${emp.salary}                              | ${emp.hireDate}  |
+| 3 | ${emp.name}                        | ${emp.dept}     | ${hideable(emp.salary, C2:C3)}             | ${emp.hireDate}  |
 
-- **C1**: `${hideable(emp.salary, C1:C3)}` -- `salary` 필드가 숨김 대상이면 C열 전체(C1:C3)를 삭제합니다
+- **C3**: `${hideable(emp.salary, C2:C3)}` -- `salary` 필드가 숨김 대상이면 필드 타이틀(C2)과 데이터(C3)를 함께 삭제합니다
 
 ### Kotlin 코드
 

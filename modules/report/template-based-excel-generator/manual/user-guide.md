@@ -29,7 +29,7 @@ repositories {
 
 // 2. 의존성 추가
 dependencies {
-    implementation("com.hunet.common:tbeg:1.2.1")
+    implementation("com.hunet.common:tbeg:1.2.2")
 }
 ```
 
@@ -49,7 +49,7 @@ repositories {
 
 // 2. 의존성 추가
 dependencies {
-    implementation 'com.hunet.common:tbeg:1.2.1'
+    implementation 'com.hunet.common:tbeg:1.2.2'
 }
 ```
 
@@ -262,15 +262,15 @@ fun main() {
 
 ### 2.4 선택적 필드 노출
 
-기본적으로 모든 필드가 노출되며, 상황에 따라 특정 필드의 노출을 제한할 수 있습니다. 템플릿에 `hideable` 마커를 배치하고, 코드에서 숨길 필드를 지정하면 해당 열이 자동으로 제거되거나 비활성화됩니다.
+상황에 따라 반복 출력되는 필드 중 특정 필드의 노출을 제한할 수 있습니다. 템플릿에 `hideable` 마커를 배치하고, 코드에서 숨길 필드를 지정하면 해당 열이 자동으로 제거되거나 비활성화됩니다.
 
 #### 템플릿 (employees.xlsx)
 
-|   | A                                  | B               | C                                                   | D             |
-|---|------------------------------------|-----------------|-----------------------------------------------------|---------------|
-| 1 | ${repeat(employees, A3:D3, emp)}   |                 |                                                     |               |
-| 2 | 이름                                 | 직급              | 연봉                                                  | 입사일           |
-| 3 | ${emp.name}                        | ${emp.position} | ${hideable(value=emp.salary, bundle=C1:C3)} | ${emp.hireDate} |
+|   | A                                | B               | C                                           | D               |
+|---|----------------------------------|-----------------|---------------------------------------------|-----------------|
+| 1 | ${repeat(employees, A3:D3, emp)} |                 |                                             |                 |
+| 2 | 이름                               | 직급              | 연봉                                          | 입사일             |
+| 3 | ${emp.name}                      | ${emp.position} | ${hideable(value=emp.salary, bundle=C2:C3)} | ${emp.hireDate} |
 
 #### Kotlin 코드
 
@@ -285,7 +285,7 @@ ExcelGenerator().use { generator ->
 }
 ```
 
-`hideFields`에 `"salary"`를 지정하면 C열 전체(헤더 포함)가 제거되고, 나머지 열이 자동으로 당겨집니다. `hideFields`를 지정하지 않으면 일반 필드처럼 값이 출력됩니다.
+`hideFields`에 `"salary"`를 지정하면 표의 연봉 열 전체(타이틀 포함)가 제거되고, 나머지 열이 자동으로 당겨집니다. `hideFields`를 지정하지 않으면 일반 필드처럼 값이 출력됩니다.
 
 #### 숨김 모드
 

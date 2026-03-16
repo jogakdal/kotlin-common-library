@@ -38,13 +38,13 @@
 
 ---
 
-### hideable 마커가 repeat 영역 밖에 있습니다
+### hideable 마커가 repeat의 반복 필드가 아닙니다
 
-**증상**: "hideable 마커가 어떤 repeat 영역에도 속하지 않습니다" 오류가 발생합니다.
+**증상**: "hideable 마커가 repeat의 반복 항목 필드 범위에 속하지 않습니다" 오류가 발생합니다.
 
-**원인**: hideable 마커가 repeat 영역 밖에 배치되어 있습니다.
+**원인**: hideable 마커가 repeat의 반복 항목 필드가 아닌 셀에 배치되어 있습니다.
 
-**해결**: hideable 마커를 repeat 범위 안으로 이동하세요. hideable은 반드시 repeat 영역 내에 배치해야 합니다.
+**해결**: hideable 마커를 repeat의 데이터 행(반복 범위 내)으로 이동하세요. hideable은 repeat의 반복 항목 필드에서만 사용할 수 있습니다.
 
 ---
 
