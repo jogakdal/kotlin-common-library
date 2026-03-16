@@ -205,6 +205,13 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
             is CellContent.BundleMarker -> {
                 cell.setBlank()  // bundle 마커는 분석 후 사용되므로 셀은 비운다
             }
+
+            is CellContent.HideableField -> {
+                // hideFields가 없거나 해당 필드가 hide 대상이 아니면 ItemField처럼 동작한다
+                val item = data[content.itemVariable]
+                val value = context.resolveFieldPath(item, content.fieldPath)
+                setValueOrFormula(cell, value)
+            }
         }
         sanitizeCellXml(cell)
         return true

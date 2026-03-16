@@ -249,7 +249,7 @@ HTTP 상태 코드는 요청 처리 결과를 표현하기 위해 국제 표준(
 
 **\<base path\> / \<version\> / \<resource\>**
 
-ex. https://api.gamification.dev.hunet.io **\<base path\>** /v1 **\<version\>** / [mission](https://mission.api.gamification.dev.hunet.io/) **\<resource\>**
+ex. https://api.gamification.dev.hunet.io/v1/mission
 
 - URI는 기본적으로 정보의 자원를 표현합니다.
 - version 정보는 major version 정보만 사용합니다.(`v1`, `v2`, 등)
