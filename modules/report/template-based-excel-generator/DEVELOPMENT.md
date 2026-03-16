@@ -411,7 +411,7 @@ ${hideable(emp.salary)}
 **예시:**
 ```
 ${repeat(employees, A2:H2, emp)}
-${hideable(emp.salary, C1:C3)}          <- salary 필드: C열 + 헤더(C1) 포함 bundle
+${hideable(emp.salary, C1:C3)}          <- salary 필드: C열 + 필드 타이틀(C1) 포함 bundle
 ${hideable(emp.bonus, D1:D3, dim)}      <- bonus 필드: DIM 모드
 ${hideable(emp.name)}                   <- name 필드: bundle 없음, DELETE 기본
 ```
@@ -852,7 +852,7 @@ ${bundle(A15:H20)}
   Col A-D:  Row 1:    [repeat(depts)] (A1:D1)     <- 5건 (확장량 +4)
   Col A-H:  Row 5-12: ${bundle(A5:H12)}     <- 요소 묶음 (8행)
               Row 5:  "직원별 실적" (타이틀)
-              Row 6:  헤더행
+              Row 6:  필드 타이틀 행
               Row 7:  [repeat(employees)] (A7:H7)  <- 11건 (확장량 +10)
               Row 12: SUM행
 
