@@ -154,7 +154,7 @@ TbegConfig(imageUrlCacheTtlSeconds = 60)  // 60초간 캐싱
 
 | 값               | 동작                                              |
 |-----------------|---------------------------------------------------|
-| `WARN_AND_HIDE` | 경고 로그를 출력하고 해당 셀만 숨김 (기본값)           |
+| `WARN_AND_HIDE` | 경고 로그를 출력하고 해당 셀을 DIM 모드로 숨김 (기본값)  |
 | `ERROR`         | `MarkerValidationException` 예외 발생               |
 
 ```kotlin
@@ -349,7 +349,7 @@ enum class UnmarkedHidePolicy {
 
 | 값               | 동작                                                          |
 |-----------------|-------------------------------------------------------------|
-| `WARN_AND_HIDE` | 경고 로그를 출력하고 bundle 없는 hideable처럼 동작                  |
+| `WARN_AND_HIDE` | 경고 로그를 출력하고 해당 셀을 DIM 모드로 숨김                        |
 | `ERROR`         | `MarkerValidationException` 발생, 템플릿-데이터 간 불일치를 엄격하게 검증할 때 |
 
 ---

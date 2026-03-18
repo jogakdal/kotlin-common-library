@@ -87,7 +87,7 @@ ${repeat(employees, A2:C2, emp, DOWN, A10:C10)}
 다른 시트의 repeat 영역을 참조하는 수식이 자동으로 확장됩니다.
 
 ```
-=SUM(Sheet2!B3:B3) -> =SUM(Sheet2!B3:B5)  // Sheet2의 repeat이 3행 확장된 경우
+=AVERAGE(Sheet2!B3:B3) -> =AVERAGE(Sheet2!B3:B5)  // Sheet2의 repeat이 3행 확장된 경우
 ```
 
 자세한 내용: [템플릿 문법 - 관련 요소 자동 조정](./reference/template-syntax.md#36-관련-요소-자동-조정)
