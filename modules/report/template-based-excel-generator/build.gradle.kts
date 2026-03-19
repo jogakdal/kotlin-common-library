@@ -2,6 +2,7 @@ plugins {
     id("com.hunet.commonlib.convention")
     id("org.jetbrains.kotlin.plugin.spring")
     id("org.jetbrains.kotlin.kapt")
+    id("me.champeau.jmh") version "0.7.3"
 }
 
 dependencies {
@@ -38,9 +39,20 @@ dependencies {
     testRuntimeOnly(commonLibs.junitPlatformLauncher)
     testImplementation(commonLibs.springBootStarterTest)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+
+    jmh("org.openjdk.jmh:jmh-core:1.37")
+    jmh("org.openjdk.jmh:jmh-generator-annprocess:1.37")
 }
 
 tasks.withType<Test> { useJUnitPlatform() }
+
+jmh {
+    fork = 1
+    warmupIterations = 1
+    iterations = 3
+    jvmArgs = listOf("-Xms512m", "-Xmx4g")
+    profilers = listOf("gc")
+}
 
 // 샘플 실행 태스크 (Kotlin)
 tasks.register<JavaExec>("runSample") {
@@ -98,13 +110,17 @@ tasks.register<JavaExec>("runCellMergeSample") {
     mainClass.set("com.hunet.common.tbeg.samples.CellMergeSampleRunner")
 }
 
-// 성능 벤치마크 실행 태스크
+// JMH 벤치마크 커스텀 러너 (정리된 테이블 출력)
 tasks.register<JavaExec>("runBenchmark") {
-    group = "application"
-    description = "TBEG 성능 벤치마크 실행"
-    classpath = sourceSets["test"].runtimeClasspath
-    mainClass.set("com.hunet.common.tbeg.benchmark.PerformanceBenchmark")
-    maxHeapSize = "2g"
+    group = "benchmark"
+    description = "TBEG JMH 벤치마크 실행 (정리된 테이블 출력)"
+    dependsOn("jmhCompileGeneratedClasses")
+    classpath = sourceSets["jmh"].runtimeClasspath +
+        files(layout.buildDirectory.dir("jmh-generated-resources")) +
+        files(layout.buildDirectory.dir("jmh-generated-classes"))
+    mainClass.set("com.hunet.common.tbeg.benchmark.TbegBenchmarkRunner")
+    maxHeapSize = "8g"
+    jvmArgs = listOf("-Xms512m")
 }
 
 // Rich Sample 실행 태스크 (시각적 데모용)

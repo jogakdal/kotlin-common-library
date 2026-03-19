@@ -19,7 +19,7 @@ com.hunet.common.tbeg.TbegConfig
 
 | 옵션                        | 타입                    | 기본값                 | 설명                       |
 |---------------------------|-----------------------|---------------------|--------------------------|
-| ~~`streamingMode`~~       | `StreamingMode`       | `ENABLED`           | **deprecated** -- 값이 무시됩니다 |
+| ~~`streamingMode`~~       | `StreamingMode`       | `ENABLED`           | **deprecated** -- 값이 무시됩니다. |
 | `fileNamingMode`          | `FileNamingMode`      | `TIMESTAMP`         | 파일명 생성 모드                |
 | `timestampFormat`         | `String`              | `"yyyyMMdd_HHmmss"` | 파일명 타임스탬프 형식             |
 | `fileConflictPolicy`      | `FileConflictPolicy`  | `SEQUENCE`          | 파일명 충돌 시 처리 정책           |
