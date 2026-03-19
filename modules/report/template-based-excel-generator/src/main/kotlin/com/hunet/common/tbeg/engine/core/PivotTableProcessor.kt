@@ -18,7 +18,9 @@ import org.apache.poi.xssf.usermodel.XSSFSheet
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.util.Collections
 import java.util.WeakHashMap
+import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.Matcher
 
 /**
@@ -27,10 +29,10 @@ import java.util.regex.Matcher
 internal class PivotTableProcessor(
     private val config: TbegConfig
 ) {
-    // WeakHashMap 사용: 워크북이 GC되면 캐시 엔트리도 자동 정리
-    private val styleCache = WeakHashMap<XSSFWorkbook, MutableMap<String, XSSFCellStyle>>()
-    // 스타일 변환 캐시 (동일 스타일 중복 변환 방지) - WeakHashMap으로 메모리 누수 방지
-    private val styleInfoCache = WeakHashMap<XSSFCellStyle, StyleInfo>()
+    // WeakHashMap 사용: 워크북이 GC되면 캐시 엔트리도 자동 정리 (synchronizedMap으로 스레드 안전성 확보)
+    private val styleCache = Collections.synchronizedMap(WeakHashMap<XSSFWorkbook, MutableMap<String, XSSFCellStyle>>())
+    // 스타일 변환 캐시 (동일 스타일 중복 변환 방지) - WeakHashMap으로 메모리 누수 방지 (synchronizedMap으로 스레드 안전성 확보)
+    private val styleInfoCache = Collections.synchronizedMap(WeakHashMap<XSSFCellStyle, StyleInfo>())
 
     // ========== 데이터 클래스 ==========
 
@@ -676,7 +678,7 @@ internal class PivotTableProcessor(
      * alignment만 적용하는 스타일 생성 (피벗 테이블 자동 스타일이 나머지 적용)
      */
     private fun XSSFWorkbook.getOrCreateAlignmentOnlyStyle(styleInfo: StyleInfo) =
-        styleCache.getOrPut(this) { mutableMapOf() }
+        styleCache.getOrPut(this) { ConcurrentHashMap() }
             .getOrPut("alignOnly_${styleInfo.horizontalAlignment}_${styleInfo.verticalAlignment}") {
                 createCellStyle().apply {
                     alignment = styleInfo.horizontalAlignment
@@ -688,7 +690,7 @@ internal class PivotTableProcessor(
      * 숫자 형식만 적용하는 스타일 생성 (피벗 테이블 자동 스타일이 나머지 적용)
      */
     private fun XSSFWorkbook.getNumberFormatOnlyStyle(function: DataConsolidateFunction) =
-        styleCache.getOrPut(this) { mutableMapOf() }
+        styleCache.getOrPut(this) { ConcurrentHashMap() }
             .getOrPut("numFmtOnly_${function.formatIndex}") {
                 createCellStyle().apply { dataFormat = function.formatIndex }
             }

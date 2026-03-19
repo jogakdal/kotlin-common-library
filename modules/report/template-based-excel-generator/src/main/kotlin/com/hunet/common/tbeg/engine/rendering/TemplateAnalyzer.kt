@@ -273,7 +273,7 @@ class TemplateAnalyzer {
             for (j in i + 1 until bundles.size) {
                 if (bundles[i].area.overlaps(bundles[j].area)) {
                     throw TemplateProcessingException(
-                        errorType = TemplateProcessingException.ErrorType.INVALID_PARAMETER_VALUE,
+                        errorType = TemplateProcessingException.ErrorType.RANGE_CONFLICT,
                         details = "Bundle regions overlap: " +
                             "${bundles[i].area.start.toCellRefString()}:${bundles[i].area.end.toCellRefString()} and " +
                             "${bundles[j].area.start.toCellRefString()}:${bundles[j].area.end.toCellRefString()}"
@@ -287,7 +287,7 @@ class TemplateAnalyzer {
             for (repeat in repeats) {
                 if (bundle.area.overlaps(repeat.area) && !bundle.area.contains(repeat.area)) {
                     throw TemplateProcessingException(
-                        errorType = TemplateProcessingException.ErrorType.INVALID_PARAMETER_VALUE,
+                        errorType = TemplateProcessingException.ErrorType.RANGE_CONFLICT,
                         details = "Repeat region '${repeat.collection}' partially overlaps a bundle boundary. " +
                             "A repeat must be either fully contained within a bundle or completely outside it."
                     )

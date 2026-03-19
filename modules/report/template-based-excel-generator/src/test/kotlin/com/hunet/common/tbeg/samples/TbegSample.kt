@@ -327,7 +327,7 @@ object TbegSample {
      *             template = template.inputStream,
      *             dataProvider = provider,
      *             outputDir = Path.of("/output"),
-     *             baseFileName = "async_report",
+     *             baseFileName = "monthly_sales",
      *             listener = object : ExcelGenerationListener {
      *                 override fun onCompleted(jobId: String, result: GenerationResult) {
      *                     // 완료 이벤트 발행 (이메일 발송, 푸시 알림 등)
