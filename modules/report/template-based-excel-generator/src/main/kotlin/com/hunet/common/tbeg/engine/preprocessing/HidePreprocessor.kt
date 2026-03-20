@@ -289,7 +289,7 @@ class HidePreprocessor(
                 UnmarkedHidePolicy.WARN_AND_HIDE -> {
                     LOG.warn(
                         "필드 '{}.{}'가 hideFields에 지정되었지만 hideable 마커가 없습니다. " +
-                        "해당 셀만 숨깁니다. hideable 마커를 사용하면 bundle 범위를 지정할 수 있습니다.",
+                        "해당 셀을 DIM 모드로 숨깁니다. hideable 마커를 사용하면 bundle 범위와 숨김 모드를 지정할 수 있습니다.",
                         itemField.content.itemVariable, itemField.content.fieldPath
                     )
                     val mergedRegions = scanResult.mergedRegions[itemField.sheetIndex] ?: emptyList()
@@ -299,7 +299,8 @@ class HidePreprocessor(
                         fieldPath = itemField.content.fieldPath,
                         itemVariable = itemField.content.itemVariable,
                         markerCell = cellRange,
-                        effectiveRange = cellRange
+                        effectiveRange = cellRange,
+                        mode = HideMode.DIM
                     )
                 }
                 UnmarkedHidePolicy.ERROR -> {

@@ -266,7 +266,7 @@ class TbegSpringBootSample {
      *             template = template.inputStream,
      *             dataProvider = SimpleDataProvider.of(request.toDataMap()),
      *             outputDir = Path.of("/output"),
-     *             baseFileName = "async_report",
+     *             baseFileName = "monthly_sales",
      *             listener = object : ExcelGenerationListener {
      *                 override fun onCompleted(jobId: String, result: GenerationResult) {
      *                     eventPublisher.publishEvent(ReportReadyEvent(jobId, result.filePath))

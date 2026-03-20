@@ -300,7 +300,7 @@ public class TbegSpringBootJavaSample {
      *             template.getInputStream(),
      *             SimpleDataProvider.of(request.toDataMap()),
      *             Path.of("/output"),
-     *             "async_report",
+     *             "monthly_sales",
      *             null,
      *             new ExcelGenerationListener() {
      *                 public void onCompleted(String jobId, GenerationResult result) {
