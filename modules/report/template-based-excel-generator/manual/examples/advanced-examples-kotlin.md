@@ -1255,7 +1255,7 @@ fun buildI18nProvider(messageSource: MessageSource, locale: Locale) = simpleData
 > [!TIP]
 > [템플릿 다운로드 (rich_sample_template.xlsx)](../../src/test/resources/templates/rich_sample_template.xlsx)
 
-![템플릿](../../src/main/resources/sample/screenshot_template.png)
+![템플릿](../images/rich_sample_template.png)
 
 템플릿 구성:
 - **변수 마커**: `${reportTitle}`, `${period}`, `${author}`, `${reportDate}`, `${subtitle_emp}`
@@ -1338,7 +1338,7 @@ fun main() {
 
 ### 결과
 
-![결과](../../src/main/resources/sample/screenshot_result.png)
+![결과](../images/rich_sample_result_en.png)
 
 TBEG이 자동으로 처리한 항목:
 - **변수 치환** -- 제목, 기간, 작성자, 날짜, 직원 실적 소제목

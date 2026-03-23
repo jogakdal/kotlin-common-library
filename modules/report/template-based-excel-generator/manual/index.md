@@ -77,7 +77,7 @@ ExcelGenerator().use { generator ->
 
 **템플릿**
 
-![템플릿](../src/main/resources/sample/screenshot_template.png)
+![템플릿](./images/rich_sample_template.png)
 
 Excel에서 서식, 수식, 조건부 서식, 차트를 자유롭게 디자인하고 데이터가 들어갈 자리에 마커(`${...}`)를 배치합니다.
 
@@ -106,7 +106,7 @@ ExcelGenerator().use { generator ->
 
 **결과**
 
-![결과](../src/main/resources/sample/screenshot_result.png)
+![결과](./images/rich_sample_result_en.png)
 
 TBEG이 자동으로 처리한 항목:
 - **변수 치환** -- 제목, 기간, 작성자, 날짜, 소제목
