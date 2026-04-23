@@ -15,21 +15,22 @@ import javax.xml.transform.stream.StreamResult
  *
  * @property integerIndex NUMERIC 정수용 변형 cellXf 인덱스
  * @property decimalIndex NUMERIC 소수용 변형 cellXf 인덱스
- * @property formulaIndex FORMULA용 변형 cellXf 인덱스
  */
 internal data class StyleVariants(
     val integerIndex: Int,
-    val decimalIndex: Int,
-    val formulaIndex: Int
+    val decimalIndex: Int
 )
 
 /**
- * styles.xml을 분석하여 numFmtId=0인 cellXf에 대한 변형을 추가한다.
+ * styles.xml을 분석하여 numFmtId=0인 cellXf에 대한 NUMERIC 변형을 추가한다.
  *
  * 변형 규칙:
- * - alignment=general인 경우: NUMERIC은 정렬을 RIGHT로 변경, FORMULA는 유지
+ * - alignment=general인 경우: 정렬을 RIGHT로 변경
  * - alignment!=general인 경우: 정렬을 그대로 유지
  * - 모든 변형에서 numFmtId를 config의 pivotIntegerFormatIndex 또는 pivotDecimalFormatIndex로 설정
+ *
+ * FORMULA 셀은 원본 스타일을 그대로 유지한다. 수식 결과 타입은 Excel이 런타임에 결정하며,
+ * 사용자가 템플릿에 명시한 서식을 보존하는 것이 TBEG의 원칙이다.
  */
 internal object StylesXmlHandler {
 
@@ -71,7 +72,6 @@ internal object StylesXmlHandler {
         for (target in targets) {
             val intIdx = nextIndex++
             val decIdx = nextIndex++
-            val fmtIdx = nextIndex++
 
             // 정수 NUMERIC 변형
             cellXfs.appendChild(createVariantXf(doc, target.element, config.pivotIntegerFormatIndex,
@@ -79,11 +79,8 @@ internal object StylesXmlHandler {
             // 소수 NUMERIC 변형
             cellXfs.appendChild(createVariantXf(doc, target.element, config.pivotDecimalFormatIndex,
                 applyRightAlignment = target.isAlignmentGeneral))
-            // FORMULA 변형 (정렬 변경 없음)
-            cellXfs.appendChild(createVariantXf(doc, target.element, config.pivotIntegerFormatIndex,
-                applyRightAlignment = false))
 
-            mapping[target.index] = StyleVariants(intIdx, decIdx, fmtIdx)
+            mapping[target.index] = StyleVariants(intIdx, decIdx)
         }
 
         // cellXfs count 속성 업데이트
