@@ -111,13 +111,21 @@ internal object StylesXmlHandler {
         clone.setAttribute("applyNumberFormat", "1")
 
         if (applyRightAlignment) {
+            clone.setAttribute("applyAlignment", "1")
             val alignments = clone.getElementsByTagName("alignment")
             if (alignments.length > 0) {
                 (alignments.item(0) as Element).setAttribute("horizontal", "right")
             } else {
                 val alignment = doc.createElement("alignment")
                 alignment.setAttribute("horizontal", "right")
-                clone.appendChild(alignment)
+                // OOXML CT_Xf 자식 순서는 alignment -> protection -> extLst를 요구한다.
+                // protection이 이미 있으면 그 앞에 삽입해야 스키마 위반을 피한다.
+                val protection = clone.getElementsByTagName("protection").item(0)
+                if (protection != null) {
+                    clone.insertBefore(alignment, protection)
+                } else {
+                    clone.appendChild(alignment)
+                }
             }
         }
 
