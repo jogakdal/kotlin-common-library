@@ -110,8 +110,6 @@ src/main/kotlin/com/hunet/common/tbeg/
 │   │   └── processors/                     # 개별 프로세서
 │   │       ├── ChartExtractProcessor.kt
 │   │       ├── ChartRestoreProcessor.kt
-│   │       ├── MetadataProcessor.kt        # 메타데이터 적용 (독립 사용 가능)
-│   │       ├── NumberFormatProcessor.kt    # 숫자 서식 적용 (독립 사용 가능)
 │   │       ├── PivotExtractProcessor.kt
 │   │       ├── PivotRecreateProcessor.kt
 │   │       ├── TemplateRenderProcessor.kt
@@ -915,14 +913,11 @@ bundle 있으면:
 - 소수: `pivotDecimalFormatIndex` (기본값 4, `#,##0.00`)
 
 #### 5.2 수식 셀의 숫자 서식
-변수형 마커(`${var}`)에 `=`로 시작하는 값을 바인딩하여 수식으로 치환된 셀도 동일하게 숫자 서식이 적용됩니다.
+**수식 셀(`<f>` 자식 요소가 있는 셀)에는 자동 숫자 서식을 적용하지 않습니다.** 수식 결과 타입은 Excel이 런타임에 결정하므로, TBEG이 사전에 서식을 결정하면 사용자 의도와 충돌할 수 있습니다(예: `IFERROR(VLOOKUP(...), "")`처럼 결과가 문자열인 경우).
 
-- 수식 결과 타입을 사전에 알 수 없으므로 정수 포맷(`#,##0`)을 기본 적용합니다
-- 정렬은 GENERAL을 유지하여 Excel이 수식 결과 타입에 따라 자동 결정합니다
-- 이미 특정 서식이 설정된 수식 셀(템플릿에서 직접 지정)은 변경하지 않습니다
-- 소수점이 필요한 수식(비율, 평균 등)은 템플릿 셀에 원하는 서식을 직접 지정합니다
+수식 셀에 숫자 서식이 필요하면 템플릿 셀에 직접 서식을 지정합니다.
 
-> **구현**: `NumberFormatProcessor`에서 `CellType.FORMULA` 분기로 처리
+> **구현**: `SheetXmlHandler.processCellElement`의 `hasFormula` 분기에서 `styleMapping`을 적용하지 않고 원본 스타일 인덱스를 유지함.
 
 #### 5.3 자동 정렬 지정 조건
 라이브러리에 의해 자동 생성된 값이 숫자 타입이고, 해당 셀의 정렬이 "일반"인 경우 자동으로 오른쪽 정렬을 적용합니다. 수식 셀에는 정렬을 적용하지 않습니다.
@@ -1035,7 +1030,6 @@ hunet:
 | 클래스                     | 캐시                         | 용도        |
 |-------------------------|----------------------------|-----------|
 | `PivotTableProcessor`   | `styleCache` (synchronizedMap + WeakHashMap) | 피벗 셀 스타일  |
-| `NumberFormatProcessor` | `styleCache`               | 숫자 서식 스타일 |
 
 ### 필드 캐싱
 

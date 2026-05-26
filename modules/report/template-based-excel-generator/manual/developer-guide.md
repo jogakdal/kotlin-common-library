@@ -91,11 +91,11 @@ com.hunet.common.tbeg/
    1. ChartExtractProcessor       - 차트 추출 (스트리밍 처리 시 손실 방지)
    2. PivotExtractProcessor       - 피벗 테이블 정보 추출
    3. TemplateRenderProcessor     - 템플릿 렌더링 (데이터 바인딩)
-   4. NumberFormatProcessor       - 숫자/수식 셀 서식 적용
-   5. XmlVariableReplaceProcessor - XML 내 변수 치환
-   6. PivotRecreateProcessor      - 피벗 테이블 재생성
-   7. ChartRestoreProcessor       - 차트 복원
-   8. MetadataProcessor           - 문서 메타데이터 적용
+   4. ZipStreamPostProcessor      - ZIP 단일 패스 후처리
+                                    (NUMERIC 셀 자동 숫자 서식, 변수 치환,
+                                     메타데이터, absPath 제거)
+   5. PivotRecreateProcessor      - 피벗 테이블 재생성
+   6. ChartRestoreProcessor       - 차트 복원
 ───────────────────────────────────────────────────────────────
        │
        ▼
