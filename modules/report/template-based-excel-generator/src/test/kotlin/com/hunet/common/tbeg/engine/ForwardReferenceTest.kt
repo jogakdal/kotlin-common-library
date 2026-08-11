@@ -9,6 +9,7 @@ import com.hunet.common.tbeg.engine.rendering.FormulaAdjuster
 import com.hunet.common.tbeg.engine.rendering.PositionCalculator
 import com.hunet.common.tbeg.engine.rendering.RepeatDirection
 import com.hunet.common.tbeg.engine.rendering.RepeatRegionSpec
+import com.hunet.common.tbeg.engine.rendering.TemplateAnalyzer
 import com.hunet.common.tbeg.engine.rendering.TemplateRenderingEngine
 import org.apache.poi.ss.usermodel.CellType
 import org.apache.poi.xssf.streaming.SXSSFWorkbook
@@ -229,7 +230,7 @@ class ForwardReferenceTest {
 
         // TemplateAnalyzer로 분석
         println("\n=== TemplateAnalyzer 분석 결과 ===")
-        val analyzer = com.hunet.common.tbeg.engine.rendering.TemplateAnalyzer()
+        val analyzer = TemplateAnalyzer()
         val spec = analyzer.analyze(ByteArrayInputStream(templateBytes))
 
         val sheetSpec = spec.sheets[0]
@@ -296,7 +297,7 @@ class ForwardReferenceTest {
         // FormulaAdjuster.expandToRangeWithCalculator 테스트
         if (expansion != null) {
             val formula = "SUM(B3:B3)"
-            val (expanded, isSequential) = com.hunet.common.tbeg.engine.rendering.FormulaAdjuster
+            val (expanded, isSequential) = FormulaAdjuster
                 .expandToRangeWithCalculator(formula, expansion, 5)
             println("\n=== FormulaAdjuster.expandToRangeWithCalculator ===")
             println("  원본: $formula")
