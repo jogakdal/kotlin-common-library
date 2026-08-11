@@ -18,10 +18,10 @@ dependencies {
     kapt(commonLibs.springBootConfigProcessor)
 
     // Apache POI (Excel 처리)
-    implementation("org.apache.poi:poi-ooxml:5.2.5")
+    implementation("org.apache.poi:poi-ooxml:5.5.1")
 
     // Apache POI full schemas (피벗 테이블 XML 조작용)
-    implementation("org.apache.poi:poi-ooxml-full:5.2.5")
+    implementation("org.apache.poi:poi-ooxml-full:5.5.1")
 
     // Kotlin Coroutines (비동기 지원)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")

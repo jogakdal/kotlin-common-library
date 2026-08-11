@@ -298,5 +298,5 @@ fun main() {
 |     패키지      | `com.hunet.common.tbeg`  |
 |     Java     |          21 이상           |
 |    Kotlin    |          2.0 이상          |
-|  Apache POI  |      5.2.5 (전이 의존성)      |
+|  Apache POI  |      5.5.1 (전이 의존성)      |
 | Spring Boot  |       3.x (선택 사항)        |
