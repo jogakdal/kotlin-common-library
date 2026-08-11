@@ -297,8 +297,7 @@ class ForwardReferenceTest {
         // FormulaAdjuster.expandToRangeWithCalculator 테스트
         if (expansion != null) {
             val formula = "SUM(B3:B3)"
-            val (expanded, isSequential) = FormulaAdjuster
-                .expandToRangeWithCalculator(formula, expansion, 5)
+            val (expanded, isSequential) = FormulaAdjuster.expandToRangeWithCalculator(formula, expansion, 5)
             println("\n=== FormulaAdjuster.expandToRangeWithCalculator ===")
             println("  원본: $formula")
             println("  확장: $expanded")
