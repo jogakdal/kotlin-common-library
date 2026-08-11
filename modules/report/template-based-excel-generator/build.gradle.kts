@@ -42,6 +42,9 @@ dependencies {
 
     jmh("org.openjdk.jmh:jmh-core:1.37")
     jmh("org.openjdk.jmh:jmh-generator-annprocess:1.37")
+
+    // JXLS (성능 비교 벤치마크 전용 - TBEG과 동일한 POI 5.5.1 스택에서 측정)
+    jmh("org.jxls:jxls-poi:3.1.0")
 }
 
 tasks.withType<Test> { useJUnitPlatform() }
@@ -123,6 +126,19 @@ tasks.register<JavaExec>("runBenchmark") {
     jvmArgs = listOf("-Xms512m")
 }
 
+// TBEG vs JXLS 비교 벤치마크만 실행 (동일 POI 5.5.1 스택)
+tasks.register<JavaExec>("runJxlsComparison") {
+    group = "benchmark"
+    description = "TBEG vs JXLS 비교 벤치마크만 실행 (정리된 테이블 출력)"
+    dependsOn("jmhCompileGeneratedClasses")
+    classpath = sourceSets["jmh"].runtimeClasspath +
+        files(layout.buildDirectory.dir("jmh-generated-resources")) +
+        files(layout.buildDirectory.dir("jmh-generated-classes"))
+    mainClass.set("com.hunet.common.tbeg.benchmark.TbegBenchmarkRunner")
+    args = listOf("comparison")
+    maxHeapSize = "4g"
+    jvmArgs = listOf("-Xms512m")
+}
 // Rich Sample 실행 태스크 (시각적 데모용)
 tasks.register<JavaExec>("runRichSample") {
     group = "application"
