@@ -53,7 +53,8 @@ internal class TemplateRenderProcessor : ExcelProcessor {
         context.resultBytes = engine.process(
             ByteArrayInputStream(context.resultBytes),
             context.dataProvider,
-            requiredNames
+            requiredNames,
+            normalize = false  // absPath 제거·ZIP 정규화는 뒤이은 ZipStreamPostProcessor가 담당
         )
 
         // 차트 범위 조정을 위한 repeat 확장 정보 전달

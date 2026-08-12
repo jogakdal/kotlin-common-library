@@ -99,8 +99,11 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
         sxssfWorkbook.setInitialView()
     }
 
+    // ZIP 정규화(엔트리 size 확정)·absPath 제거는 상위가 담당한다:
+    // 파이프라인에서는 ZipStreamPostProcessor가, TemplateRenderingEngine 직접 사용 시에는
+    // process(normalize=true)의 removeAbsPath가 처리한다. 여기서는 SXSSF 산출물을 그대로 반환한다.
     override fun finalizeWorkbook(workbook: Workbook): ByteArray =
-        ByteArrayOutputStream().apply { workbook.write(this) }.toByteArray().removeAbsPath()
+        ByteArrayOutputStream().apply { workbook.write(this) }.toByteArray()
 
     // ========== 스트리밍 특화 로직 ==========
 
