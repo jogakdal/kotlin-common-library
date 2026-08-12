@@ -595,7 +595,7 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
         for (actualRow in 0 until totalRows) {
             val row = ctx.sheet.createRow(actualRow)
             val repeatHeight = writeRepeatCellsForRow(ctx, row, actualRow, state)
-            val staticHeight = writeStaticCellsForRow(ctx, row, actualRow)
+            val staticHeight = if (actualRow in ctx.staticActualRows) writeStaticCellsForRow(ctx, row, actualRow) else null
             maxOf(repeatHeight ?: 0, staticHeight ?: 0).takeIf { it > 0 }?.let { row.height = it }
         }
 
@@ -908,6 +908,14 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
         val downMergeTracker: MergeTracker = MergeTracker(RepeatDirection.DOWN),
         val rightMergeTracker: MergeTracker = MergeTracker(RepeatDirection.RIGHT)
     ) {
+        /** 정적 셀이 실제로 위치하는 actualRow 집합 (매 행 전체 스캔 방지) */
+        val staticActualRows: Set<Int> by lazy {
+            staticRowsWithCells.flatMapTo(HashSet()) { (rowSpec, cells) ->
+                val cols = if (cells.isEmpty()) listOf(0) else cells.map { it.columnIndex }
+                cols.map { col -> calculator.getFinalPosition(rowSpec.templateRowIndex, col).row }
+            }
+        }
+
         /** repeat 영역에 속한 행 인덱스 (건너뛰기용, 캐시) */
         val repeatRowIndices: Set<Int> by lazy {
             blueprint.repeatRegions.flatMap { it.area.rowRange }.toSet()
