@@ -370,7 +370,7 @@ ${merge(emp.dept)}
 
 ### 필드 숨기기 (hideable)
 
-repeat 확장 시 특정 필드(열)를 조건에 따라 숨길 수 있다. 숨길 필드는 `ExcelDataProvider.getHideFields()`로 지정한다.
+repeat 확장 시 특정 필드(열)를 조건에 따라 숨길 수 있다. 숨길 필드는 `ExcelDataProvider.getHiddenFields()`로 지정한다.
 
 **텍스트 마커:**
 ```
@@ -403,7 +403,7 @@ ${hideable(emp.salary)}
 
 1. `HidePreprocessor`가 렌더링 파이프라인 전에 실행 (1st pass 전처리)
 2. 2-pass 스캔: 1st phase에서 repeat 변수명 파악, 2nd phase에서 ItemField/HideableField 식별
-3. `getHideFields()`에 지정된 필드에 대해 DELETE 또는 DIM 처리
+3. `getHiddenFields()`에 지정된 필드에 대해 DELETE 또는 DIM 처리
 4. 숨기지 않는 hideable 마커는 `${item.field}` 형태로 변환되어 일반 ItemField로 처리
 
 **DIM 모드 처리:**
