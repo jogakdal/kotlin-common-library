@@ -239,6 +239,11 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
             sheet, blueprint.repeatRegions, collectionSizes, calculator
         )
 
+        // 데이터 유효성 확장 적용 (반복 영역과 겹치는 유효성의 sqref를 확장 범위로 넓힘)
+        context.sheetLayoutApplier.applyDataValidations(
+            sheet, blueprint.repeatRegions, data, maxRowOffset, collectionSizes, calculator
+        )
+
         // 차트 범위 조정을 위한 repeat 확장 정보 수집 (ChartRestoreProcessor에서 사용)
         if (repeatRegions.isNotEmpty()) {
             context.repeatExpansionInfos[sheet.sheetName] = with(ChartRangeAdjuster) {

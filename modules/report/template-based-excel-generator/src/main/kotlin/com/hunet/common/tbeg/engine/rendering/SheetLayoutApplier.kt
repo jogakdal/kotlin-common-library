@@ -63,6 +63,54 @@ internal class SheetLayoutApplier {
         }
     }
 
+    /**
+     * 데이터 유효성 확장 적용 (SXSSF 모드용).
+     *
+     * 반복 영역과 겹치는 데이터 유효성의 적용 범위(sqref)를 확장된 행/열 전체로 넓힌다.
+     * 제약조건(목록·수식 등)은 그대로 두고 sqref만 조정하므로 모든 유효성 타입이 보존된다.
+     * 범위 확장은 조건부 서식과 동일한 로직([expandRangeForConditionalFormatting])을 재사용한다.
+     *
+     * @param collectionSizes 컬렉션 크기 맵 (스트리밍 모드에서 data에 컬렉션이 없을 때 사용)
+     */
+    fun applyDataValidations(
+        sheet: SXSSFSheet,
+        repeatRegions: List<RepeatRegionSpec>,
+        data: Map<String, Any>,
+        totalRowOffset: Int,
+        collectionSizes: CollectionSizes = CollectionSizes.EMPTY,
+        calculator: PositionCalculator? = null
+    ) {
+        if (repeatRegions.isEmpty()) return
+
+        val xssfSheet = (sheet.workbook as SXSSFWorkbook).xssfWorkbook.getSheetAt(sheet.workbook.getSheetIndex(sheet))
+        val ctWorksheet = xssfSheet.ctWorksheet
+        if (!ctWorksheet.isSetDataValidations) return
+
+        val maxRepeatEndRow = repeatRegions.maxOfOrNull { it.area.end.row } ?: -1
+        val ctValidations = ctWorksheet.dataValidations
+
+        for (i in 0 until ctValidations.sizeOfDataValidationArray()) {
+            val ctdv = ctValidations.getDataValidationArray(i)
+
+            @Suppress("UNCHECKED_CAST")
+            val originalTokens = (ctdv.sqref as? List<String>)?.takeIf { it.isNotEmpty() } ?: continue
+
+            // sqref는 공백 구분 다중 범위일 수 있다 (예: "B6 G12"). 각 범위를 독립적으로 확장한다.
+            val expandedRanges = originalTokens.flatMap { token ->
+                val range = runCatching { CellRangeAddress.valueOf(token) }.getOrNull()
+                    ?: return@flatMap emptyList<CellRangeAddress>()
+                expandRangeForConditionalFormatting(
+                    range, repeatRegions, data, collectionSizes, totalRowOffset, maxRepeatEndRow, calculator
+                )
+            }
+
+            // 확장 결과가 있을 때만 교체한다 (빈 컬렉션 등으로 비면 원본 sqref 유지).
+            if (expandedRanges.isNotEmpty()) {
+                ctdv.sqref = expandedRanges.map { it.formatAsString() }
+            }
+        }
+    }
+
     /** 조건부 서식 범위를 반복 영역에 맞게 확장 */
     private fun expandRangeForConditionalFormatting(
         range: CellRangeAddress,
