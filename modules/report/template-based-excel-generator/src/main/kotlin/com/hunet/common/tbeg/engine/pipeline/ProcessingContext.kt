@@ -23,7 +23,8 @@ internal class ProcessingContext(
     val templateBytes: ByteArray,
     val dataProvider: ExcelDataProvider,
     val config: TbegConfig,
-    val metadata: DocumentMetadata?
+    val metadata: DocumentMetadata?,
+    val hooks: CooperationHooks? = null
 ) {
     /**
      * 처리 결과 바이트 배열.

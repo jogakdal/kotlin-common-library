@@ -4,6 +4,7 @@ import com.hunet.common.tbeg.ExcelDataProvider
 import com.hunet.common.tbeg.engine.core.CollectionSizes
 import com.hunet.common.tbeg.engine.core.buildCollectionSizes
 import com.hunet.common.tbeg.engine.core.removeAbsPath
+import com.hunet.common.tbeg.engine.pipeline.CooperationHooks
 import com.hunet.common.tbeg.engine.rendering.ChartRangeAdjuster.RepeatExpansionInfo
 import com.hunet.common.lib.VariableProcessor
 import java.io.InputStream
@@ -30,7 +31,7 @@ import java.lang.reflect.Method
  * 명세 기반 순차 생성 (청사진 기반) 방식으로 동작한다.
  * 내부적으로 [StreamingRenderingStrategy]를 사용한다.
  */
-class TemplateRenderingEngine(
+internal class TemplateRenderingEngine(
     private val imageUrlCacheTtlSeconds: Long = 0
 ) {
     private val analyzer = TemplateAnalyzer()
@@ -56,7 +57,8 @@ class TemplateRenderingEngine(
     private fun createRenderingContext(
         streamingDataSource: StreamingDataSource? = null,
         collectionSizes: CollectionSizes = CollectionSizes.EMPTY,
-        hasPivot: Boolean = false
+        hasPivot: Boolean = false,
+        hooks: CooperationHooks? = null
     ) = RenderingContext(
         analyzer = analyzer,
         imageInserter = imageInserter,
@@ -66,14 +68,15 @@ class TemplateRenderingEngine(
         streamingDataSource = streamingDataSource,
         collectionSizes = collectionSizes,
         imageUrlCacheTtlSeconds = imageUrlCacheTtlSeconds,
-        hasPivot = hasPivot
+        hasPivot = hasPivot,
+        hooks = hooks
     )
 
     /**
      * 템플릿에 데이터를 바인딩하여 Excel 생성
      */
-    fun process(template: InputStream, data: Map<String, Any>, normalize: Boolean = true, hasPivot: Boolean = false): ByteArray {
-        val renderingContext = createRenderingContext(hasPivot = hasPivot)
+    fun process(template: InputStream, data: Map<String, Any>, normalize: Boolean = true, hasPivot: Boolean = false, hooks: CooperationHooks? = null): ByteArray {
+        val renderingContext = createRenderingContext(hasPivot = hasPivot, hooks = hooks)
         val rendered = strategy.render(template.readBytes(), data, renderingContext)
         lastRepeatExpansionInfos = renderingContext.repeatExpansionInfos.toMap()
         // SXSSF 산출물의 ZIP 표준화(엔트리 size 확정)는 removeAbsPath가 담당한다.
@@ -94,7 +97,7 @@ class TemplateRenderingEngine(
      * @param dataProvider 데이터 제공자
      * @param requiredNames 템플릿에서 필요로 하는 데이터 이름 (선택적)
      */
-    fun process(template: InputStream, dataProvider: ExcelDataProvider, requiredNames: RequiredNames? = null, normalize: Boolean = true, hasPivot: Boolean = false): ByteArray {
+    fun process(template: InputStream, dataProvider: ExcelDataProvider, requiredNames: RequiredNames? = null, normalize: Boolean = true, hasPivot: Boolean = false, hooks: CooperationHooks? = null): ByteArray {
         val templateBytes = template.readBytes()
 
         // 컬렉션 크기 계산 (위치 계산용)
@@ -123,7 +126,8 @@ class TemplateRenderingEngine(
             val renderingContext = createRenderingContext(
                 streamingDataSource = streamingDataSource,
                 collectionSizes = collectionSizes,
-                hasPivot = hasPivot
+                hasPivot = hasPivot,
+                hooks = hooks
             )
             val rendered = strategy.render(templateBytes, simpleData, renderingContext)
             lastRepeatExpansionInfos = renderingContext.repeatExpansionInfos.toMap()

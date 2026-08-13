@@ -4,6 +4,7 @@ import com.hunet.common.tbeg.async.DefaultGenerationJob
 import com.hunet.common.tbeg.async.ExcelGenerationListener
 import com.hunet.common.tbeg.async.GenerationJob
 import com.hunet.common.tbeg.async.GenerationResult
+import com.hunet.common.tbeg.async.ProgressInfo
 import com.hunet.common.tbeg.engine.core.ChartProcessor
 import com.hunet.common.tbeg.engine.core.PivotTableProcessor
 import com.hunet.common.tbeg.engine.core.XmlVariableProcessor
@@ -11,8 +12,10 @@ import com.hunet.common.tbeg.engine.core.encryptExcel
 import com.hunet.common.tbeg.engine.core.encryptExcelTo
 import com.hunet.common.tbeg.engine.pipeline.TbegPipeline
 import com.hunet.common.tbeg.engine.pipeline.ProcessingContext
+import com.hunet.common.tbeg.engine.pipeline.CooperationHooks
 import com.hunet.common.tbeg.engine.pipeline.processors.*
 import com.hunet.common.tbeg.engine.preprocessing.HidePreprocessor
+import com.hunet.common.tbeg.exception.GenerationCancelledException
 import kotlinx.coroutines.*
 import kotlinx.coroutines.future.future
 import java.io.*
@@ -215,7 +218,8 @@ class ExcelGenerator @JvmOverloads constructor(
         dataProvider: ExcelDataProvider,
         outputDir: Path,
         baseFileName: String,
-        password: String? = null
+        password: String? = null,
+        hooks: CooperationHooks? = null
     ): Pair<Path, Int> {
         Files.createDirectories(outputDir)
         val outputPath = resolveOutputPath(outputDir, baseFileName)
@@ -224,14 +228,14 @@ class ExcelGenerator @JvmOverloads constructor(
             val effectivePassword = password.takeUnless { it.isNullOrBlank() }
             val rowsProcessed = effectivePassword?.let { pw ->
                 ByteArrayOutputStream().use { buffer ->
-                    processTemplate(template, dataProvider, buffer).also {
+                    processTemplate(template, dataProvider, buffer, hooks).also {
                         Files.newOutputStream(outputPath).use { out ->
                             buffer.toByteArray().encryptExcelTo(pw, out)
                         }
                     }
                 }
             } ?: Files.newOutputStream(outputPath).use { output ->
-                processTemplate(template, dataProvider, output)
+                processTemplate(template, dataProvider, output, hooks)
             }
             outputPath to rowsProcessed
         }.onFailure {
@@ -413,6 +417,12 @@ class ExcelGenerator @JvmOverloads constructor(
         val job = DefaultGenerationJob(jobId)
         val startTime = System.currentTimeMillis()
 
+        val hooks = CooperationHooks(
+            progressInterval = config.progressReportInterval,
+            onProgress = { processed -> listener?.onProgress(jobId, ProgressInfo(processed)) },
+            checkCancelled = { job.checkCancelled() }
+        )
+
         listener?.onStarted(jobId)
 
         scope.launch {
@@ -422,7 +432,12 @@ class ExcelGenerator @JvmOverloads constructor(
                     return@launch
                 }
 
-                val bytes = generate(template, dataProvider, password)
+                val bytes = ByteArrayOutputStream().use { buffer ->
+                    processTemplate(template, dataProvider, buffer, hooks)
+                    buffer.toByteArray()
+                }.let { generated ->
+                    password.takeUnless { it.isNullOrBlank() }?.let { generated.encryptExcel(it) } ?: generated
+                }
 
                 GenerationResult(
                     jobId = jobId,
@@ -433,8 +448,12 @@ class ExcelGenerator @JvmOverloads constructor(
                 job.complete(result)
                 listener?.onCompleted(jobId, result)
             }.onFailure { error ->
-                job.completeExceptionally(error as Exception)
-                listener?.onFailed(jobId, error)
+                if (error is GenerationCancelledException) {
+                    listener?.onCancelled(jobId)
+                } else {
+                    job.completeExceptionally(error as Exception)
+                    listener?.onFailed(jobId, error)
+                }
             }
         }
 
@@ -490,6 +509,12 @@ class ExcelGenerator @JvmOverloads constructor(
         val job = DefaultGenerationJob(jobId)
         val startTime = System.currentTimeMillis()
 
+        val hooks = CooperationHooks(
+            progressInterval = config.progressReportInterval,
+            onProgress = { processed -> listener?.onProgress(jobId, ProgressInfo(processed)) },
+            checkCancelled = { job.checkCancelled() }
+        )
+
         listener?.onStarted(jobId)
 
         scope.launch {
@@ -500,7 +525,7 @@ class ExcelGenerator @JvmOverloads constructor(
                 }
 
                 val (filePath, rowsProcessed) = generateToFileInternal(
-                    template, dataProvider, outputDir, baseFileName, password
+                    template, dataProvider, outputDir, baseFileName, password, hooks
                 )
 
                 GenerationResult(
@@ -513,8 +538,12 @@ class ExcelGenerator @JvmOverloads constructor(
                 job.complete(result)
                 listener?.onCompleted(jobId, result)
             }.onFailure { error ->
-                job.completeExceptionally(error as Exception)
-                listener?.onFailed(jobId, error)
+                if (error is GenerationCancelledException) {
+                    listener?.onCancelled(jobId)
+                } else {
+                    job.completeExceptionally(error as Exception)
+                    listener?.onFailed(jobId, error)
+                }
             }
         }
 
@@ -538,7 +567,8 @@ class ExcelGenerator @JvmOverloads constructor(
     private fun processTemplate(
         template: InputStream,
         dataProvider: ExcelDataProvider,
-        output: OutputStream
+        output: OutputStream,
+        hooks: CooperationHooks? = null
     ): Int {
         // 1st Pass: Hide 전처리 (hideFields가 지정된 경우에만)
         val preprocessor = HidePreprocessor(config)
@@ -548,7 +578,8 @@ class ExcelGenerator @JvmOverloads constructor(
             templateBytes = preprocessor.preprocess(template.readBytes(), dataProvider),
             dataProvider = dataProvider,
             config = config,
-            metadata = dataProvider.getMetadata()
+            metadata = dataProvider.getMetadata(),
+            hooks = hooks
         )
 
         // 파이프라인 실행

@@ -210,7 +210,7 @@ src/main/kotlin/com/hunet/common/tbeg/
 | 클래스                       | 역할                                          |
 |---------------------------|---------------------------------------------|
 | `GenerationJob`           | 비동기 작업 핸들 (취소, 대기 지원)                       |
-| `ExcelGenerationListener` | 콜백 인터페이스 (onStarted, onCompleted, onFailed) |
+| `ExcelGenerationListener` | 콜백 인터페이스 (onStarted, onProgress, onCompleted, onFailed, onCancelled) |
 | `GenerationResult`        | 생성 결과 DTO                                   |
 
 ---

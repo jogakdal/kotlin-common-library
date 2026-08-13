@@ -487,6 +487,7 @@ API 서버 등에서 즉시 응답 후 백그라운드 처리에 적합합니다
 import com.hunet.common.tbeg.ExcelGenerator
 import com.hunet.common.tbeg.async.ExcelGenerationListener
 import com.hunet.common.tbeg.async.GenerationResult
+import com.hunet.common.tbeg.async.ProgressInfo
 import java.nio.file.Path
 
 val job = generator.submitToFile(
@@ -497,6 +498,10 @@ val job = generator.submitToFile(
     listener = object : ExcelGenerationListener {
         override fun onStarted(jobId: String) {
             println("[시작] Job ID: $jobId")
+        }
+
+        override fun onProgress(jobId: String, progress: ProgressInfo) {
+            println("[진행] ${progress.processedRows}행 처리")
         }
 
         override fun onCompleted(jobId: String, result: GenerationResult) {

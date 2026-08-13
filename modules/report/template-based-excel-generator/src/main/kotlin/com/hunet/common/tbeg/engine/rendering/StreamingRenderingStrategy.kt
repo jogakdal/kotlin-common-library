@@ -3,6 +3,7 @@ package com.hunet.common.tbeg.engine.rendering
 import com.hunet.common.tbeg.ExcelDataProvider
 import com.hunet.common.tbeg.engine.core.*
 import com.hunet.common.tbeg.exception.FormulaExpansionException
+import com.hunet.common.tbeg.exception.GenerationCancelledException
 import org.apache.poi.ss.usermodel.*
 import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.streaming.SXSSFFormulaEvaluator
@@ -36,6 +37,9 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
 
     // 템플릿에서 추출한 스타일을 스트리밍 워크북에 매핑
     private var styleMap: Map<Short, CellStyle> = emptyMap()
+
+    // 진행률·취소 협조를 위한 누적 작성 행 수 (styleMap과 동일하게 호출별 인스턴스 상태)
+    private var rowsWritten = 0
 
     // ========== 추상 메서드 구현 ==========
 
@@ -578,6 +582,20 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
                     )
                 }
             }
+            reportRowAndCheckCancel(ctx.context)
+        }
+    }
+
+    /**
+     * 한 행을 작성한 뒤 호출한다: 협조적 취소 여부를 확인하고 진행률 콜백을 간격에 맞춰 발화한다.
+     * 훅이 없으면(동기 생성 경로) 아무 동작도 하지 않으므로 오버헤드가 없다.
+     */
+    private fun reportRowAndCheckCancel(context: RenderingContext) {
+        val hooks = context.hooks ?: return
+        if (hooks.checkCancelled()) throw GenerationCancelledException()
+        rowsWritten++
+        if (hooks.progressInterval > 0 && rowsWritten % hooks.progressInterval == 0) {
+            hooks.onProgress(rowsWritten)
         }
     }
 
@@ -597,6 +615,7 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
             val repeatHeight = writeRepeatCellsForRow(ctx, row, actualRow, state)
             val staticHeight = if (actualRow in ctx.staticActualRows) writeStaticCellsForRow(ctx, row, actualRow) else null
             maxOf(repeatHeight ?: 0, staticHeight ?: 0).takeIf { it > 0 }?.let { row.height = it }
+            reportRowAndCheckCancel(ctx.context)
         }
 
         state.checkRemainingItems()
