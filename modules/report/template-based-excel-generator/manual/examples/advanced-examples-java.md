@@ -726,6 +726,7 @@ import com.hunet.common.tbeg.ExcelGenerator;
 import com.hunet.common.tbeg.SimpleDataProvider;
 import com.hunet.common.tbeg.async.ExcelGenerationListener;
 import com.hunet.common.tbeg.async.GenerationResult;
+import com.hunet.common.tbeg.async.ProgressInfo;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.*;
@@ -756,6 +757,11 @@ public class BackgroundJobExample {
                 @Override
                 public void onStarted(String jobId) {
                     System.out.println("[시작] Job ID: " + jobId);
+                }
+
+                @Override
+                public void onProgress(String jobId, ProgressInfo progress) {
+                    System.out.println("[진행] " + progress.getProcessedRows() + "행 처리");
                 }
 
                 @Override
