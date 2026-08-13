@@ -11,6 +11,7 @@ import org.apache.poi.ss.usermodel.VerticalAlignment
 import org.apache.poi.ss.usermodel.Workbook
 import org.apache.poi.xssf.usermodel.XSSFCell
 import org.apache.poi.xssf.usermodel.XSSFCellStyle
+import org.apache.poi.xssf.streaming.SXSSFWorkbook
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import org.openxmlformats.schemas.spreadsheetml.x2006.main.STCellType
 import java.net.HttpURLConnection
@@ -155,13 +156,13 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
 
             is CellContent.Variable -> {
                 val evaluated = context.evaluateText(content.originalText, data)
-                setValueOrFormula(cell, evaluated)
+                setValueOrFormula(cell, evaluated, context.hasPivot)
             }
 
             is CellContent.ItemField -> {
                 val item = data[content.itemVariable]
                 val value = context.resolveFieldPath(item, content.fieldPath)
-                setValueOrFormula(cell, value)
+                setValueOrFormula(cell, value, context.hasPivot)
             }
 
             is CellContent.Formula -> {
@@ -194,11 +195,11 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
                 val value = context.resolveFieldPath(item, content.fieldPath)
                 if (mergeTracker != null) {
                     if (mergeTracker.track(cell.columnIndex, cell.rowIndex, value)) {
-                        setValueOrFormula(cell, value)  // 새 그룹 시작 -> 값 쓰기
+                        setValueOrFormula(cell, value, context.hasPivot)  // 새 그룹 시작 -> 값 쓰기
                     }
                     // false면 셀을 비워둠 (병합될 예정)
                 } else {
-                    setValueOrFormula(cell, value)  // tracker 없으면 단순 치환
+                    setValueOrFormula(cell, value, context.hasPivot)  // tracker 없으면 단순 치환
                 }
             }
 
@@ -210,7 +211,7 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
                 // hideFields가 없거나 해당 필드가 hide 대상이 아니면 ItemField처럼 동작한다
                 val item = data[content.itemVariable]
                 val value = context.resolveFieldPath(item, content.fieldPath)
-                setValueOrFormula(cell, value)
+                setValueOrFormula(cell, value, context.hasPivot)
             }
         }
         sanitizeCellXml(cell)
@@ -537,6 +538,26 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
         }
     }
 
+    /** 렌더링 시점 자동 숫자 서식용 스타일 캐시 (렌더링 전략은 호출별 인스턴스라 스레드 안전) */
+    private val autoNumberStyleCache = mutableMapOf<String, XSSFCellStyle>()
+
+    /**
+     * 피벗이 없을 때, 서식이 없는(dataFormat=0) 숫자 셀에 자동 숫자 서식을 렌더링 시점에 적용한다.
+     * 피벗이 있으면 후처리(StylesXmlHandler/SheetXmlHandler)가 서식을 담당하므로 건너뛴다.
+     */
+    protected fun applyAutoNumberFormatIfNeeded(cell: Cell, value: Any?, hasPivot: Boolean) {
+        if (hasPivot || value !is Number) return
+        val original = cell.cellStyle as? XSSFCellStyle ?: return
+        if (original.dataFormat.toInt() != 0) return
+        val workbook = when (val wb = cell.sheet.workbook) {
+            is SXSSFWorkbook -> wb.xssfWorkbook
+            is XSSFWorkbook -> wb
+            else -> return
+        }
+        val d = value.toDouble()
+        cell.cellStyle = getOrCreateNumberStyle(autoNumberStyleCache, workbook, original, d == d.toLong().toDouble())
+    }
+
     // ========== 셀 XML 정리 ==========
 
     /**
@@ -583,10 +604,11 @@ internal abstract class AbstractRenderingStrategy : RenderingStrategy {
      * 값이 "="로 시작하는 문자열이면 수식으로, 아니면 일반 값으로 설정한다.
      * 사용자 데이터가 바인딩되는 경로(Variable, ItemField, MergeField)에서 사용한다.
      */
-    protected fun setValueOrFormula(cell: Cell, value: Any?) {
+    protected fun setValueOrFormula(cell: Cell, value: Any?, hasPivot: Boolean = false) {
         if (value is String && value.startsWith("=")) {
             cell.cellFormula = value.removePrefix("=")
         } else {
+            applyAutoNumberFormatIfNeeded(cell, value, hasPivot)
             setCellValue(cell, value)
         }
     }

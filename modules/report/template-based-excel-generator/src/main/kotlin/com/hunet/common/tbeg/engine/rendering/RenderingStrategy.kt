@@ -57,5 +57,7 @@ internal data class RenderingContext(
      */
     val repeatExpansionInfos: MutableMap<String, List<RepeatExpansionInfo>> = mutableMapOf(),
     /** 이미지 URL 다운로드 캐시 TTL (초). 0이면 호출 간 캐싱 안 함. */
-    val imageUrlCacheTtlSeconds: Long = 0
+    val imageUrlCacheTtlSeconds: Long = 0,
+    /** 피벗 테이블 존재 여부. 없으면 자동 숫자 서식을 렌더링 시점에 적용해 후처리 sheet 재작성을 피한다. */
+    val hasPivot: Boolean = false
 )

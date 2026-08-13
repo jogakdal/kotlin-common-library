@@ -24,9 +24,15 @@ object TbegBenchmarkRunner {
         println("================================================================")
         printEnvironment()
 
-        runDataModeBenchmark()
-        runOutputModeBenchmark()
-        runLargeScaleBenchmark()
+        when (args.firstOrNull()) {
+            "comparison" -> runJxlsComparison()
+            else -> {
+                runDataModeBenchmark()
+                runOutputModeBenchmark()
+                runLargeScaleBenchmark()
+                runJxlsComparison()
+            }
+        }
 
         println("================================================================")
     }
@@ -101,6 +107,48 @@ object TbegBenchmarkRunner {
 
         val results = Runner(options).run()
         printLargeScaleTable(results)
+    }
+
+    private fun runJxlsComparison() {
+        println("\n[4] TBEG vs JXLS 비교 (동일 POI 5.5.1 스택, 3컬럼 repeat + SUM)")
+        println("    비스트리밍: TBEG Map vs JXLS STREAMING_OFF / 스트리밍: TBEG DataProvider vs JXLS STREAMING_ON")
+        println()
+
+        val options = OptionsBuilder()
+            .include(DataModeBenchmark::class.java.simpleName)
+            .include(JxlsComparisonBenchmark::class.java.simpleName)
+            .forks(1)
+            .warmupIterations(1)
+            .measurementIterations(3)
+            .jvmArgs("-Xms512m", "-Xmx4g")
+            .addProfiler("gc")
+            .build()
+
+        val results = Runner(options).run()
+        printComparisonTable(results)
+    }
+
+    private fun printComparisonTable(results: Collection<RunResult>) {
+        val byKey = results.associateBy { "${it.paramValue("rowCount")}:${it.methodName()}" }
+        val rowCounts = results.map { it.paramValue("rowCount").toInt() }.distinct().sorted()
+
+        println("| 데이터 크기    | 모드      | TBEG      | JXLS      | JXLS/TBEG |")
+        println("|------------|---------|-----------|-----------|-----------|")
+        for (rc in rowCounts) {
+            printComparisonRow(rc, "비스트리밍", byKey["$rc:map"], byKey["$rc:jxlsMemory"])
+            printComparisonRow(rc, "스트리밍", byKey["$rc:dataProvider"], byKey["$rc:jxlsStreaming"])
+        }
+    }
+
+    private fun printComparisonRow(rowCount: Int, mode: String, tbeg: RunResult?, jxls: RunResult?) {
+        val tbegMs = tbeg?.primaryResult?.score ?: 0.0
+        val jxlsMs = jxls?.primaryResult?.score ?: 0.0
+        val ratio = if (tbegMs > 0) jxlsMs / tbegMs else 0.0
+        println(
+            "| %10s | %-7s | %9s | %9s | %8.2f배 |".format(
+                formatRowCount(rowCount.toString()), mode, formatMs(tbegMs), formatMs(jxlsMs), ratio
+            )
+        )
     }
 
     private fun printDataModeTable(results: Collection<RunResult>) {

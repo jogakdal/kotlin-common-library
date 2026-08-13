@@ -2,6 +2,8 @@
 
 Excel 보고서 생성 라이브러리를 선택할 때 참고할 수 있도록, TBEG과 유사한 템플릿 기반 라이브러리인 JXLS, JETT, ExcelReportGenerator(ERG)를 비교합니다.
 
+> JXLS과 TBEG의 항목별 상세 비교(기능·성능·편의)는 [JXLS 상세 비교](./jxls-comparison.md)를 참조하세요.
+
 ---
 
 ## 1. 비교 대상

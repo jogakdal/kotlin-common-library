@@ -3,6 +3,7 @@ package com.hunet.common.tbeg.engine.rendering
 import com.hunet.common.tbeg.ExcelDataProvider
 import com.hunet.common.tbeg.engine.core.CollectionSizes
 import com.hunet.common.tbeg.engine.core.buildCollectionSizes
+import com.hunet.common.tbeg.engine.core.removeAbsPath
 import com.hunet.common.tbeg.engine.rendering.ChartRangeAdjuster.RepeatExpansionInfo
 import com.hunet.common.lib.VariableProcessor
 import java.io.InputStream
@@ -54,7 +55,8 @@ class TemplateRenderingEngine(
      */
     private fun createRenderingContext(
         streamingDataSource: StreamingDataSource? = null,
-        collectionSizes: CollectionSizes = CollectionSizes.EMPTY
+        collectionSizes: CollectionSizes = CollectionSizes.EMPTY,
+        hasPivot: Boolean = false
     ) = RenderingContext(
         analyzer = analyzer,
         imageInserter = imageInserter,
@@ -63,17 +65,20 @@ class TemplateRenderingEngine(
         resolveFieldPath = ::resolveFieldPath,
         streamingDataSource = streamingDataSource,
         collectionSizes = collectionSizes,
-        imageUrlCacheTtlSeconds = imageUrlCacheTtlSeconds
+        imageUrlCacheTtlSeconds = imageUrlCacheTtlSeconds,
+        hasPivot = hasPivot
     )
 
     /**
      * 템플릿에 데이터를 바인딩하여 Excel 생성
      */
-    fun process(template: InputStream, data: Map<String, Any>): ByteArray {
-        val renderingContext = createRenderingContext()
-        return strategy.render(template.readBytes(), data, renderingContext).also {
-            lastRepeatExpansionInfos = renderingContext.repeatExpansionInfos.toMap()
-        }
+    fun process(template: InputStream, data: Map<String, Any>, normalize: Boolean = true, hasPivot: Boolean = false): ByteArray {
+        val renderingContext = createRenderingContext(hasPivot = hasPivot)
+        val rendered = strategy.render(template.readBytes(), data, renderingContext)
+        lastRepeatExpansionInfos = renderingContext.repeatExpansionInfos.toMap()
+        // SXSSF 산출물의 ZIP 표준화(엔트리 size 확정)는 removeAbsPath가 담당한다.
+        // 파이프라인(ExcelGenerator)에서는 ZipStreamPost가 정규화하므로 normalize=false로 호출된다.
+        return if (normalize) rendered.removeAbsPath() else rendered
     }
 
     /**
@@ -89,7 +94,7 @@ class TemplateRenderingEngine(
      * @param dataProvider 데이터 제공자
      * @param requiredNames 템플릿에서 필요로 하는 데이터 이름 (선택적)
      */
-    fun process(template: InputStream, dataProvider: ExcelDataProvider, requiredNames: RequiredNames? = null): ByteArray {
+    fun process(template: InputStream, dataProvider: ExcelDataProvider, requiredNames: RequiredNames? = null, normalize: Boolean = true, hasPivot: Boolean = false): ByteArray {
         val templateBytes = template.readBytes()
 
         // 컬렉션 크기 계산 (위치 계산용)
@@ -117,11 +122,12 @@ class TemplateRenderingEngine(
         return streamingDataSource.use { streamingDataSource ->
             val renderingContext = createRenderingContext(
                 streamingDataSource = streamingDataSource,
-                collectionSizes = collectionSizes
+                collectionSizes = collectionSizes,
+                hasPivot = hasPivot
             )
-            strategy.render(templateBytes, simpleData, renderingContext).also {
-                lastRepeatExpansionInfos = renderingContext.repeatExpansionInfos.toMap()
-            }
+            val rendered = strategy.render(templateBytes, simpleData, renderingContext)
+            lastRepeatExpansionInfos = renderingContext.repeatExpansionInfos.toMap()
+            if (normalize) rendered.removeAbsPath() else rendered
         }
     }
 

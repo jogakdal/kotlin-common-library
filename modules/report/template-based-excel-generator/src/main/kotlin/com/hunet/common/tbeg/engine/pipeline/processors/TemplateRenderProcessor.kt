@@ -7,6 +7,7 @@ import com.hunet.common.tbeg.engine.pipeline.ProcessingContext
 import com.hunet.common.tbeg.engine.rendering.RequiredNames
 import com.hunet.common.tbeg.engine.rendering.TemplateAnalyzer
 import com.hunet.common.tbeg.engine.rendering.TemplateRenderingEngine
+import com.hunet.common.tbeg.engine.rendering.getCollectionSize
 import com.hunet.common.logging.commonLogger
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.ByteArrayInputStream
@@ -40,9 +41,9 @@ internal class TemplateRenderProcessor : ExcelProcessor {
         // 누락 데이터 검증
         validateMissingData(context, requiredNames)
 
-        // processedRowCount 계산 (필요한 컬렉션만 조회)
+        // processedRowCount 계산 (getItemCount로 O(1) 조회, 미제공 시에만 순회 폴백)
         context.processedRowCount = requiredNames.collections.sumOf { name ->
-            context.dataProvider.getItems(name)?.asSequence()?.count() ?: 0
+            getCollectionSize(context.dataProvider, name)
         }
 
         // 템플릿 렌더링
@@ -52,7 +53,9 @@ internal class TemplateRenderProcessor : ExcelProcessor {
         context.resultBytes = engine.process(
             ByteArrayInputStream(context.resultBytes),
             context.dataProvider,
-            requiredNames
+            requiredNames,
+            normalize = false,  // absPath 제거·ZIP 정규화는 뒤이은 ZipStreamPostProcessor가 담당
+            hasPivot = context.pivotTableInfos.isNotEmpty()  // 피벗 있으면 후처리가 숫자 서식을 담당
         )
 
         // 차트 범위 조정을 위한 repeat 확장 정보 전달
