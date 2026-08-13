@@ -55,7 +55,8 @@ class TemplateRenderingEngine(
      */
     private fun createRenderingContext(
         streamingDataSource: StreamingDataSource? = null,
-        collectionSizes: CollectionSizes = CollectionSizes.EMPTY
+        collectionSizes: CollectionSizes = CollectionSizes.EMPTY,
+        hasPivot: Boolean = false
     ) = RenderingContext(
         analyzer = analyzer,
         imageInserter = imageInserter,
@@ -64,14 +65,15 @@ class TemplateRenderingEngine(
         resolveFieldPath = ::resolveFieldPath,
         streamingDataSource = streamingDataSource,
         collectionSizes = collectionSizes,
-        imageUrlCacheTtlSeconds = imageUrlCacheTtlSeconds
+        imageUrlCacheTtlSeconds = imageUrlCacheTtlSeconds,
+        hasPivot = hasPivot
     )
 
     /**
      * 템플릿에 데이터를 바인딩하여 Excel 생성
      */
-    fun process(template: InputStream, data: Map<String, Any>, normalize: Boolean = true): ByteArray {
-        val renderingContext = createRenderingContext()
+    fun process(template: InputStream, data: Map<String, Any>, normalize: Boolean = true, hasPivot: Boolean = false): ByteArray {
+        val renderingContext = createRenderingContext(hasPivot = hasPivot)
         val rendered = strategy.render(template.readBytes(), data, renderingContext)
         lastRepeatExpansionInfos = renderingContext.repeatExpansionInfos.toMap()
         // SXSSF 산출물의 ZIP 표준화(엔트리 size 확정)는 removeAbsPath가 담당한다.
@@ -92,7 +94,7 @@ class TemplateRenderingEngine(
      * @param dataProvider 데이터 제공자
      * @param requiredNames 템플릿에서 필요로 하는 데이터 이름 (선택적)
      */
-    fun process(template: InputStream, dataProvider: ExcelDataProvider, requiredNames: RequiredNames? = null, normalize: Boolean = true): ByteArray {
+    fun process(template: InputStream, dataProvider: ExcelDataProvider, requiredNames: RequiredNames? = null, normalize: Boolean = true, hasPivot: Boolean = false): ByteArray {
         val templateBytes = template.readBytes()
 
         // 컬렉션 크기 계산 (위치 계산용)
@@ -120,7 +122,8 @@ class TemplateRenderingEngine(
         return streamingDataSource.use { streamingDataSource ->
             val renderingContext = createRenderingContext(
                 streamingDataSource = streamingDataSource,
-                collectionSizes = collectionSizes
+                collectionSizes = collectionSizes,
+                hasPivot = hasPivot
             )
             val rendered = strategy.render(templateBytes, simpleData, renderingContext)
             lastRepeatExpansionInfos = renderingContext.repeatExpansionInfos.toMap()

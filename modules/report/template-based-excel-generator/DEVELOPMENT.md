@@ -66,7 +66,7 @@
 | 1  | ChartExtract       | `ChartExtractProcessor`       | 차트 정보 추출 및 임시 제거        | 항상             |
 | 2  | PivotExtract       | `PivotExtractProcessor`       | 피벗 테이블 정보 추출            | 항상             |
 | 3  | TemplateRender     | `TemplateRenderProcessor`     | 템플릿 렌더링                 | 항상             |
-| 4  | ZipStreamPost      | `ZipStreamPostProcessor`      | 숫자 서식 + 메타데이터 + 변수 치환 + absPath 제거 (ZIP 단일 패스) | 항상             |
+| 4  | ZipStreamPost      | `ZipStreamPostProcessor`      | 숫자 서식 + 메타데이터 + 변수 치환 + absPath 제거 (ZipFile raw copy, 변형 엔트리만 재압축) | 항상             |
 | 5  | PivotRecreate      | `PivotRecreateProcessor`      | 피벗 테이블 재생성              | 피벗 존재 시        |
 | 6  | ChartRestore       | `ChartRestoreProcessor`       | 차트 복원 및 데이터 범위 조정       | 차트 존재 시        |
 
@@ -113,7 +113,7 @@ src/main/kotlin/com/hunet/common/tbeg/
 │   │       ├── PivotExtractProcessor.kt
 │   │       ├── PivotRecreateProcessor.kt
 │   │       ├── TemplateRenderProcessor.kt
-│   │       ├── ZipStreamPostProcessor.kt   # ZIP 단일 패스 통합 후처리
+│   │       ├── ZipStreamPostProcessor.kt   # ZipFile raw copy 통합 후처리
 │   │       └── zippost/                    # ZIP 후처리 핸들러
 │   │           ├── StylesXmlHandler.kt     #   styles.xml 숫자 서식 변형
 │   │           ├── SheetXmlHandler.kt      #   sheet*.xml 셀 스타일 교체 (StAX)
@@ -911,6 +911,8 @@ bundle 있으면:
 
 - 정수: `pivotIntegerFormatIndex` (기본값 3, `#,##0`)
 - 소수: `pivotDecimalFormatIndex` (기본값 4, `#,##0.00`)
+
+> **적용 시점 (1.2.5)**: 피벗 테이블이 **없으면** 렌더링 시점(`AbstractRenderingStrategy.applyAutoNumberFormatIfNeeded`)에 셀 스타일로 직접 적용한다. 이때 후처리(`StylesXmlHandler`/`SheetXmlHandler`)가 sheet를 건드리지 않아 raw copy로 처리되어 대량 스트리밍 성능이 크게 향상된다. 피벗 테이블이 **있으면** 피벗 정합성을 위해 기존처럼 후처리(styles.xml 변형 + sheet 스타일 인덱스 교체)로 적용한다. 분기는 `RenderingContext.hasPivot`(= `pivotTableInfos.isNotEmpty()`)으로 결정된다. 단, 렌더링 시점 경로는 현재 내장 인덱스(3/4)를 사용하므로, 위 인덱스를 커스터마이즈한 경우 피벗 없는 경로에서는 반영되지 않는다(향후 개선 대상).
 
 #### 5.2 수식 셀의 숫자 서식
 **수식 셀(`<f>` 자식 요소가 있는 셀)에는 자동 숫자 서식을 적용하지 않습니다.** 수식 결과 타입은 Excel이 런타임에 결정하므로, TBEG이 사전에 서식을 결정하면 사용자 의도와 충돌할 수 있습니다(예: `IFERROR(VLOOKUP(...), "")`처럼 결과가 문자열인 경우).

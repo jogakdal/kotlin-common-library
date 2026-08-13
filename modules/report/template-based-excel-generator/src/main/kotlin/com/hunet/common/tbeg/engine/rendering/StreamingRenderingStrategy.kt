@@ -1156,6 +1156,7 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
                 repeatInfo.index, isStaticRow, columnIndex, actualRowIndex
             )
         } else {
+            applyAutoNumberFormatIfNeeded(cell, value, ctx.context.hasPivot)
             setCellValue(cell, value)
         }
     }
