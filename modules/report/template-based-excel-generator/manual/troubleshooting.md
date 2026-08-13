@@ -283,12 +283,12 @@ items("employees", count) {
 
 |      데이터 크기 |   예상 생성 시간 | 권장 방식                                             |
 |------------:|-----------:|:--------------------------------------------------|
-|     ~1,000행 |      ~20ms | Map 방식으로 충분합니다.                                   |
-|    ~10,000행 |     ~110ms | simpleDataProvider + count                        |
-|    ~50,000행 |     ~500ms | simpleDataProvider + count + DB Stream            |
-|   ~100,000행 |        ~1초 | simpleDataProvider + count + DB Stream            |
-|   ~500,000행 |        ~5초 | 커스텀 DataProvider + DB Stream + `generateToFile()` |
-| ~1,000,000행 |        ~9초 | 커스텀 DataProvider + DB Stream + `generateToFile()` |
+|     ~1,000행 |      ~13ms | Map 방식으로 충분합니다.                                   |
+|    ~10,000행 |      ~47ms | simpleDataProvider + count                        |
+|    ~50,000행 |     ~190ms | simpleDataProvider + count + DB Stream            |
+|   ~100,000행 |      ~0.4초 | simpleDataProvider + count + DB Stream            |
+|   ~500,000행 |      ~1.6초 | 커스텀 DataProvider + DB Stream + `generateToFile()` |
+| ~1,000,000행 |      ~3.2초 | 커스텀 DataProvider + DB Stream + `generateToFile()` |
 
 > 예상 생성 시간은 3개 컬럼 repeat + SUM 수식 기준(DataProvider + generateToFile)입니다. 컬럼 수, 수식 복잡도, 서버 사양에 따라 달라질 수 있습니다.
 
