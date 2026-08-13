@@ -73,6 +73,44 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
 
         // 시트 내용 클리어 (새로 생성)
         clearSheetContents(xssfWorkbook)
+
+        // 크로스시트 수식 조정용: 확장이 있는 시트만 확장 정보 사전 계산
+        precomputeSheetExpansions(blueprint, data, context)
+    }
+
+    /**
+     * 크로스시트 수식 조정을 위해, 반복 확장이 있는 시트의 확장 정보를 미리 계산해 context에 저장한다.
+     * 확장이 없는 시트는 등록하지 않으므로, 다른 시트에 확장이 없거나 단일 시트면 크로스시트 처리 대상이 없다.
+     * 이 계산은 데이터 행 수와 무관하게 마커/영역 위치만 계산한다(대용량에서도 저렴).
+     */
+    private fun precomputeSheetExpansions(
+        blueprint: WorkbookSpec,
+        data: Map<String, Any>,
+        context: RenderingContext
+    ) {
+        blueprint.sheets.forEach { sheetSpec ->
+            val repeatRegions = sheetSpec.repeatRegions
+            if (repeatRegions.isEmpty()) return@forEach
+
+            val collectionSizes = if (context.streamingDataSource != null) {
+                context.collectionSizes
+            } else {
+                PositionCalculator.extractCollectionSizes(data, repeatRegions)
+            }
+            val templateLastRow = sheetSpec.rows.maxOfOrNull { it.templateRowIndex } ?: 0
+            val calculator = PositionCalculator(
+                repeatRegions, collectionSizes, templateLastRow,
+                mergedRegions = sheetSpec.mergedRegions,
+                bundleRegions = sheetSpec.bundleRegions
+            )
+            calculator.calculate()
+
+            val expansions = calculator.getExpansions()
+            if (expansions.isNotEmpty()) {
+                context.sheetExpansions[sheetSpec.sheetName] =
+                    FormulaAdjuster.SheetExpansionInfo(expansions, collectionSizes)
+            }
+        }
     }
 
     override fun processSheet(
@@ -1267,6 +1305,13 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
                     result = expanded
                 }
             }
+        }
+
+        // 크로스시트 확장: 시트 접두사가 붙은 참조(다른 시트 및 자기 시트 명시)를 해당 시트의 확장에 맞춰 조정한다.
+        // 시트 구분자 '!'가 없으면 즉시 skip한다. 접두사 없는 자기 시트 참조는 위의 same-sheet 루프가 담당한다.
+        // (접두사 유무로 cross/same-sheet가 분리되므로 이중 처리는 없다.)
+        if ('!' in result && ctx.context.sheetExpansions.isNotEmpty()) {
+            result = FormulaAdjuster.expandToRangeWithCalculator(result, null, 1, ctx.context.sheetExpansions).formula
         }
 
         return result

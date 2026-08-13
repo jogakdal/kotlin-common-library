@@ -567,7 +567,7 @@ object FormulaAdjuster {
      */
     fun expandToRangeWithCalculator(
         formula: String,
-        expansion: PositionCalculator.RepeatExpansion,
+        expansion: PositionCalculator.RepeatExpansion?,
         itemCount: Int,
         otherSheetExpansions: Map<String, SheetExpansionInfo> = emptyMap()
     ): FormulaExpansionResult {
@@ -576,9 +576,10 @@ object FormulaAdjuster {
         // 0. 단일 셀 범위를 단일 셀 참조로 정규화 (B8:B8 -> B8)
         val normalizedFormula = normalizeSingleCellRanges(formula)
 
-        val region = expansion.region
-        val templateRowCount = region.area.rowRange.count
-        val templateColCount = region.area.colRange.count
+        // expansion이 null이면 현재 시트 확장은 없고 크로스시트 참조만 처리한다 (itemCount == 1)
+        val region = expansion?.region
+        val templateRowCount = region?.area?.rowRange?.count ?: 0
+        val templateColCount = region?.area?.colRange?.count ?: 0
 
         var isSequential = true
 
@@ -609,7 +610,7 @@ object FormulaAdjuster {
                     }
                 } else {
                     // 현재 시트 참조
-                    if (itemCount <= 1) {
+                    if (itemCount <= 1 || region == null || expansion == null) {
                         match.value
                     } else if (rowIndex !in region.area.rowRange || colIndex !in region.area.colRange) {
                         match.value
@@ -728,9 +729,9 @@ object FormulaAdjuster {
      */
     private fun expandRangeReferencesWithCalculator(
         formula: String,
-        expansion: PositionCalculator.RepeatExpansion,
+        expansion: PositionCalculator.RepeatExpansion?,
         itemCount: Int,
-        region: RepeatRegionSpec,
+        region: RepeatRegionSpec?,
         templateRowCount: Int,
         templateColCount: Int,
         otherSheetExpansions: Map<String, SheetExpansionInfo> = emptyMap()
@@ -750,7 +751,7 @@ object FormulaAdjuster {
             }
         } else {
             // 현재 시트 참조
-            if (itemCount <= 1) {
+            if (itemCount <= 1 || region == null || expansion == null) {
                 match.value
             } else {
                 // 끝 셀이 repeat 영역 내에 있는지 확인
