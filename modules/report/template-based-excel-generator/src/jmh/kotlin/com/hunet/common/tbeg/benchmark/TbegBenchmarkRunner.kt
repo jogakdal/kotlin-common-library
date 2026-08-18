@@ -122,6 +122,7 @@ object TbegBenchmarkRunner {
             .measurementIterations(3)
             .jvmArgs("-Xms512m", "-Xmx4g")
             .addProfiler("gc")
+            .addProfiler(CpuTimeProfiler::class.java)
             .build()
 
         val results = Runner(options).run()
@@ -132,21 +133,27 @@ object TbegBenchmarkRunner {
         val byKey = results.associateBy { "${it.paramValue("rowCount")}:${it.methodName()}" }
         val rowCounts = results.map { it.paramValue("rowCount").toInt() }.distinct().sorted()
 
-        println("| 데이터 크기    | 모드      | TBEG      | JXLS      | JXLS/TBEG |")
-        println("|------------|---------|-----------|-----------|-----------|")
+        println("| 데이터 크기    | 모드      | 라이브러리  | 소요 시간   | CPU/전체 | CPU/코어 | 힙 할당량    | GC 횟수 | GC 시간  |")
+        println("|------------|---------|--------|---------|--------|--------|----------|-------|--------|")
         for (rc in rowCounts) {
-            printComparisonRow(rc, "비스트리밍", byKey["$rc:map"], byKey["$rc:jxlsMemory"])
-            printComparisonRow(rc, "스트리밍", byKey["$rc:dataProvider"], byKey["$rc:jxlsStreaming"])
+            printComparisonRow(rc, "비스트리밍", "TBEG", byKey["$rc:map"])
+            printComparisonRow(rc, "비스트리밍", "JXLS", byKey["$rc:jxlsMemory"])
+            printComparisonRow(rc, "스트리밍", "TBEG", byKey["$rc:dataProvider"])
+            printComparisonRow(rc, "스트리밍", "JXLS", byKey["$rc:jxlsStreaming"])
         }
     }
 
-    private fun printComparisonRow(rowCount: Int, mode: String, tbeg: RunResult?, jxls: RunResult?) {
-        val tbegMs = tbeg?.primaryResult?.score ?: 0.0
-        val jxlsMs = jxls?.primaryResult?.score ?: 0.0
-        val ratio = if (tbegMs > 0) jxlsMs / tbegMs else 0.0
+    private fun printComparisonRow(rowCount: Int, mode: String, lib: String, result: RunResult?) {
+        if (result == null) return
         println(
-            "| %10s | %-7s | %9s | %9s | %8.2f배 |".format(
-                formatRowCount(rowCount.toString()), mode, formatMs(tbegMs), formatMs(jxlsMs), ratio
+            "| %10s | %-7s | %-6s | %7s | %6s | %6s | %8s | %5s | %6s |".format(
+                formatRowCount(rowCount.toString()), mode, lib,
+                formatMs(result.primaryResult.score),
+                formatPercent(result.metric(CPU_PER_CORE)),
+                formatPercent(result.metric(CPU_SYSTEM)),
+                bytesToMb(result.metric(GcMetrics.ALLOC_RATE)),
+                result.metric(GcMetrics.GC_COUNT).toLong().toString(),
+                formatMs(result.metric(GcMetrics.GC_TIME))
             )
         )
     }
