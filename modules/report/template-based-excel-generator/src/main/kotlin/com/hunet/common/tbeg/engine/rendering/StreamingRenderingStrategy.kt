@@ -112,6 +112,7 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
             if (expansions.isNotEmpty()) {
                 context.sheetExpansions[sheetSpec.sheetName] =
                     FormulaAdjuster.SheetExpansionInfo(expansions, collectionSizes)
+                context.sheetCalculators[sheetSpec.sheetName] = calculator
             }
         }
     }
@@ -157,7 +158,7 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
         workbook.allNames.forEach { name ->
             val refers = runCatching { name.refersToFormula }.getOrNull() ?: return@forEach
             if (refers.contains("#REF!")) return@forEach
-            val expanded = computeExpandedNamedRange(refers, context.sheetExpansions, version) ?: return@forEach
+            val expanded = computeExpandedNamedRange(refers, context.sheetExpansions, context.sheetCalculators, version) ?: return@forEach
             runCatching { name.refersToFormula = expanded }
         }
     }
@@ -170,6 +171,7 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
     private fun computeExpandedNamedRange(
         refersToFormula: String,
         sheetExpansions: Map<String, FormulaAdjuster.SheetExpansionInfo>,
+        sheetCalculators: Map<String, PositionCalculator>,
         version: SpreadsheetVersion
     ): String? {
         val areaRef = runCatching { AreaReference(refersToFormula, version) }.getOrNull() ?: return null
@@ -177,9 +179,15 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
         val last = areaRef.lastCell
         val sheetName = first.sheetName ?: return null
         val sheetInfo = sheetExpansions[sheetName] ?: return null
+        val calculator = sheetCalculators[sheetName] ?: return null
 
         val endRowIndex = last.row
         val endColIndex = last.col.toInt()
+
+        // 시작 셀은 항상 최종 위치로 시프트한다 (다중 반복에서 대상 반복이 위쪽 반복에 밀린 경우 포함).
+        // getFinalPosition은 반복 내부 셀이면 item 0(=시프트된 시작), 밖이면 체이닝 누적을 반환한다.
+        val finalFirst = calculator.getFinalPosition(first.row, first.col.toInt())
+        val shiftedFirst = CellReference(sheetName, finalFirst.row, finalFirst.col, first.isRowAbsolute, first.isColAbsolute)
 
         for (expansion in sheetInfo.expansions) {
             val region = expansion.region
@@ -207,9 +215,21 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
                     CellReference(sheetName, last.row, newLastCol, last.isRowAbsolute, last.isColAbsolute)
                 }
             }
-            return AreaReference(first, newLast, version).formatAsString()
+            return AreaReference(shiftedFirst, newLast, version).formatAsString()
         }
-        return null
+
+        // 2. 끝이 어느 반복과도 겹치지 않으면 끝도 최종 위치로 시프트한다 (주위 요소 위치 보정).
+        //    getFinalPosition이 bundle·중첩 반복·다중 반복 누적까지 반영한다.
+        val finalLast = calculator.getFinalPosition(last.row, endColIndex)
+        if (finalFirst.row == first.row && finalFirst.col == first.col.toInt() &&
+            finalLast.row == last.row && finalLast.col == endColIndex
+        ) {
+            return null  // 위치 변화 없음
+        }
+        val shiftedLast = CellReference(
+            sheetName, finalLast.row, finalLast.col, last.isRowAbsolute, last.isColAbsolute
+        )
+        return AreaReference(shiftedFirst, shiftedLast, version).formatAsString()
     }
 
     // ZIP 정규화(엔트리 size 확정)·absPath 제거는 상위가 담당한다:

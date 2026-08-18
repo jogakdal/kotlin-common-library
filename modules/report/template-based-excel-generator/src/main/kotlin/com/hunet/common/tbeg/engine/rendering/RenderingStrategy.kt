@@ -64,5 +64,7 @@ internal data class RenderingContext(
     /** 진행률 보고·협조적 취소 훅. 비동기 생성에서만 전달되며, 동기 경로는 null. */
     val hooks: CooperationHooks? = null,
     /** 크로스시트 수식 조정용: 확장이 있는 시트별 확장 정보 (beforeProcessSheets에서 사전 계산). */
-    val sheetExpansions: MutableMap<String, FormulaAdjuster.SheetExpansionInfo> = mutableMapOf()
+    val sheetExpansions: MutableMap<String, FormulaAdjuster.SheetExpansionInfo> = mutableMapOf(),
+    /** named range 위치 보정용: 시트별 PositionCalculator (bundle·중첩 반복 포함 최종 위치 계산). */
+    val sheetCalculators: MutableMap<String, PositionCalculator> = mutableMapOf()
 )
