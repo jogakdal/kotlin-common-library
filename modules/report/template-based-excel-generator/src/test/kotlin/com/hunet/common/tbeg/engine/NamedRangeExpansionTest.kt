@@ -177,4 +177,87 @@ class NamedRangeExpansionTest {
             )
         }
     }
+
+    /** RIGHT(가로) 반복: 데이터 열(B2:B4)이 오른쪽으로 확장 */
+    private fun buildRightRepeatTemplate(): ByteArray =
+        XSSFWorkbook().use { wb ->
+            val sh = wb.createSheet("데이터")
+            // RIGHT 반복: 마커 A1, 데이터 B2:B4 (1열 3행이 오른쪽으로 반복)
+            sh.createRow(0).createCell(0).setCellValue("\${repeat(items, B2:B4, x, RIGHT)}")
+            sh.createRow(1).createCell(1).setCellValue("\${x.a}")
+            sh.createRow(2).createCell(1).setCellValue("\${x.b}")
+            sh.createRow(3).createCell(1).setCellValue("\${x.c}")
+            // named range = RIGHT 반복 데이터 열(B2:B4) — 오른쪽으로 열이 확대되어야 함
+            wb.createName().apply {
+                nameName = "rightData"
+                refersToFormula = "'데이터'!\$B\$2:\$B\$4"
+            }
+            ByteArrayOutputStream().apply { wb.write(this) }.toByteArray()
+        }
+
+    @Test
+    fun `RIGHT 반복 데이터 열을 가리키는 named range는 오른쪽으로 확대된다`() {
+        val data = mapOf(
+            "items" to (1..3).map { mapOf("a" to "a$it", "b" to "b$it", "c" to "c$it") }
+        )
+
+        val result = TemplateRenderingEngine().process(ByteArrayInputStream(buildRightRepeatTemplate()), data)
+
+        XSSFWorkbook(ByteArrayInputStream(result)).use { wb ->
+            val refers = wb.getName("rightData")?.refersToFormula
+                ?: error("named range rightData를 찾지 못했다")
+            // B2:B4가 items 3개로 오른쪽 확대 → B2:D4
+            assertTrue(
+                refers.replace("$", "").replace(" ", "").contains("B2:D4"),
+                "RIGHT 반복 데이터 named range가 열 방향으로 확대되지 않았다: $refers"
+            )
+        }
+    }
+
+    /** 단일 셀 named range(범위 아님)와 다중 영역(union) named range를 함께 둔 템플릿 */
+    private fun buildSingleAndMultiTemplate(): ByteArray =
+        XSSFWorkbook().use { wb ->
+            val sh = wb.createSheet("데이터")
+            sh.createRow(0).createCell(0).setCellValue("\${repeat(employees, A3:B3, emp)}")
+            sh.createRow(2).also { r ->
+                r.createCell(0).setCellValue("\${emp.name}")
+                r.createCell(1).setCellValue("\${emp.salary}")
+            }
+            // 단일 셀(범위 아님), repeat 아래 → 시프트 대상
+            wb.createName().apply {
+                nameName = "single"
+                refersToFormula = "'데이터'!\$A\$8"
+            }
+            // 다중 영역(union) → AreaReference 단일 파싱 실패로 안전하게 미조정(원본 유지)
+            wb.createName().apply {
+                nameName = "multi"
+                refersToFormula = "'데이터'!\$A\$8,'데이터'!\$C\$8"
+            }
+            ByteArrayOutputStream().apply { wb.write(this) }.toByteArray()
+        }
+
+    @Test
+    fun `단일 셀 named range는 시프트되고 다중 영역 named range는 원본을 유지한다`() {
+        val data = mapOf(
+            "employees" to (1..3).map { mapOf("name" to "이름$it", "salary" to (3000 + it)) }
+        )
+
+        val result = TemplateRenderingEngine().process(ByteArrayInputStream(buildSingleAndMultiTemplate()), data)
+
+        XSSFWorkbook(ByteArrayInputStream(result)).use { wb ->
+            // 단일 셀 A8(row7)은 repeat 확장(+2)에 밀려 A10으로 시프트
+            val single = wb.getName("single")?.refersToFormula ?: error("single을 찾지 못했다")
+            assertTrue(
+                single.replace("$", "").replace(" ", "").contains("A10"),
+                "단일 셀 named range가 시프트되지 않았다: $single"
+            )
+            // 다중 영역은 조정 대상이 아니므로 원본(A8, C8) 유지 — 오조정하지 않는지 확인
+            val multi = wb.getName("multi")?.refersToFormula ?: error("multi를 찾지 못했다")
+            assertTrue(
+                multi.replace("$", "").replace(" ", "").contains("A8") &&
+                    multi.replace("$", "").replace(" ", "").contains("C8"),
+                "다중 영역 named range가 예기치 않게 변경됐다: $multi"
+            )
+        }
+    }
 }
