@@ -30,6 +30,7 @@
 - 피벗 테이블 `refreshedDate`가 Excel 날짜 형식으로 기록되는지 검증하는 회귀 테스트를 추가했습니다.
 - 후처리(`ZipStreamPost`)를 `ZipFile` 기반 raw copy로 재작성하여, 변형이 필요한 엔트리만 재압축하고 나머지(특히 대용량 sheet)는 재압축 없이 복사합니다. SXSSF data-descriptor의 엔트리 size가 이 과정에서 정규화되어 `java.util.zip` 호환성도 확보됩니다.
 - 피벗 테이블이 없는 경우 자동 숫자 서식을 렌더링 시점에 적용하여, 후처리의 sheet 재작성·재압축을 생략합니다(10만 행 스트리밍 기준 약 2배 향상).
+- named range와 수식의 범위 좌표 조정을 `PositionCalculator.getExpandedRange`로 공통화하여, 관통·병렬·다중 반복 케이스를 일관되게 처리합니다.
 
 </details>
 

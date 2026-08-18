@@ -496,10 +496,11 @@ parser/
 | 자동 셀 병합    | 연속 같은 값 자동 병합        | `MergeTracker`            |
 | 차트         | 데이터 범위 자동 확장         | `ChartProcessor`          |
 | 피벗 테이블     | 소스 범위 자동 확장          | `PivotTableProcessor`     |
-| 수식 확장      | repeat 영역 참조 자동 확장   | `FormulaAdjuster`         |
+| 수식 확장      | repeat 영역 참조 자동 확장(크로스시트·관통 포함) | `FormulaAdjuster`  |
 | 셀 병합       | 위치 자동 조정             | `PositionCalculator`      |
-| 조건부 서식     | 범위 자동 조정             | `FormulaAdjuster`         |
+| 조건부 서식     | 범위 자동 조정             | `SheetLayoutApplier`      |
 | 데이터 유효성    | 적용 범위 자동 조정          | `SheetLayoutApplier`      |
+| 이름 정의(named range) | 참조 정의를 확장 범위로 갱신    | `StreamingRenderingStrategy` |
 | 머리글/바닥글    | 변수 치환 지원             | `XmlVariableProcessor`    |
 | 파일 암호화     | 열기 암호 설정             | `ExcelGenerator`          |
 | 필드 숨기기     | hideable 마커로 필드 삭제/DIM | `HidePreprocessor`        |
@@ -678,11 +679,19 @@ repeat 영역에 포함된 수식과 범위 참조는 확장량만큼 자동 조
 | 행 절대 (`B$3`)        | DOWN 방향 확장 안 함          |
 | 열 절대 (`$B3`)        | RIGHT 방향 확장 안 함         |
 | 다른 시트 (`Sheet2!B3`) | 해당 시트의 repeat 확장 정보로 처리 |
+| 이름 정의(named range) | 정의를 확장 범위로 갱신(수식은 그대로) |
+| 관통(시작=데이터 영역, 끝=아래) | 시작·끝을 독립 계산해 끝을 시프트 |
 
 **다른 시트 참조 처리:**
 - `expandToRangeWithCalculator()`에 `otherSheetExpansions` 파라미터로 다른 시트의 확장 정보 전달
 - `SheetExpansionInfo`에 시트별 `expansions`와 `collectionSizes` 포함
 - 시트 이름 추출: `Sheet1!` -> `"Sheet1"`, `'Sheet Name'!` -> `"Sheet Name"`
+
+**관통·범위 보정 공통화 (`PositionCalculator.getExpandedRange`):**
+- 시작이 repeat 데이터 영역, 끝이 그 아래인 "관통" 범위(`=SUM(B3:B10)`)는 시작을 유지하고 끝을 확장량만큼 시프트합니다(`=SUM(B3:B12)`).
+- named range와 수식은 범위 좌표 조정을 공유 메서드 `PositionCalculator.getExpandedRange`로 처리합니다: 끝이 repeat 안이면 마지막 아이템으로 확대, 밖이면 시프트하며, 시작·끝을 각 축에서 독립 계산해 여러 반복 영역(세로 나열=합, 병렬=max)과 관통을 모두 정합합니다.
+- 절대 참조 정책만 호출부가 담당합니다 — 수식은 절대 축을 고정하고, named range는 절대 표기여도 확장합니다(정의가 데이터 영역을 가리키므로). `getFinalRange`(병합·이미지용 강체 이동)와 구분됩니다.
+- named range는 `StreamingRenderingStrategy.expandNamedRanges`가 `afterProcessSheets`에서 정의(`refersToFormula`)를 재작성하며, 수식 문자열은 파싱하지 않아 문자열 리터럴 오조정 리스크가 없습니다. 3D 참조(`Sheet1:Sheet3!A1`)는 조정 대상이 아닙니다.
 
 **repeat 영역 밖 참조 시프트:**
 

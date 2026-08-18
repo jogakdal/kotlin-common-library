@@ -573,7 +573,7 @@ interface GenerationJob {
 | jobId | String | 작업 고유 ID |
 | isCompleted | Boolean | 작업 완료 여부 (성공/실패/취소 포함) |
 | isCancelled | Boolean | 작업 취소 여부 |
-| cancel() | Boolean | 작업 취소 시도, 성공 여부 반환 |
+| cancel() | Boolean | 작업 취소 시도, 성공 여부 반환. 생성 도중이면 렌더링을 중단하고 `onCancelled`를 발행하며, `submitToFile`은 생성 중이던 부분 파일을 자동 삭제 |
 | await() | GenerationResult | 작업 완료를 블로킹 방식으로 대기 |
 | awaitAsync() | GenerationResult | (suspend) 작업 완료를 비동기 방식으로 대기 |
 | toCompletableFuture() | CompletableFuture | Java에서 사용할 수 있는 Future 반환 |

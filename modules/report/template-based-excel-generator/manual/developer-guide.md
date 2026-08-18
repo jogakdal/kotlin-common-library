@@ -487,9 +487,12 @@ class PositionCalculator(
     fun getFinalPosition(templateRow: Int, templateCol: Int): CellCoord
     fun getFinalPosition(template: CellCoord): CellCoord
 
-    // 범위의 최종 위치 계산
+    // 범위의 최종 위치 계산 (병합·이미지용 강체 이동, 끝 확대 없음)
     fun getFinalRange(start: CellCoord, end: CellCoord): CellRangeAddress
     fun getFinalRange(range: CellRangeAddress): CellRangeAddress
+
+    // 범위를 repeat 확장에 맞춰 조정 (끝 확대 + 시작·끝 독립 시프트, 관통·병렬 반복 대응). named range·수식이 공유
+    fun getExpandedRange(firstRow: Int, firstCol: Int, lastRow: Int, lastCol: Int): CellRangeAddress
 
     // 실제 출력 행 정보 조회
     fun getRowInfo(actualRow: Int): RowInfo
