@@ -4,8 +4,11 @@ import com.hunet.common.tbeg.ExcelDataProvider
 import com.hunet.common.tbeg.engine.core.*
 import com.hunet.common.tbeg.exception.FormulaExpansionException
 import com.hunet.common.tbeg.exception.GenerationCancelledException
+import org.apache.poi.ss.SpreadsheetVersion
 import org.apache.poi.ss.usermodel.*
+import org.apache.poi.ss.util.AreaReference
 import org.apache.poi.ss.util.CellRangeAddress
+import org.apache.poi.ss.util.CellReference
 import org.apache.poi.xssf.streaming.SXSSFFormulaEvaluator
 import org.apache.poi.xssf.streaming.SXSSFSheet
 import org.apache.poi.xssf.streaming.SXSSFWorkbook
@@ -125,9 +128,11 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
         processSheet(sxssfSheet, sheetIndex, blueprint, data, imageLocations, context)
     }
 
-    @Suppress("UNUSED_PARAMETER")
     override fun afterProcessSheets(workbook: Workbook, context: RenderingContext) {
         val sxssfWorkbook = workbook as SXSSFWorkbook
+
+        // named range 정의 확장 (수식이 참조하는 named range를 repeat 확장에 맞춰 갱신)
+        expandNamedRanges(sxssfWorkbook.xssfWorkbook, context)
 
         // 수식 평가 및 calcChain 정리
         evaluateFormulasAndClearCalcChain(sxssfWorkbook)
@@ -139,6 +144,72 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
 
         // 파일 열 때 첫 번째 시트 A1 셀에 포커스
         sxssfWorkbook.setInitialView()
+    }
+
+    /**
+     * 수식이 참조하는 named range의 정의(refersToFormula)를 repeat 확장에 맞춰 갱신한다.
+     * 수식 문자열을 파싱하지 않고 정의만 재작성하므로 문자열 리터럴 오조정 리스크가 없다.
+     * 확장이 있는 시트가 없으면(단일 시트·미확장) 아무 동작도 하지 않는다.
+     */
+    private fun expandNamedRanges(workbook: XSSFWorkbook, context: RenderingContext) {
+        if (context.sheetExpansions.isEmpty()) return
+        val version = workbook.spreadsheetVersion
+        workbook.allNames.forEach { name ->
+            val refers = runCatching { name.refersToFormula }.getOrNull() ?: return@forEach
+            if (refers.contains("#REF!")) return@forEach
+            val expanded = computeExpandedNamedRange(refers, context.sheetExpansions, version) ?: return@forEach
+            runCatching { name.refersToFormula = expanded }
+        }
+    }
+
+    /**
+     * named range 정의를 확장한 새 참조 문자열을 계산한다.
+     * named range는 정의가 데이터 영역을 가리키므로, 수식 내 절대 참조와 달리 절대 표기여도 확장 대상으로 본다.
+     * @return 확장된 참조 문자열, 확장 대상이 아니면 null (3D·다중영역·#REF!·미겹침 등)
+     */
+    private fun computeExpandedNamedRange(
+        refersToFormula: String,
+        sheetExpansions: Map<String, FormulaAdjuster.SheetExpansionInfo>,
+        version: SpreadsheetVersion
+    ): String? {
+        val areaRef = runCatching { AreaReference(refersToFormula, version) }.getOrNull() ?: return null
+        val first = areaRef.firstCell
+        val last = areaRef.lastCell
+        val sheetName = first.sheetName ?: return null
+        val sheetInfo = sheetExpansions[sheetName] ?: return null
+
+        val endRowIndex = last.row
+        val endColIndex = last.col.toInt()
+
+        for (expansion in sheetInfo.expansions) {
+            val region = expansion.region
+            val itemCount = sheetInfo.collectionSizes[region.collection] ?: continue
+            if (itemCount <= 1) continue
+            if (endRowIndex !in region.area.rowRange || endColIndex !in region.area.colRange) continue
+
+            val templateRowCount = region.area.rowRange.count
+            val templateColCount = region.area.colRange.count
+            val newLast = when (region.direction) {
+                RepeatDirection.DOWN -> {
+                    val newLastRow = if (templateRowCount == 1) {
+                        expansion.finalStartRow + (endRowIndex - region.area.start.row) + itemCount - 1
+                    } else {
+                        expansion.finalStartRow + ((itemCount - 1) * templateRowCount) + (endRowIndex - region.area.start.row)
+                    }
+                    CellReference(sheetName, newLastRow, endColIndex, last.isRowAbsolute, last.isColAbsolute)
+                }
+                RepeatDirection.RIGHT -> {
+                    val newLastCol = if (templateColCount == 1) {
+                        expansion.finalStartCol + (endColIndex - region.area.start.col) + itemCount - 1
+                    } else {
+                        expansion.finalStartCol + ((itemCount - 1) * templateColCount) + (endColIndex - region.area.start.col)
+                    }
+                    CellReference(sheetName, last.row, newLastCol, last.isRowAbsolute, last.isColAbsolute)
+                }
+            }
+            return AreaReference(first, newLast, version).formatAsString()
+        }
+        return null
     }
 
     // ZIP 정규화(엔트리 size 확정)·absPath 제거는 상위가 담당한다:
