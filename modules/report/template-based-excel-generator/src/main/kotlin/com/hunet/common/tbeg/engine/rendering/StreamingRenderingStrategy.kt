@@ -1347,7 +1347,7 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
             ) ?: continue
 
             if (itemCount > 1) {
-                val (expanded, isSequential) = FormulaAdjuster.expandToRangeWithCalculator(result, expansion, itemCount)
+                val (expanded, isSequential) = FormulaAdjuster.expandToRangeWithCalculator(result, expansion, itemCount, calculator = ctx.calculator)
                 if (expanded != result) {
                     validateFormulaExpansion(
                         itemCount, isSequential, ctx.sheet.sheetName,
