@@ -99,28 +99,23 @@ DataProvider + `generateToFile()` 조합으로 10만~100만 행의 대용량 처
 
 ## 4. 타 라이브러리 비교 (JXLS, 동일 환경)
 
-동일한 환경(위 테스트 환경, Apache POI 5.5.1)에서 같은 워크로드(3개 컬럼 repeat + SUM 수식)로 측정했습니다. TBEG은 항상 스트리밍(출력 SXSSF)이며 데이터 소스만 Map(전체 적재)/DataProvider(지연 로딩)로 다릅니다. JXLS는 출력 모드가 STREAMING_ON(스트리밍)/STREAMING_OFF(전체 메모리)로 나뉩니다. **출력 조건이 같은 TBEG ↔ JXLS STREAMING_ON**이 직접 비교 대상이고, STREAMING_OFF는 참고입니다.
+동일한 환경(위 테스트 환경, Apache POI 5.5.1)에서 같은 워크로드(3개 컬럼 repeat + SUM 수식)로 측정했습니다. TBEG은 항상 스트리밍(출력 SXSSF)이며, JXLS와 동일하게 데이터를 Map(전체 적재)으로 넣은 기준으로 실었습니다(TBEG은 지연 로딩 DataProvider도 지원하나 지표 차이가 미미해 생략). JXLS는 출력 모드가 STREAMING_ON(스트리밍)/STREAMING_OFF(전체 메모리)로 나뉩니다. **출력 조건이 같은 TBEG ↔ JXLS STREAMING_ON**이 직접 비교 대상이고, STREAMING_OFF는 참고입니다.
 
 | 데이터 크기 | 구성                  | 소요 시간   | CPU/전체 | CPU/코어 |     피크 힙 |     힙 할당량 | GC 횟수 | GC 시간 |
 |--------:|:--------------------|--------:|------:|------:|--------:|---------:|-----:|------:|
 |  1,000행 | TBEG (Map)           |    13ms | 223.4% | 18.6% | 314.3MB |    9.0MB |    7 |  27ms |
-|  1,000행 | TBEG (DataProvider)  |    16ms | 228.0% | 19.0% | 314.3MB |    9.1MB |    6 |  23ms |
 |  1,000행 | JXLS STREAMING_ON    |    14ms | 291.9% | 24.3% | 314.3MB |    9.6MB |    7 |  26ms |
 |  1,000행 | JXLS STREAMING_OFF   |    31ms | 209.7% | 17.5% | 381.2MB |   47.7MB |   15 |  48ms |
 | 10,000행 | TBEG (Map)           |    50ms | 200.6% | 16.7% | 313.7MB |   31.6MB |    7 |  24ms |
-| 10,000행 | TBEG (DataProvider)  |    51ms | 201.4% | 16.8% | 313.5MB |   31.5MB |    7 |  24ms |
 | 10,000행 | JXLS STREAMING_ON    |    78ms | 184.5% | 15.4% | 313.7MB |   67.3MB |    9 |  29ms |
 | 10,000행 | JXLS STREAMING_OFF   |   393ms | 200.2% | 16.7% | 420.5MB |  457.0MB |   13 |  69ms |
 | 30,000행 | TBEG (Map)           |   124ms | 167.0% | 13.9% | 312.3MB |   82.7MB |    8 |  29ms |
-| 30,000행 | TBEG (DataProvider)  |   116ms | 168.1% | 14.0% | 311.2MB |   80.1MB |    8 |  24ms |
 | 30,000행 | JXLS STREAMING_ON    |   255ms | 179.1% | 14.9% | 313.6MB |  199.8MB |    9 |  25ms |
 | 30,000행 | JXLS STREAMING_OFF   |   855ms | 204.5% | 17.0% | 1,325.8MB | 1,347.7MB |   11 | 182ms |
 | 50,000행 | TBEG (Map)           |   209ms | 153.6% | 12.8% | 323.6MB |  131.6MB |    7 |  20ms |
-| 50,000행 | TBEG (DataProvider)  |   233ms | 153.5% | 12.8% | 323.8MB |  134.7MB |    7 |  26ms |
 | 50,000행 | JXLS STREAMING_ON    |   378ms | 163.7% | 13.6% | 315.9MB |  327.6MB |   10 |  37ms |
 | 50,000행 | JXLS STREAMING_OFF   | 1,306ms | 211.1% | 17.6% | 1,095.8MB | 2,243.5MB |   15 | 209ms |
 |100,000행 | TBEG (Map)           |   354ms | 144.1% | 12.0% | 353.2MB |  260.3MB |    9 |  28ms |
-|100,000행 | TBEG (DataProvider)  |   358ms | 141.7% | 11.8% | 354.7MB |  258.9MB |    8 |  19ms |
 |100,000행 | JXLS STREAMING_ON    |   728ms | 141.8% | 11.8% | 383.2MB |  640.6MB |   11 |  72ms |
 |100,000행 | JXLS STREAMING_OFF   | 2,626ms | 193.3% | 16.1% | 1,621.0MB | 4,490.0MB |   35 | 472ms |
 

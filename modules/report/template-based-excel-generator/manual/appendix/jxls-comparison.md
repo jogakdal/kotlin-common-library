@@ -171,7 +171,7 @@ TBEG에는 `groupBy` 같은 **그룹 반복**을 위한 선언적 문법이 없�
 
 ## 12. 성능 (동일 환경 측정)
 
-동일 환경(Apache POI 5.5.1, JMH fork=1·warmup=1·measurement=3, gc·CPU·피크 힙 프로파일러, 3개 컬럼 repeat + SUM 수식)에서 측정한 결과입니다. TBEG은 항상 스트리밍(출력 SXSSF)이므로, 출력 조건이 같은 **JXLS STREAMING_ON**이 직접 비교 대상이고, JXLS STREAMING_OFF(전체 메모리 모드)는 참고로 함께 싣습니다.
+동일 환경(Apache POI 5.5.1, JMH fork=1·warmup=1·measurement=3, gc·CPU·피크 힙 프로파일러, 3개 컬럼 repeat + SUM 수식)에서 측정한 결과입니다. TBEG은 항상 스트리밍(출력 SXSSF)이므로, 출력 조건이 같은 **JXLS STREAMING_ON**이 직접 비교 대상이고, JXLS STREAMING_OFF(전체 메모리 모드)는 참고로 함께 싣습니다. 데이터는 양쪽 모두 Map(전체 적재) 기준입니다.
 
 | 데이터 크기 | 구성                     | 소요 시간   | 힙 할당량   | GC 시간 |
 |--------:|:-----------------------|--------:|--------:|------:|

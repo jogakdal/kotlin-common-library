@@ -134,13 +134,12 @@ object TbegBenchmarkRunner {
         val byKey = results.associateBy { "${it.paramValue("rowCount")}:${it.methodName()}" }
         val rowCounts = results.map { it.paramValue("rowCount").toInt() }.distinct().sorted()
 
-        // TBEG은 항상 스트리밍(출력 SXSSF). Map/DataProvider는 데이터 소스 차이일 뿐이다.
+        // TBEG은 항상 스트리밍(출력 SXSSF). JXLS와 동일하게 데이터 Map 기준으로 싣는다(DataProvider는 지표 차이가 미미해 생략).
         // JXLS STREAMING_ON이 TBEG과 동일 조건(출력 스트리밍), STREAMING_OFF는 JXLS의 전체 메모리 모드(참고).
         println("| 데이터 크기    | 구성                | 소요 시간   | CPU/전체 | CPU/코어 | 피크 힙   | 힙 할당량    | GC 횟수 | GC 시간  |")
         println("|------------|-------------------|---------|--------|--------|---------|----------|-------|--------|")
         for (rc in rowCounts) {
             printComparisonRow(rc, "TBEG (Map)", byKey["$rc:map"])
-            printComparisonRow(rc, "TBEG (DataProvider)", byKey["$rc:dataProvider"])
             printComparisonRow(rc, "JXLS STREAMING_ON", byKey["$rc:jxlsStreaming"])
             printComparisonRow(rc, "JXLS STREAMING_OFF", byKey["$rc:jxlsMemory"])
         }
