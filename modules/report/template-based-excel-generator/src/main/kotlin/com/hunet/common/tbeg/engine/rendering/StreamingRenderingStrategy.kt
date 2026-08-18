@@ -153,12 +153,12 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
      * 확장이 있는 시트가 없으면(단일 시트·미확장) 아무 동작도 하지 않는다.
      */
     private fun expandNamedRanges(workbook: XSSFWorkbook, context: RenderingContext) {
-        if (context.sheetExpansions.isEmpty()) return
+        if (context.sheetCalculators.isEmpty()) return
         val version = workbook.spreadsheetVersion
         workbook.allNames.forEach { name ->
             val refers = runCatching { name.refersToFormula }.getOrNull() ?: return@forEach
             if (refers.contains("#REF!")) return@forEach
-            val expanded = computeExpandedNamedRange(refers, context.sheetExpansions, context.sheetCalculators, version) ?: return@forEach
+            val expanded = computeExpandedNamedRange(refers, context.sheetCalculators, version) ?: return@forEach
             runCatching { name.refersToFormula = expanded }
         }
     }
@@ -170,7 +170,6 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
      */
     private fun computeExpandedNamedRange(
         refersToFormula: String,
-        sheetExpansions: Map<String, FormulaAdjuster.SheetExpansionInfo>,
         sheetCalculators: Map<String, PositionCalculator>,
         version: SpreadsheetVersion
     ): String? {
@@ -178,66 +177,19 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
         val first = areaRef.firstCell
         val last = areaRef.lastCell
         val sheetName = first.sheetName ?: return null
-        val sheetInfo = sheetExpansions[sheetName] ?: return null
         val calculator = sheetCalculators[sheetName] ?: return null
 
-        val endRowIndex = last.row
-        val endColIndex = last.col.toInt()
-
-        // 시작 셀은 항상 최종 위치로 시프트한다 (다중 반복에서 대상 반복이 위쪽 반복에 밀린 경우 포함).
-        // getFinalPosition은 반복 내부 셀이면 item 0(=시프트된 시작), 밖이면 체이닝 누적을 반환한다.
-        val finalFirst = calculator.getFinalPosition(first.row, first.col.toInt())
-        val shiftedFirst = CellReference(sheetName, finalFirst.row, finalFirst.col, first.isRowAbsolute, first.isColAbsolute)
-
-        for (expansion in sheetInfo.expansions) {
-            val region = expansion.region
-            val itemCount = sheetInfo.collectionSizes[region.collection] ?: continue
-            if (itemCount <= 1) continue
-            if (endRowIndex !in region.area.rowRange || endColIndex !in region.area.colRange) continue
-
-            val templateRowCount = region.area.rowRange.count
-            val templateColCount = region.area.colRange.count
-            val newLast = when (region.direction) {
-                RepeatDirection.DOWN -> {
-                    val newLastRow = if (templateRowCount == 1) {
-                        expansion.finalStartRow + (endRowIndex - region.area.start.row) + itemCount - 1
-                    } else {
-                        expansion.finalStartRow + ((itemCount - 1) * templateRowCount) + (endRowIndex - region.area.start.row)
-                    }
-                    CellReference(sheetName, newLastRow, endColIndex, last.isRowAbsolute, last.isColAbsolute)
-                }
-                RepeatDirection.RIGHT -> {
-                    val newLastCol = if (templateColCount == 1) {
-                        expansion.finalStartCol + (endColIndex - region.area.start.col) + itemCount - 1
-                    } else {
-                        expansion.finalStartCol + ((itemCount - 1) * templateColCount) + (endColIndex - region.area.start.col)
-                    }
-                    CellReference(sheetName, last.row, newLastCol, last.isRowAbsolute, last.isColAbsolute)
-                }
-            }
-            return AreaReference(shiftedFirst, newLast, version).formatAsString()
-        }
-
-        // 2. 끝이 어느 반복과도 겹치지 않으면 시작·끝을 각 축에서 독립적으로 최종 위치로 시프트한다.
-        //    같은 행/열에 걸친 여러 반복은 max로 합쳐(병렬 반복 아래 공통 영역 → 직사각형 유지),
-        //    시작과 끝이 서로 다른 반복 위치면 각각 밀린다(repeat를 세로/가로로 관통하는 범위 → 끝만 시프트).
-        //    병합 셀은 반복에 완전히 포함되거나 밖이라 관통 케이스가 없어 getFinalRange로 충분하지만,
-        //    named range는 관통이 가능하므로 시작·끝을 독립 계산한다.
-        val startCol = first.col.toInt()
-        val cols = startCol..endColIndex
-        val rows = first.row..last.row
-        val newFirstRow = first.row + cols.maxOf { c -> calculator.getFinalPosition(first.row, c).row - first.row }
-        val newLastRow = last.row + cols.maxOf { c -> calculator.getFinalPosition(last.row, c).row - last.row }
-        val newFirstCol = startCol + rows.maxOf { r -> calculator.getFinalPosition(r, startCol).col - startCol }
-        val newLastCol = endColIndex + rows.maxOf { r -> calculator.getFinalPosition(r, endColIndex).col - endColIndex }
-        if (newFirstRow == first.row && newLastRow == last.row &&
-            newFirstCol == startCol && newLastCol == endColIndex
+        // 좌표 조정(끝 확대 + 시작·끝 독립 시프트, 관통·병렬 대응)은 수식과 공유하는 getExpandedRange가 담당한다.
+        // named range는 절대 표기여도 확장하며 $ 표기만 보존한다(수식은 절대 축을 고정하는 점이 다르다).
+        val e = calculator.getExpandedRange(first.row, first.col.toInt(), last.row, last.col.toInt())
+        if (e.firstRow == first.row && e.firstColumn == first.col.toInt() &&
+            e.lastRow == last.row && e.lastColumn == last.col.toInt()
         ) {
             return null  // 위치 변화 없음
         }
-        val shiftedRangeFirst = CellReference(sheetName, newFirstRow, newFirstCol, first.isRowAbsolute, first.isColAbsolute)
-        val shiftedRangeLast = CellReference(sheetName, newLastRow, newLastCol, last.isRowAbsolute, last.isColAbsolute)
-        return AreaReference(shiftedRangeFirst, shiftedRangeLast, version).formatAsString()
+        val newFirst = CellReference(sheetName, e.firstRow, e.firstColumn, first.isRowAbsolute, first.isColAbsolute)
+        val newLast = CellReference(sheetName, e.lastRow, e.lastColumn, last.isRowAbsolute, last.isColAbsolute)
+        return AreaReference(newFirst, newLast, version).formatAsString()
     }
 
     // ZIP 정규화(엔트리 size 확정)·absPath 제거는 상위가 담당한다:
