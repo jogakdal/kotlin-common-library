@@ -171,18 +171,23 @@ TBEG에는 `groupBy` 같은 **그룹 반복**을 위한 선언적 문법이 없�
 
 ## 12. 성능 (동일 환경 측정)
 
-동일 환경(Apache POI 5.5.1, JMH fork=1·warmup=1·measurement=3, gc·CPU 프로파일러, 3개 컬럼 repeat + SUM 수식)에서 측정한 결과입니다.
+동일 환경(Apache POI 5.5.1, JMH fork=1·warmup=1·measurement=3, gc·CPU·피크 힙 프로파일러, 3개 컬럼 repeat + SUM 수식)에서 측정한 결과입니다. TBEG은 항상 스트리밍(출력 SXSSF)이므로, 출력 조건이 같은 **JXLS STREAMING_ON**이 직접 비교 대상이고, JXLS STREAMING_OFF(전체 메모리 모드)는 참고로 함께 싣습니다.
 
-|  데이터 크기 |    모드    | 소요 시간 (TBEG → JXLS)  |  힙 할당량 (TBEG → JXLS)  | GC 시간 (TBEG → JXLS) |
-|---------:|:--------:|:-------------------:|:--------------------:|:----------------:|
-|  10,000행 |   비스트리밍   |  47ms → 265ms (5.6배)  |  31MB → 450MB (14배)   |    22ms → 88ms    |
-|  10,000행 |   스트리밍    |   48ms → 87ms (1.8배)  |   32MB → 67MB (2.1배)  |    23ms → 26ms    |
-|  50,000행 |   비스트리밍   | 188ms → 1,349ms (7.2배) | 134MB → 2,240MB (17배) |   23ms → 260ms    |
-|  50,000행 |   스트리밍    |  185ms → 375ms (2.0배) |  134MB → 323MB (2.4배) |    21ms → 38ms    |
-| 100,000행 |   비스트리밍   | 348ms → 2,584ms (7.4배) | 256MB → 4,476MB (17배) |   29ms → 523ms    |
-| 100,000행 |   스트리밍    |  356ms → 729ms (2.0배) |  259MB → 649MB (2.5배) |    19ms → 64ms    |
+| 데이터 크기 | 구성                     | 소요 시간   | 힙 할당량   | GC 시간 |
+|--------:|:-----------------------|--------:|--------:|------:|
+| 10,000행 | TBEG (스트리밍)             |    50ms |    32MB |  24ms |
+| 10,000행 | JXLS STREAMING_ON        |    78ms |    67MB |  29ms |
+| 10,000행 | (참고) JXLS STREAMING_OFF  |   393ms |   457MB |  69ms |
+| 50,000행 | TBEG (스트리밍)             |   209ms |   132MB |  20ms |
+| 50,000행 | JXLS STREAMING_ON        |   378ms |   328MB |  37ms |
+| 50,000행 | (참고) JXLS STREAMING_OFF  | 1,306ms | 2,244MB | 209ms |
+|100,000행 | TBEG (스트리밍)             |   354ms |   260MB |  28ms |
+|100,000행 | JXLS STREAMING_ON        |   728ms |   641MB |  72ms |
+|100,000행 | (참고) JXLS STREAMING_OFF  | 2,626ms | 4,490MB | 472ms |
 
-측정 워크로드에서 TBEG은 스트리밍에서 약 2배, 비스트리밍에서 5~7배 빠릅니다. **메모리는 격차가 더 큽니다** — JXLS 비스트리밍(STREAMING_OFF)은 데이터의 14~17배 힙을 할당하는 반면, TBEG은 항상 스트리밍으로 동작해 힙 사용이 안정적이고 GC 부담도 훨씬 적습니다(10만 행 비스트리밍 기준 GC 시간 29ms vs 523ms). CPU 사용률(%)은 양쪽이 비슷하나, TBEG이 빨리 끝나 총 CPU 시간은 적습니다. 다만 이는 특정 워크로드에 대한 자체 측정치이며, 템플릿 구성(수식 복잡도, 차트/피벗 유무, 컬럼 수)에 따라 결과는 달라질 수 있습니다. 전체 크기별·CPU 포함 수치는 [성능 벤치마크 상세](./benchmark-results.md)를 참조하세요.
+동일 조건(양쪽 출력 스트리밍)인 **TBEG vs JXLS STREAMING_ON**에서 TBEG이 약 2배 빠릅니다. **피크(상주) 메모리는 둘이 비슷합니다** — 스트리밍이라 데이터가 커져도 상주가 억제됩니다(10만 행 기준 TBEG 353MB, JXLS 383MB). 차이는 **누적 할당량(처리 중 만들었다 버리는 임시 객체 총량)**에 있어, JXLS가 약 2.5배 더 할당하고(641MB vs 260MB) 그만큼 GC 부담도 큽니다 — 상주 메모리가 아니라 GC 압력의 차이입니다. 할당 프로파일(JFR)로 보면 JXLS의 임시 객체는 대부분 **셀마다 수행하는 표현식 평가(Apache Commons JEXL)와 자체 셀 참조 객체**에서 나오며, TBEG은 마커 전용 파서로 한 번 분석한 뒤 POI에 직접 기록해 이런 중간 객체가 거의 없습니다.
+
+`JXLS STREAMING_OFF`는 전체 데이터를 워크북에 적재하는 모드로, 피크가 데이터에 비례해 폭증하고(10만 행 1,621MB) 시간·할당량도 급증합니다 — TBEG은 항상 스트리밍이라 이 모드가 없어 참고로만 싣습니다. CPU 사용률(%)은 스트리밍 구성끼리 비슷합니다. 다만 이는 특정 워크로드에 대한 자체 측정치이며, 템플릿 구성(수식 복잡도, 차트/피벗 유무, 컬럼 수)에 따라 결과는 달라질 수 있습니다. 전체 크기별·피크·CPU 포함 수치는 [성능 벤치마크 상세](./benchmark-results.md)를 참조하세요.
 
 ---
 
@@ -228,4 +233,4 @@ TBEG에는 `groupBy` 같은 **그룹 반복**을 위한 선언적 문법이 없�
 
 - **JXLS 공식 문서**: [Commands](https://github.com/jxlsteam/jxls/blob/master/jxls-site/docs/commands.md), [Each](https://jxls.sourceforge.net/reference/each_command.html), [If](https://jxls.sourceforge.net/if.html), [Formulas](https://jxls.sourceforge.net/reference/formulas.html), [Streaming](https://github.com/jxlsteam/jxls/blob/master/jxls-site/docs/streaming.md)
 - **JXLS 실측**: 공식 문서에서 확인되지 않는 항목(레이아웃 보존, 조건부 서식·데이터 유효성 확장, 크로스시트 수식, 연속 병합, 빈 컬렉션, 영역 부분 겹침 처리, 컬럼 조건부(가변 필드 테이블), 이미지 지원 형식)은 JXLS 3.1.0을 직접 구동해 산출물을 검사하여 확정했습니다.
-- **성능**: 동일 Apache POI 5.5.1 스택에서의 자체 JMH 측정 ([benchmark-results.md](./benchmark-results.md))
+- **성능**: 동일 Apache POI 5.5.1 스택에서의 자체 JMH 측정(소요 시간·CPU·힙 할당량·피크 힙·GC), 할당 출처는 JFR `ObjectAllocationSample`로 분석 ([benchmark-results.md](./benchmark-results.md))

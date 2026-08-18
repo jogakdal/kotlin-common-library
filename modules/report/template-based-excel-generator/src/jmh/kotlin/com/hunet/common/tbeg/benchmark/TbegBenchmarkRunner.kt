@@ -123,6 +123,7 @@ object TbegBenchmarkRunner {
             .jvmArgs("-Xms512m", "-Xmx4g")
             .addProfiler("gc")
             .addProfiler(CpuTimeProfiler::class.java)
+            .addProfiler(PeakMemoryProfiler::class.java)
             .build()
 
         val results = Runner(options).run()
@@ -133,24 +134,27 @@ object TbegBenchmarkRunner {
         val byKey = results.associateBy { "${it.paramValue("rowCount")}:${it.methodName()}" }
         val rowCounts = results.map { it.paramValue("rowCount").toInt() }.distinct().sorted()
 
-        println("| 데이터 크기    | 모드      | 라이브러리  | 소요 시간   | CPU/전체 | CPU/코어 | 힙 할당량    | GC 횟수 | GC 시간  |")
-        println("|------------|---------|--------|---------|--------|--------|----------|-------|--------|")
+        // TBEG은 항상 스트리밍(출력 SXSSF). Map/DataProvider는 데이터 소스 차이일 뿐이다.
+        // JXLS STREAMING_ON이 TBEG과 동일 조건(출력 스트리밍), STREAMING_OFF는 JXLS의 전체 메모리 모드(참고).
+        println("| 데이터 크기    | 구성                | 소요 시간   | CPU/전체 | CPU/코어 | 피크 힙   | 힙 할당량    | GC 횟수 | GC 시간  |")
+        println("|------------|-------------------|---------|--------|--------|---------|----------|-------|--------|")
         for (rc in rowCounts) {
-            printComparisonRow(rc, "비스트리밍", "TBEG", byKey["$rc:map"])
-            printComparisonRow(rc, "비스트리밍", "JXLS", byKey["$rc:jxlsMemory"])
-            printComparisonRow(rc, "스트리밍", "TBEG", byKey["$rc:dataProvider"])
-            printComparisonRow(rc, "스트리밍", "JXLS", byKey["$rc:jxlsStreaming"])
+            printComparisonRow(rc, "TBEG (Map)", byKey["$rc:map"])
+            printComparisonRow(rc, "TBEG (DataProvider)", byKey["$rc:dataProvider"])
+            printComparisonRow(rc, "JXLS STREAMING_ON", byKey["$rc:jxlsStreaming"])
+            printComparisonRow(rc, "JXLS STREAMING_OFF", byKey["$rc:jxlsMemory"])
         }
     }
 
-    private fun printComparisonRow(rowCount: Int, mode: String, lib: String, result: RunResult?) {
+    private fun printComparisonRow(rowCount: Int, config: String, result: RunResult?) {
         if (result == null) return
         println(
-            "| %10s | %-7s | %-6s | %7s | %6s | %6s | %8s | %5s | %6s |".format(
-                formatRowCount(rowCount.toString()), mode, lib,
+            "| %10s | %-17s | %7s | %6s | %6s | %7s | %8s | %5s | %6s |".format(
+                formatRowCount(rowCount.toString()), config,
                 formatMs(result.primaryResult.score),
                 formatPercent(result.metric(CPU_PER_CORE)),
                 formatPercent(result.metric(CPU_SYSTEM)),
+                bytesToMb(result.metric("mem.peak.heap")),
                 bytesToMb(result.metric(GcMetrics.ALLOC_RATE)),
                 result.metric(GcMetrics.GC_COUNT).toLong().toString(),
                 formatMs(result.metric(GcMetrics.GC_TIME))
