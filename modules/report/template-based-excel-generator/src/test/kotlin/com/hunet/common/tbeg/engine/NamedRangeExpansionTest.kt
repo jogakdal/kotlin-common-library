@@ -260,4 +260,40 @@ class NamedRangeExpansionTest {
             )
         }
     }
+
+    /** repeat를 세로로 관통하는 named range(시작은 데이터 영역, 끝은 그 아래) */
+    private fun buildStraddleTemplate(): ByteArray =
+        XSSFWorkbook().use { wb ->
+            val sh = wb.createSheet("데이터")
+            sh.createRow(0).createCell(0).setCellValue("\${repeat(employees, A3:B3, emp)}")
+            sh.createRow(2).also { r ->
+                r.createCell(0).setCellValue("\${emp.name}")
+                r.createCell(1).setCellValue("\${emp.salary}")
+            }
+            // B3(데이터 영역) ~ B10(그 아래)을 한 범위로 묶은 관통 named range
+            wb.createName().apply {
+                nameName = "straddle"
+                refersToFormula = "'데이터'!\$B\$3:\$B\$10"
+            }
+            ByteArrayOutputStream().apply { wb.write(this) }.toByteArray()
+        }
+
+    @Test
+    fun `repeat를 관통하는 named range는 끝이 확장량만큼 밀린다`() {
+        val data = mapOf(
+            "employees" to (1..3).map { mapOf("name" to "이름$it", "salary" to (3000 + it)) }
+        )
+
+        val result = TemplateRenderingEngine().process(ByteArrayInputStream(buildStraddleTemplate()), data)
+
+        XSSFWorkbook(ByteArrayInputStream(result)).use { wb ->
+            val refers = wb.getName("straddle")?.refersToFormula
+                ?: error("named range straddle을 찾지 못했다")
+            // 이상적: 시작 B3 유지(데이터 영역), 끝 B10은 확장(+2)에 밀려 B12 → B3:B12
+            assertTrue(
+                refers.replace("$", "").replace(" ", "").contains("B3:B12"),
+                "관통 named range의 끝이 확장량만큼 밀리지 않았다(실제): $refers"
+            )
+        }
+    }
 }

@@ -218,21 +218,25 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
             return AreaReference(shiftedFirst, newLast, version).formatAsString()
         }
 
-        // 2. 끝이 어느 반복과도 겹치지 않으면 범위 전체를 셀 병합과 동일하게 시프트한다 (주위 요소 위치 보정).
-        //    getFinalRange는 범위에 걸친 열들 중 가장 많이 밀리는 오프셋(max)으로 직사각형을 통째 이동한다.
-        //    → 병렬 반복(left +2, right +4) 아래 공통 영역도 max(+4)로 이동해 직사각형이 유지된다.
-        val finalRange = calculator.getFinalRange(first.row, last.row, first.col.toInt(), endColIndex)
-        if (finalRange.firstRow == first.row && finalRange.firstColumn == first.col.toInt() &&
-            finalRange.lastRow == last.row && finalRange.lastColumn == endColIndex
+        // 2. 끝이 어느 반복과도 겹치지 않으면 시작·끝을 각 축에서 독립적으로 최종 위치로 시프트한다.
+        //    같은 행/열에 걸친 여러 반복은 max로 합쳐(병렬 반복 아래 공통 영역 → 직사각형 유지),
+        //    시작과 끝이 서로 다른 반복 위치면 각각 밀린다(repeat를 세로/가로로 관통하는 범위 → 끝만 시프트).
+        //    병합 셀은 반복에 완전히 포함되거나 밖이라 관통 케이스가 없어 getFinalRange로 충분하지만,
+        //    named range는 관통이 가능하므로 시작·끝을 독립 계산한다.
+        val startCol = first.col.toInt()
+        val cols = startCol..endColIndex
+        val rows = first.row..last.row
+        val newFirstRow = first.row + cols.maxOf { c -> calculator.getFinalPosition(first.row, c).row - first.row }
+        val newLastRow = last.row + cols.maxOf { c -> calculator.getFinalPosition(last.row, c).row - last.row }
+        val newFirstCol = startCol + rows.maxOf { r -> calculator.getFinalPosition(r, startCol).col - startCol }
+        val newLastCol = endColIndex + rows.maxOf { r -> calculator.getFinalPosition(r, endColIndex).col - endColIndex }
+        if (newFirstRow == first.row && newLastRow == last.row &&
+            newFirstCol == startCol && newLastCol == endColIndex
         ) {
             return null  // 위치 변화 없음
         }
-        val shiftedRangeFirst = CellReference(
-            sheetName, finalRange.firstRow, finalRange.firstColumn, first.isRowAbsolute, first.isColAbsolute
-        )
-        val shiftedRangeLast = CellReference(
-            sheetName, finalRange.lastRow, finalRange.lastColumn, last.isRowAbsolute, last.isColAbsolute
-        )
+        val shiftedRangeFirst = CellReference(sheetName, newFirstRow, newFirstCol, first.isRowAbsolute, first.isColAbsolute)
+        val shiftedRangeLast = CellReference(sheetName, newLastRow, newLastCol, last.isRowAbsolute, last.isColAbsolute)
         return AreaReference(shiftedRangeFirst, shiftedRangeLast, version).formatAsString()
     }
 
