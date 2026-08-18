@@ -133,4 +133,48 @@ class NamedRangeExpansionTest {
             )
         }
     }
+
+    /** 같은 행에 병렬로 놓인 두 반복(확장량이 다름)과 그 아래 공통 named range */
+    private fun buildParallelRepeatTemplate(): ByteArray =
+        XSSFWorkbook().use { wb ->
+            val sh = wb.createSheet("데이터")
+            // 병렬 반복: left(A2:B2, 마커 A1), right(D2:E2, 마커 D1) — 같은 행, 다른 열
+            sh.createRow(0).also { r ->
+                r.createCell(0).setCellValue("\${repeat(left, A2:B2, l)}")
+                r.createCell(3).setCellValue("\${repeat(right, D2:E2, rt)}")
+            }
+            sh.createRow(1).also { r ->
+                r.createCell(0).setCellValue("\${l.a}")
+                r.createCell(1).setCellValue("\${l.b}")
+                r.createCell(3).setCellValue("\${rt.a}")
+                r.createCell(4).setCellValue("\${rt.b}")
+            }
+            // 병렬 반복 아래 공통 area (A10:E10) — 두 반복에 모두 걸침
+            wb.createName().apply {
+                nameName = "footer"
+                refersToFormula = "'데이터'!\$A\$10:\$E\$10"
+            }
+            ByteArrayOutputStream().apply { wb.write(this) }.toByteArray()
+        }
+
+    @Test
+    fun `병렬 반복 아래 공통 named range는 가장 많이 밀리는 영역 기준으로 조정된다`() {
+        val data = mapOf(
+            "left" to (1..3).map { mapOf("a" to "la$it", "b" to it) },
+            "right" to (1..5).map { mapOf("a" to "ra$it", "b" to it) }
+        )
+
+        val result = TemplateRenderingEngine().process(ByteArrayInputStream(buildParallelRepeatTemplate()), data)
+
+        XSSFWorkbook(ByteArrayInputStream(result)).use { wb ->
+            val refers = wb.getName("footer")?.refersToFormula
+                ?: error("named range footer를 찾지 못했다")
+            // left(+2)·right(+4) 병렬 → 공통 footer는 max(+4)로 직사각형을 통째 이동: A10:E10 → A14:E14.
+            // 열별로 다른 오프셋을 적용하면 A12:E14 같은 비대칭이 되어 직사각형이 깨진다.
+            assertTrue(
+                refers.replace("$", "").replace(" ", "").contains("A14:E14"),
+                "병렬 반복 아래 공통 area가 max offset(셀 병합 방식)으로 조정되지 않았다: $refers"
+            )
+        }
+    }
 }

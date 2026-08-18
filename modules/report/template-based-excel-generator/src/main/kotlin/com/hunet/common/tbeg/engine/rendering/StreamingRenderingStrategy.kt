@@ -218,18 +218,22 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
             return AreaReference(shiftedFirst, newLast, version).formatAsString()
         }
 
-        // 2. 끝이 어느 반복과도 겹치지 않으면 끝도 최종 위치로 시프트한다 (주위 요소 위치 보정).
-        //    getFinalPosition이 bundle·중첩 반복·다중 반복 누적까지 반영한다.
-        val finalLast = calculator.getFinalPosition(last.row, endColIndex)
-        if (finalFirst.row == first.row && finalFirst.col == first.col.toInt() &&
-            finalLast.row == last.row && finalLast.col == endColIndex
+        // 2. 끝이 어느 반복과도 겹치지 않으면 범위 전체를 셀 병합과 동일하게 시프트한다 (주위 요소 위치 보정).
+        //    getFinalRange는 범위에 걸친 열들 중 가장 많이 밀리는 오프셋(max)으로 직사각형을 통째 이동한다.
+        //    → 병렬 반복(left +2, right +4) 아래 공통 영역도 max(+4)로 이동해 직사각형이 유지된다.
+        val finalRange = calculator.getFinalRange(first.row, last.row, first.col.toInt(), endColIndex)
+        if (finalRange.firstRow == first.row && finalRange.firstColumn == first.col.toInt() &&
+            finalRange.lastRow == last.row && finalRange.lastColumn == endColIndex
         ) {
             return null  // 위치 변화 없음
         }
-        val shiftedLast = CellReference(
-            sheetName, finalLast.row, finalLast.col, last.isRowAbsolute, last.isColAbsolute
+        val shiftedRangeFirst = CellReference(
+            sheetName, finalRange.firstRow, finalRange.firstColumn, first.isRowAbsolute, first.isColAbsolute
         )
-        return AreaReference(shiftedFirst, shiftedLast, version).formatAsString()
+        val shiftedRangeLast = CellReference(
+            sheetName, finalRange.lastRow, finalRange.lastColumn, last.isRowAbsolute, last.isColAbsolute
+        )
+        return AreaReference(shiftedRangeFirst, shiftedRangeLast, version).formatAsString()
     }
 
     // ZIP 정규화(엔트리 size 확정)·absPath 제거는 상위가 담당한다:
