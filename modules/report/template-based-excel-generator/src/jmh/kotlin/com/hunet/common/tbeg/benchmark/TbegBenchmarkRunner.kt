@@ -67,6 +67,7 @@ object TbegBenchmarkRunner {
             .jvmArgs("-Xms512m", "-Xmx4g")
             .addProfiler("gc")
             .addProfiler(CpuTimeProfiler::class.java)
+            .addProfiler(PeakMemoryProfiler::class.java)
             .build()
 
         val results = Runner(options).run()
@@ -162,8 +163,8 @@ object TbegBenchmarkRunner {
     }
 
     private fun printDataModeTable(results: Collection<RunResult>) {
-        println("| 데이터 크기    | 방식         | 소요 시간   | CPU/전체 | CPU/코어 | 힙 할당량    | GC 횟수 | GC 시간  |")
-        println("|------------|------------|---------|--------|--------|----------|-------|--------|")
+        println("| 데이터 크기    | 방식         | 소요 시간   | CPU/전체 | CPU/코어 | 피크 힙   | 힙 할당량    | GC 횟수 | GC 시간  |")
+        println("|------------|------------|---------|--------|--------|---------|----------|-------|--------|")
 
         val sorted = results.sortedWith(compareBy(
             { it.paramValue("rowCount").toInt() },
@@ -178,12 +179,13 @@ object TbegBenchmarkRunner {
                 else -> result.methodName()
             }
             println(
-                "| %10s | %-10s | %7s | %6s | %6s | %8s | %5s | %6s |".format(
+                "| %10s | %-10s | %7s | %6s | %6s | %7s | %8s | %5s | %6s |".format(
                     formatRowCount(rowCount),
                     method,
                     formatMs(result.primaryResult.score),
                     formatPercent(result.metric(CPU_PER_CORE)),
                     formatPercent(result.metric(CPU_SYSTEM)),
+                    bytesToMb(result.metric("mem.peak.heap")),
                     bytesToMb(result.metric(GcMetrics.ALLOC_RATE)),
                     result.metric(GcMetrics.GC_COUNT).toLong().toString(),
                     formatMs(result.metric(GcMetrics.GC_TIME))
