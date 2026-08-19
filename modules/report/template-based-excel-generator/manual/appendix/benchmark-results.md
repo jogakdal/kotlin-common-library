@@ -112,24 +112,28 @@ TBEG은 항상 스트리밍(출력 SXSSF)이며, JXLS와 동일하게 데이터�
 
 JXLS는 출력 모드가 STREAMING_ON(스트리밍)/STREAMING_OFF(전체 메모리)로 나뉩니다. **출력 조건이 같은 TBEG ↔ JXLS STREAMING_ON**이 직접 비교 대상이고, STREAMING_OFF는 참고입니다.
 
-| 데이터 크기 | 구성                  | 소요 시간   | CPU/전체 | CPU/코어 |     피크 힙 |     힙 할당량 | GC 횟수 | GC 시간 |
-|--------:|:--------------------|--------:|------:|------:|--------:|---------:|-----:|------:|
-|  1,000행 | TBEG (Map)           |    13ms | 223.4% | 18.6% | 314.3MB |    9.0MB |    7 |  27ms |
-|  1,000행 | JXLS STREAMING_ON    |    14ms | 291.9% | 24.3% | 314.3MB |    9.6MB |    7 |  26ms |
-|  1,000행 | JXLS STREAMING_OFF   |    31ms | 209.7% | 17.5% | 381.2MB |   47.7MB |   15 |  48ms |
-| 10,000행 | TBEG (Map)           |    50ms | 200.6% | 16.7% | 313.7MB |   31.6MB |    7 |  24ms |
-| 10,000행 | JXLS STREAMING_ON    |    78ms | 184.5% | 15.4% | 313.7MB |   67.3MB |    9 |  29ms |
-| 10,000행 | JXLS STREAMING_OFF   |   393ms | 200.2% | 16.7% | 420.5MB |  457.0MB |   13 |  69ms |
-| 30,000행 | TBEG (Map)           |   124ms | 167.0% | 13.9% | 312.3MB |   82.7MB |    8 |  29ms |
-| 30,000행 | JXLS STREAMING_ON    |   255ms | 179.1% | 14.9% | 313.6MB |  199.8MB |    9 |  25ms |
-| 30,000행 | JXLS STREAMING_OFF   |   855ms | 204.5% | 17.0% | 1,325.8MB | 1,347.7MB |   11 | 182ms |
-| 50,000행 | TBEG (Map)           |   209ms | 153.6% | 12.8% | 323.6MB |  131.6MB |    7 |  20ms |
-| 50,000행 | JXLS STREAMING_ON    |   378ms | 163.7% | 13.6% | 315.9MB |  327.6MB |   10 |  37ms |
-| 50,000행 | JXLS STREAMING_OFF   | 1,306ms | 211.1% | 17.6% | 1,095.8MB | 2,243.5MB |   15 | 209ms |
-|100,000행 | TBEG (Map)           |   354ms | 144.1% | 12.0% | 353.2MB |  260.3MB |    9 |  28ms |
-|100,000행 | JXLS STREAMING_ON    |   728ms | 141.8% | 11.8% | 383.2MB |  640.6MB |   11 |  72ms |
-|100,000행 | JXLS STREAMING_OFF   | 2,626ms | 193.3% | 16.1% | 1,621.0MB | 4,490.0MB |   35 | 472ms |
+|   데이터 크기 | 구성                 |   소요 시간 | CPU/전체 | CPU/코어 |      피크 힙 |     힙 할당량 | GC 횟수 | GC 시간 |
+|---------:|:-------------------|--------:|-------:|-------:|----------:|----------:|------:|------:|
+|   1,000행 | TBEG (Map)         |    13ms | 223.4% |  18.6% |   314.3MB |     9.0MB |     7 |  27ms |
+|   1,000행 | JXLS STREAMING_ON  |    14ms | 291.9% |  24.3% |   314.3MB |     9.6MB |     7 |  26ms |
+|   1,000행 | JXLS STREAMING_OFF |    31ms | 209.7% |  17.5% |   381.2MB |    47.7MB |    15 |  48ms |
+|  10,000행 | TBEG (Map)         |    50ms | 200.6% |  16.7% |   313.7MB |    31.6MB |     7 |  24ms |
+|  10,000행 | JXLS STREAMING_ON  |    78ms | 184.5% |  15.4% |   313.7MB |    67.3MB |     9 |  29ms |
+|  10,000행 | JXLS STREAMING_OFF |   393ms | 200.2% |  16.7% |   420.5MB |   457.0MB |    13 |  69ms |
+|  30,000행 | TBEG (Map)         |   124ms | 167.0% |  13.9% |   312.3MB |    82.7MB |     8 |  29ms |
+|  30,000행 | JXLS STREAMING_ON  |   255ms | 179.1% |  14.9% |   313.6MB |   199.8MB |     9 |  25ms |
+|  30,000행 | JXLS STREAMING_OFF |   855ms | 204.5% |  17.0% | 1,325.8MB | 1,347.7MB |    11 | 182ms |
+|  50,000행 | TBEG (Map)         |   209ms | 153.6% |  12.8% |   323.6MB |   131.6MB |     7 |  20ms |
+|  50,000행 | JXLS STREAMING_ON  |   378ms | 163.7% |  13.6% |   315.9MB |   327.6MB |    10 |  37ms |
+|  50,000행 | JXLS STREAMING_OFF | 1,306ms | 211.1% |  17.6% | 1,095.8MB | 2,243.5MB |    15 | 209ms |
+| 100,000행 | TBEG (Map)         |   354ms | 144.1% |  12.0% |   353.2MB |   260.3MB |     9 |  28ms |
+| 100,000행 | JXLS STREAMING_ON  |   728ms | 141.8% |  11.8% |   383.2MB |   640.6MB |    11 |  72ms |
+| 100,000행 | JXLS STREAMING_OFF | 2,626ms | 193.3% |  16.1% | 1,621.0MB | 4,490.0MB |    35 | 472ms |
 
-TBEG은 POI API를 직접 호출하고 단일 패스로 기록하는 반면, JXLS는 추상화 계층을 거쳐 템플릿 파싱 → 변환 → 기록의 다중 패스를 수행하기 때문에 이 차이가 발생합니다. 할당 프로파일(JFR `ObjectAllocationSample`)에서 JXLS 할당의 상당 부분이 **셀별 표현식 평가 엔진(Apache Commons JEXL: Interpreter·MethodKey·LexicalFrame)·자체 셀 참조 객체(`org.jxls.common.CellRef`)·정규식 Matcher**에서 나옴을 확인했습니다. TBEG 쪽은 POI `SXSSFRow`/`SXSSFCell`과 데이터 Map이 대부분이며 표현식 평가 엔진이 없습니다. **출력 조건이 같은 TBEG ↔ JXLS STREAMING_ON**에서 TBEG이 시간 약 2배 빠르고, **피크(상주) 힙은 둘이 비슷하나**(10만 행 353MB vs 383MB, 둘 다 스트리밍) **누적 할당량(churn)은 JXLS가 약 2.5배**(641MB vs 260MB)라 GC 부담이 큽니다 — 상주가 아니라 GC 압력의 차이입니다. `JXLS STREAMING_OFF`는 전체 데이터를 워크북에 적재해 피크가 데이터에 비례해 폭증합니다(10만 행 1,621MB, 할당량 4,490MB). CPU 사용률(%)은 스트리밍 구성끼리 비슷합니다.
+- TBEG은 POI API를 직접 호출하고 단일 패스로 기록하는 반면, JXLS는 추상화 계층을 거쳐 템플릿 파싱 → 변환 → 기록의 다중 패스를 수행하기 때문에 차이가 발생합니다. 
+- 할당 프로파일(JFR `ObjectAllocationSample`)에서 JXLS 할당의 상당 부분이 **셀별 표현식 평가 엔진(Apache Commons JEXL: Interpreter·MethodKey·LexicalFrame)·자체 셀 참조 객체(`org.jxls.common.CellRef`)·정규식 Matcher**에서 나옴을 확인했습니다. 
+- TBEG 쪽은 POI `SXSSFRow`/`SXSSFCell`과 데이터 Map이 대부분이며 표현식 평가 엔진이 없습니다. **출력 조건이 같은 TBEG ↔ JXLS STREAMING_ON**에서 TBEG이 시간 약 2배 빠르고, **피크(상주) 힙은 둘이 비슷하나**(10만 행 353MB vs 383MB, 둘 다 스트리밍) **누적 할당량(churn)은 JXLS가 약 2.5배**(641MB vs 260MB)라 GC 부담이 큽니다 — 상주가 아니라 GC 압력의 차이입니다. 
+- `JXLS STREAMING_OFF`는 전체 데이터를 워크북에 적재해 피크가 데이터에 비례해 폭증합니다(10만 행 1,621MB, 할당량 4,490MB). 
+- CPU 사용률(%)은 스트리밍 구성끼리 비슷합니다.
 
 > **피크 힙 주의**: 프로세스 힙 사용 최대치는 JVM 힙 설정(`-Xms512m`)과 GC 타이밍에 좌우되어, 작은 워크로드(1~3만 행)에서는 실제 필요량보다 JVM 기저 사용(~313MB)에 묻혀 구성 간 차이가 드러나지 않습니다. 5만 행 이상에서 STREAMING_OFF의 상주 폭증이 뚜렷합니다.
