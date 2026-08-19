@@ -26,6 +26,7 @@ object TbegBenchmarkRunner {
 
         when (args.firstOrNull()) {
             "comparison" -> runJxlsComparison()
+            "datamode" -> runDataModeBenchmark()
             else -> {
                 runDataModeBenchmark()
                 runOutputModeBenchmark()

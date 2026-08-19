@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
  * 벤치마크 1: 데이터 제공 방식 비교 (Map vs DataProvider)
  *
  * - 고정: generate() 출력 (ByteArray 반환)
- * - 변수: Map vs DataProvider x 1K/10K/30K/50K/100K
+ * - 변수: Map vs DataProvider x 1K~300K (대용량에서 피크 힙 대조)
  */
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
 @Suppress("unused")
 open class DataModeBenchmark {
 
-    @Param("1000", "10000", "30000", "50000", "100000")
+    @Param("1000", "10000", "30000", "50000", "100000", "200000", "300000")
     open var rowCount: Int = 0
 
     private lateinit var templateBytes: ByteArray
