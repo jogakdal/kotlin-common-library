@@ -210,7 +210,7 @@ src/main/kotlin/com/hunet/common/tbeg/
 | 클래스                       | 역할                                          |
 |---------------------------|---------------------------------------------|
 | `GenerationJob`           | 비동기 작업 핸들 (취소, 대기 지원)                       |
-| `ExcelGenerationListener` | 콜백 인터페이스 (onStarted, onCompleted, onFailed) |
+| `ExcelGenerationListener` | 콜백 인터페이스 (onStarted, onProgress, onCompleted, onFailed, onCancelled) |
 | `GenerationResult`        | 생성 결과 DTO                                   |
 
 ---
@@ -370,7 +370,7 @@ ${merge(emp.dept)}
 
 ### 필드 숨기기 (hideable)
 
-repeat 확장 시 특정 필드(열)를 조건에 따라 숨길 수 있다. 숨길 필드는 `ExcelDataProvider.getHideFields()`로 지정한다.
+repeat 확장 시 특정 필드(열)를 조건에 따라 숨길 수 있다. 숨길 필드는 `ExcelDataProvider.getHiddenFields()`로 지정한다.
 
 **텍스트 마커:**
 ```
@@ -403,7 +403,7 @@ ${hideable(emp.salary)}
 
 1. `HidePreprocessor`가 렌더링 파이프라인 전에 실행 (1st pass 전처리)
 2. 2-pass 스캔: 1st phase에서 repeat 변수명 파악, 2nd phase에서 ItemField/HideableField 식별
-3. `getHideFields()`에 지정된 필드에 대해 DELETE 또는 DIM 처리
+3. `getHiddenFields()`에 지정된 필드에 대해 DELETE 또는 DIM 처리
 4. 숨기지 않는 hideable 마커는 `${item.field}` 형태로 변환되어 일반 ItemField로 처리
 
 **DIM 모드 처리:**
@@ -496,9 +496,11 @@ parser/
 | 자동 셀 병합    | 연속 같은 값 자동 병합        | `MergeTracker`            |
 | 차트         | 데이터 범위 자동 확장         | `ChartProcessor`          |
 | 피벗 테이블     | 소스 범위 자동 확장          | `PivotTableProcessor`     |
-| 수식 확장      | repeat 영역 참조 자동 확장   | `FormulaAdjuster`         |
+| 수식 확장      | repeat 영역 참조 자동 확장(크로스시트·관통 포함) | `FormulaAdjuster`  |
 | 셀 병합       | 위치 자동 조정             | `PositionCalculator`      |
-| 조건부 서식     | 범위 자동 조정             | `FormulaAdjuster`         |
+| 조건부 서식     | 범위 자동 조정             | `SheetLayoutApplier`      |
+| 데이터 유효성    | 적용 범위 자동 조정          | `SheetLayoutApplier`      |
+| 이름 정의(named range) | 참조 정의를 확장 범위로 갱신    | `StreamingRenderingStrategy` |
 | 머리글/바닥글    | 변수 치환 지원             | `XmlVariableProcessor`    |
 | 파일 암호화     | 열기 암호 설정             | `ExcelGenerator`          |
 | 필드 숨기기     | hideable 마커로 필드 삭제/DIM | `HidePreprocessor`        |
@@ -513,7 +515,7 @@ parser/
 TBEG은 **Excel이 이미 잘하는 기능을 재구현하지 않습니다.** 집계, 조건부 서식, 차트 렌더링 등은 Excel 네이티브 기능을 그대로 활용합니다. TBEG의 역할은 두 가지입니다:
 
 1. Excel이 자체적으로 수행할 수 없는 **동적 데이터 바인딩**을 제공합니다 -- 변수 치환, repeat 확장, 이미지 삽입
-2. 데이터 확장 과정에서 Excel 네이티브 기능이 의도대로 동작하도록 **보존하고 조정**합니다 -- 수식 범위 확장, 조건부 서식 복제, 차트 데이터 범위 조정
+2. 데이터 확장 과정에서 Excel 네이티브 기능이 의도대로 동작하도록 **보존하고 조정**합니다 -- 수식 범위 확장, 조건부 서식 복제, 데이터 유효성 확장, 차트 데이터 범위 조정
 
 이 철학은 아래의 모든 구현 원칙의 근거가 됩니다:
 - **렌더링 원칙**: 템플릿 서식을 완전 보존하는 이유는 Excel이 이미 완성한 서식을 존중하기 위함입니다.
@@ -677,11 +679,19 @@ repeat 영역에 포함된 수식과 범위 참조는 확장량만큼 자동 조
 | 행 절대 (`B$3`)        | DOWN 방향 확장 안 함          |
 | 열 절대 (`$B3`)        | RIGHT 방향 확장 안 함         |
 | 다른 시트 (`Sheet2!B3`) | 해당 시트의 repeat 확장 정보로 처리 |
+| 이름 정의(named range) | 정의를 확장 범위로 갱신(수식은 그대로) |
+| 관통(시작=데이터 영역, 끝=아래) | 시작·끝을 독립 계산해 끝을 시프트 |
 
 **다른 시트 참조 처리:**
 - `expandToRangeWithCalculator()`에 `otherSheetExpansions` 파라미터로 다른 시트의 확장 정보 전달
 - `SheetExpansionInfo`에 시트별 `expansions`와 `collectionSizes` 포함
 - 시트 이름 추출: `Sheet1!` -> `"Sheet1"`, `'Sheet Name'!` -> `"Sheet Name"`
+
+**관통·범위 보정 공통화 (`PositionCalculator.getExpandedRange`):**
+- 시작이 repeat 데이터 영역, 끝이 그 아래인 "관통" 범위(`=SUM(B3:B10)`)는 시작을 유지하고 끝을 확장량만큼 시프트합니다(`=SUM(B3:B12)`).
+- named range와 수식은 범위 좌표 조정을 공유 메서드 `PositionCalculator.getExpandedRange`로 처리합니다: 끝이 repeat 안이면 마지막 아이템으로 확대, 밖이면 시프트하며, 시작·끝을 각 축에서 독립 계산해 여러 반복 영역(세로 나열=합, 병렬=max)과 관통을 모두 정합합니다.
+- 절대 참조 정책만 호출부가 담당합니다 — 수식은 절대 축을 고정하고, named range는 절대 표기여도 확장합니다(정의가 데이터 영역을 가리키므로). `getFinalRange`(병합·이미지용 강체 이동)와 구분됩니다.
+- named range는 `StreamingRenderingStrategy.expandNamedRanges`가 `afterProcessSheets`에서 정의(`refersToFormula`)를 재작성하며, 수식 문자열은 파싱하지 않아 문자열 리터럴 오조정 리스크가 없습니다. 3D 참조(`Sheet1:Sheet3!A1`)는 조정 대상이 아닙니다.
 
 **repeat 영역 밖 참조 시프트:**
 
@@ -1203,12 +1213,11 @@ src/jmh/kotlin/com/hunet/common/tbeg/benchmark/
 
 | 데이터 크기 | 소요 시간 | CPU/코어 | 힙 할당량 |
 |----------|---------|--------|---------|
-| 1,000행 | 20ms | 23.5% | 11.8MB |
-| 10,000행 | 109ms | 14.7% | 58.5MB |
-| 30,000행 | 315ms | 12.5% | 166.0MB |
-| 100,000행 | 993ms | 10.8% | 540.8MB |
-| 500,000행 | 4,718ms | 8.9% | 2,614.5MB |
-| 1,000,000행 | 8,952ms | 8.8% | 5,230.7MB |
+| 100,000행 | 367ms | 11.5% | 256.3MB |
+| 200,000행 | 678ms | 10.5% | 505.0MB |
+| 300,000행 | 1,017ms | 10.5% | 751.0MB |
+| 500,000행 | 1,642ms | 9.8% | 1,248.2MB |
+| 1,000,000행 | 3,203ms | 9.0% | 2,485.4MB |
 
 > DataProvider + generateToFile 기준. CPU/코어는 시스템 전체 CPU 용량 대비 프로세스 사용률(코어 수로 나눈 값)입니다.
 > 벤치마크 3종(데이터 방식 비교, 출력 방식 비교, 대용량 스케일)의 전체 결과와 분석은 [성능 벤치마크 상세](./manual/appendix/benchmark-results.md)를 참조하세요.

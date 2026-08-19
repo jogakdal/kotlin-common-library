@@ -324,6 +324,64 @@ class PositionCalculator(
         getFinalRange(range.firstRow, range.lastRow, range.firstColumn, range.lastColumn)
 
     /**
+     * 범위(직사각형)를 repeat 확장에 맞춰 조정한 최종 좌표를 계산한다 (순수 좌표).
+     *
+     * named range·수식의 범위 참조 보정이 공유하는 핵심 로직이다. 절대 참조 정책·`$` 표기·문자열
+     * 포매팅은 각 호출부가 담당한다(수식은 절대 축 고정, named range는 표기만 보존).
+     * - **시작**: 각 축에서 독립적으로 최종 위치로 시프트한다(관통·병렬 반복의 누적을 반영).
+     * - **끝**: 끝 셀이 어떤 repeat 영역 안이면 마지막 아이템으로 확대하고, 밖이면 시프트한다(관통 대응).
+     *
+     * `getFinalRange`(병합·이미지용 강체 평행이동, 끝 확대 없음)와 달리 시작·끝을 독립 계산하고
+     * 끝 확대를 지원한다. `getFinalPosition`은 repeat 내부 셀을 item 0으로만 매핑하므로, 끝 확대는
+     * `finalStart` 기반 수동 산술이 필요하다.
+     */
+    fun getExpandedRange(firstRow: Int, firstCol: Int, lastRow: Int, lastCol: Int): CellRangeAddress {
+        ensureCalculated()
+
+        // 시작: 각 축 독립 최종 위치 (범위에 걸친 행/열 중 가장 많이 밀리는 오프셋)
+        val newFirstRow = firstRow + (firstCol..lastCol).maxOf { getFinalPosition(firstRow, it).row - firstRow }
+        val newFirstCol = firstCol + (firstRow..lastRow).maxOf { getFinalPosition(it, firstCol).col - firstCol }
+
+        // 끝: 끝 셀이 어떤 repeat 영역 안이면 마지막 아이템으로 확대, 아니면 시프트
+        val endExpansion = expansions.firstOrNull { exp ->
+            (collectionSizes[exp.region.collection] ?: 0) > 1 &&
+                lastRow in exp.region.area.rowRange && lastCol in exp.region.area.colRange
+        }
+
+        val newLastRow: Int
+        val newLastCol: Int
+        if (endExpansion != null) {
+            val region = endExpansion.region
+            val itemCount = collectionSizes[region.collection] ?: 1
+            when (region.direction) {
+                RepeatDirection.DOWN -> {
+                    val trc = region.area.rowRange.count
+                    newLastRow = if (trc == 1) {
+                        endExpansion.finalStartRow + (lastRow - region.area.start.row) + itemCount - 1
+                    } else {
+                        endExpansion.finalStartRow + ((itemCount - 1) * trc) + (lastRow - region.area.start.row)
+                    }
+                    newLastCol = lastCol + (firstRow..lastRow).maxOf { getFinalPosition(it, lastCol).col - lastCol }
+                }
+                RepeatDirection.RIGHT -> {
+                    val tcc = region.area.colRange.count
+                    newLastCol = if (tcc == 1) {
+                        endExpansion.finalStartCol + (lastCol - region.area.start.col) + itemCount - 1
+                    } else {
+                        endExpansion.finalStartCol + ((itemCount - 1) * tcc) + (lastCol - region.area.start.col)
+                    }
+                    newLastRow = lastRow + (firstCol..lastCol).maxOf { getFinalPosition(lastRow, it).row - lastRow }
+                }
+            }
+        } else {
+            newLastRow = lastRow + (firstCol..lastCol).maxOf { getFinalPosition(lastRow, it).row - lastRow }
+            newLastCol = lastCol + (firstRow..lastRow).maxOf { getFinalPosition(it, lastCol).col - lastCol }
+        }
+
+        return CellRangeAddress(newFirstRow, newLastRow, newFirstCol, newLastCol)
+    }
+
+    /**
      * 특정 repeat 영역 내에서 특정 아이템의 행 시작 위치를 계산한다.
      */
     fun getRowForRepeatItem(expansion: RepeatExpansion, itemIndex: Int, templateRowOffset: Int = 0) =

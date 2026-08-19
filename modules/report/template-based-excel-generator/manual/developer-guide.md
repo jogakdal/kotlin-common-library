@@ -110,7 +110,7 @@ TBEG의 핵심 철학은 **Excel 네이티브 기능 우선**이다.
 
 - Excel이 이미 잘하는 것(집계, 조건부 서식, 차트 등)은 재구현하지 않는다
 - TBEG은 Excel이 할 수 없는 **동적 데이터 바인딩**(변수 치환, repeat 확장, 이미지 삽입)을 제공한다
-- 데이터 확장 후에도 Excel 네이티브 기능이 의도대로 동작하도록 **보존하고 조정**한다 (수식 범위 확장, 조건부 서식 복제, 차트 데이터 범위 조정)
+- 데이터 확장 후에도 Excel 네이티브 기능이 의도대로 동작하도록 **보존하고 조정**한다 (수식 범위 확장, 조건부 서식 복제, 데이터 유효성 확장, 차트 데이터 범위 조정)
 
 이 원칙이 파이프라인, 렌더링 전략, 위치 계산 등 모든 구현의 기준이 된다.
 
@@ -270,7 +270,7 @@ class TemplateRenderingEngine(
 | `ChartRangeAdjuster` | 차트 데이터 범위를 확장된 데이터에 맞게 조정 |
 | `ImageInserter` | 이미지 삽입, 크기 조정, URL 다운로드 |
 | `MergeTracker` | repeat 확장 시 `${merge()}` 마커에 의한 병합 셀 추적 |
-| `SheetLayoutApplier` | 시트 레이아웃 적용 (행 높이, 열 너비, 병합, 머리글/바닥글, 조건부 서식 복제) |
+| `SheetLayoutApplier` | 시트 레이아웃 적용 (행 높이, 열 너비, 병합, 머리글/바닥글, 조건부 서식 복제, 데이터 유효성 확장) |
 
 ### 3.2 Strategy 패턴
 
@@ -487,9 +487,12 @@ class PositionCalculator(
     fun getFinalPosition(templateRow: Int, templateCol: Int): CellCoord
     fun getFinalPosition(template: CellCoord): CellCoord
 
-    // 범위의 최종 위치 계산
+    // 범위의 최종 위치 계산 (병합·이미지용 강체 이동, 끝 확대 없음)
     fun getFinalRange(start: CellCoord, end: CellCoord): CellRangeAddress
     fun getFinalRange(range: CellRangeAddress): CellRangeAddress
+
+    // 범위를 repeat 확장에 맞춰 조정 (끝 확대 + 시작·끝 독립 시프트, 관통·병렬 반복 대응). named range·수식이 공유
+    fun getExpandedRange(firstRow: Int, firstCol: Int, lastRow: Int, lastCol: Int): CellRangeAddress
 
     // 실제 출력 행 정보 조회
     fun getRowInfo(actualRow: Int): RowInfo

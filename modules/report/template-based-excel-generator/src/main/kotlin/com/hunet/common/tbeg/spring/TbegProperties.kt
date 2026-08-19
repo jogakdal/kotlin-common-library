@@ -20,8 +20,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *     file-conflict-policy: sequence  # error, sequence
  *     progress-report-interval: 100   # 진행률 콜백 호출 간격
  *     preserve-template-layout: true  # 템플릿 레이아웃 보존
- *     pivot-integer-format-index: 37  # 피벗 테이블 정수 필드 포맷 인덱스
- *     pivot-decimal-format-index: 39  # 피벗 테이블 소수점 필드 포맷 인덱스
+ *     pivot-integer-format-index: 3   # 피벗 테이블 정수 필드 포맷 인덱스
+ *     pivot-decimal-format-index: 4   # 피벗 테이블 소수점 필드 포맷 인덱스
  *     missing-data-behavior: warn     # warn, throw
  *     image-url-cache-ttl-seconds: 0  # 이미지 URL 캐시 TTL (초, 0=캐싱 안 함)
  * ```

@@ -29,7 +29,7 @@ repositories {
 
 // 2. 의존성 추가
 dependencies {
-    implementation("com.hunet.common:tbeg:1.2.3")
+    implementation("com.hunet.common:tbeg:1.2.5")
 }
 ```
 
@@ -49,7 +49,7 @@ repositories {
 
 // 2. 의존성 추가
 dependencies {
-    implementation 'com.hunet.common:tbeg:1.2.3'
+    implementation 'com.hunet.common:tbeg:1.2.5'
 }
 ```
 
@@ -72,7 +72,7 @@ dependencies {
     <dependency>
         <groupId>com.hunet.common</groupId>
         <artifactId>tbeg</artifactId>
-        <version>1.1.3</version>
+        <version>1.2.5</version>
     </dependency>
 </dependencies>
 ```
@@ -487,6 +487,7 @@ API 서버 등에서 즉시 응답 후 백그라운드 처리에 적합합니다
 import com.hunet.common.tbeg.ExcelGenerator
 import com.hunet.common.tbeg.async.ExcelGenerationListener
 import com.hunet.common.tbeg.async.GenerationResult
+import com.hunet.common.tbeg.async.ProgressInfo
 import java.nio.file.Path
 
 val job = generator.submitToFile(
@@ -497,6 +498,10 @@ val job = generator.submitToFile(
     listener = object : ExcelGenerationListener {
         override fun onStarted(jobId: String) {
             println("[시작] Job ID: $jobId")
+        }
+
+        override fun onProgress(jobId: String, progress: ProgressInfo) {
+            println("[진행] ${progress.processedRows}행 처리")
         }
 
         override fun onCompleted(jobId: String, result: GenerationResult) {

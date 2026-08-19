@@ -567,24 +567,26 @@ object FormulaAdjuster {
      */
     fun expandToRangeWithCalculator(
         formula: String,
-        expansion: PositionCalculator.RepeatExpansion,
+        expansion: PositionCalculator.RepeatExpansion?,
         itemCount: Int,
-        otherSheetExpansions: Map<String, SheetExpansionInfo> = emptyMap()
+        otherSheetExpansions: Map<String, SheetExpansionInfo> = emptyMap(),
+        calculator: PositionCalculator? = null
     ): FormulaExpansionResult {
         if (itemCount <= 1 && otherSheetExpansions.isEmpty()) return FormulaExpansionResult(formula, false)
 
         // 0. 단일 셀 범위를 단일 셀 참조로 정규화 (B8:B8 -> B8)
         val normalizedFormula = normalizeSingleCellRanges(formula)
 
-        val region = expansion.region
-        val templateRowCount = region.area.rowRange.count
-        val templateColCount = region.area.colRange.count
+        // expansion이 null이면 현재 시트 확장은 없고 크로스시트 참조만 처리한다 (itemCount == 1)
+        val region = expansion?.region
+        val templateRowCount = region?.area?.rowRange?.count ?: 0
+        val templateColCount = region?.area?.colRange?.count ?: 0
 
         var isSequential = true
 
         // 1. 먼저 범위 참조 처리 (B3:B5 -> B3:B9)
         var result = expandRangeReferencesWithCalculator(
-            normalizedFormula, expansion, itemCount, region, templateRowCount, templateColCount, otherSheetExpansions
+            normalizedFormula, expansion, itemCount, region, templateRowCount, templateColCount, otherSheetExpansions, calculator
         )
 
         // 2. 단일 셀 참조 처리 (B3 -> B3:B7)
@@ -609,7 +611,7 @@ object FormulaAdjuster {
                     }
                 } else {
                     // 현재 시트 참조
-                    if (itemCount <= 1) {
+                    if (itemCount <= 1 || region == null || expansion == null) {
                         match.value
                     } else if (rowIndex !in region.area.rowRange || colIndex !in region.area.colRange) {
                         match.value
@@ -728,12 +730,13 @@ object FormulaAdjuster {
      */
     private fun expandRangeReferencesWithCalculator(
         formula: String,
-        expansion: PositionCalculator.RepeatExpansion,
+        expansion: PositionCalculator.RepeatExpansion?,
         itemCount: Int,
-        region: RepeatRegionSpec,
+        region: RepeatRegionSpec?,
         templateRowCount: Int,
         templateColCount: Int,
-        otherSheetExpansions: Map<String, SheetExpansionInfo> = emptyMap()
+        otherSheetExpansions: Map<String, SheetExpansionInfo> = emptyMap(),
+        calculator: PositionCalculator? = null
     ): String = RANGE_CAPTURE_PATTERN.replace(formula) { match ->
         val range = match.toRangeRef()
         val endRowIndex = range.end.row - 1
@@ -750,7 +753,7 @@ object FormulaAdjuster {
             }
         } else {
             // 현재 시트 참조
-            if (itemCount <= 1) {
+            if (itemCount <= 1 || region == null || expansion == null) {
                 match.value
             } else {
                 // 끝 셀이 repeat 영역 내에 있는지 확인
@@ -758,7 +761,22 @@ object FormulaAdjuster {
                     endColIndex in region.area.colRange
 
                 if (!endInRegion) {
-                    match.value
+                    // 끝이 영역 밖이지만 시작이 영역 안이면 관통 → getExpandedRange로 시작·끝을 조정한다.
+                    // 수식은 named range와 달리 절대 축을 고정하므로, 절대면 원본 유지·아니면 계산값을 쓴다.
+                    val startRowIndex = range.start.row - 1
+                    val startColIndex = toColumnIndex(range.start.col)
+                    val startInRegion = startRowIndex in region.area.rowRange && startColIndex in region.area.colRange
+                    if (startInRegion && calculator != null) {
+                        val e = calculator.getExpandedRange(startRowIndex, startColIndex, endRowIndex, endColIndex)
+                        range.format(
+                            newStartRow = if (range.start.isRowAbsolute) range.start.row else e.firstRow + 1,
+                            newStartCol = if (range.start.isColAbsolute) range.start.col else toColumnLetter(e.firstColumn),
+                            newEndRow = if (range.end.isRowAbsolute) range.end.row else e.lastRow + 1,
+                            newEndCol = if (range.end.isColAbsolute) range.end.col else toColumnLetter(e.lastColumn)
+                        )
+                    } else {
+                        match.value
+                    }
                 } else {
                     when (region.direction) {
                         RepeatDirection.DOWN -> {

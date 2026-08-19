@@ -31,8 +31,8 @@ import org.springframework.context.annotation.Bean
  * ```yaml
  * hunet:
  *   tbeg:
- *     streaming-mode: auto
- *     streaming-row-threshold: 1000
+ *     missing-data-behavior: warn      # 데이터 누락 시 동작
+ *     preserve-template-layout: true   # 템플릿 레이아웃 보존
  * ```
  *
  * ## Bean 커스터마이징

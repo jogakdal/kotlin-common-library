@@ -139,6 +139,20 @@ tasks.register<JavaExec>("runJxlsComparison") {
     maxHeapSize = "4g"
     jvmArgs = listOf("-Xms512m")
 }
+
+// 데이터 제공 방식(Map vs DataProvider) 비교만 실행 — 대용량 피크 힙 대조
+tasks.register<JavaExec>("runDataMode") {
+    group = "benchmark"
+    description = "데이터 제공 방식(Map vs DataProvider) 비교 벤치마크만 실행"
+    dependsOn("jmhCompileGeneratedClasses")
+    classpath = sourceSets["jmh"].runtimeClasspath +
+        files(layout.buildDirectory.dir("jmh-generated-resources")) +
+        files(layout.buildDirectory.dir("jmh-generated-classes"))
+    mainClass.set("com.hunet.common.tbeg.benchmark.TbegBenchmarkRunner")
+    args = listOf("datamode")
+    maxHeapSize = "8g"
+    jvmArgs = listOf("-Xms512m")
+}
 // Rich Sample 실행 태스크 (시각적 데모용)
 tasks.register<JavaExec>("runRichSample") {
     group = "application"

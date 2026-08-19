@@ -55,7 +55,8 @@ internal class TemplateRenderProcessor : ExcelProcessor {
             context.dataProvider,
             requiredNames,
             normalize = false,  // absPath 제거·ZIP 정규화는 뒤이은 ZipStreamPostProcessor가 담당
-            hasPivot = context.pivotTableInfos.isNotEmpty()  // 피벗 있으면 후처리가 숫자 서식을 담당
+            hasPivot = context.pivotTableInfos.isNotEmpty(),  // 피벗 있으면 후처리가 숫자 서식을 담당
+            hooks = context.hooks  // 진행률·취소 훅 (비동기 생성에서만 전달됨)
         )
 
         // 차트 범위 조정을 위한 repeat 확장 정보 전달

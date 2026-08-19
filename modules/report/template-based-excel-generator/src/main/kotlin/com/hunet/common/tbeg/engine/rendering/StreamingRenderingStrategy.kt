@@ -3,8 +3,12 @@ package com.hunet.common.tbeg.engine.rendering
 import com.hunet.common.tbeg.ExcelDataProvider
 import com.hunet.common.tbeg.engine.core.*
 import com.hunet.common.tbeg.exception.FormulaExpansionException
+import com.hunet.common.tbeg.exception.GenerationCancelledException
+import org.apache.poi.ss.SpreadsheetVersion
 import org.apache.poi.ss.usermodel.*
+import org.apache.poi.ss.util.AreaReference
 import org.apache.poi.ss.util.CellRangeAddress
+import org.apache.poi.ss.util.CellReference
 import org.apache.poi.xssf.streaming.SXSSFFormulaEvaluator
 import org.apache.poi.xssf.streaming.SXSSFSheet
 import org.apache.poi.xssf.streaming.SXSSFWorkbook
@@ -36,6 +40,9 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
 
     // 템플릿에서 추출한 스타일을 스트리밍 워크북에 매핑
     private var styleMap: Map<Short, CellStyle> = emptyMap()
+
+    // 진행률·취소 협조를 위한 누적 작성 행 수 (styleMap과 동일하게 호출별 인스턴스 상태)
+    private var rowsWritten = 0
 
     // ========== 추상 메서드 구현 ==========
 
@@ -69,6 +76,45 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
 
         // 시트 내용 클리어 (새로 생성)
         clearSheetContents(xssfWorkbook)
+
+        // 크로스시트 수식 조정용: 확장이 있는 시트만 확장 정보 사전 계산
+        precomputeSheetExpansions(blueprint, data, context)
+    }
+
+    /**
+     * 크로스시트 수식 조정을 위해, 반복 확장이 있는 시트의 확장 정보를 미리 계산해 context에 저장한다.
+     * 확장이 없는 시트는 등록하지 않으므로, 다른 시트에 확장이 없거나 단일 시트면 크로스시트 처리 대상이 없다.
+     * 이 계산은 데이터 행 수와 무관하게 마커/영역 위치만 계산한다(대용량에서도 저렴).
+     */
+    private fun precomputeSheetExpansions(
+        blueprint: WorkbookSpec,
+        data: Map<String, Any>,
+        context: RenderingContext
+    ) {
+        blueprint.sheets.forEach { sheetSpec ->
+            val repeatRegions = sheetSpec.repeatRegions
+            if (repeatRegions.isEmpty()) return@forEach
+
+            val collectionSizes = if (context.streamingDataSource != null) {
+                context.collectionSizes
+            } else {
+                PositionCalculator.extractCollectionSizes(data, repeatRegions)
+            }
+            val templateLastRow = sheetSpec.rows.maxOfOrNull { it.templateRowIndex } ?: 0
+            val calculator = PositionCalculator(
+                repeatRegions, collectionSizes, templateLastRow,
+                mergedRegions = sheetSpec.mergedRegions,
+                bundleRegions = sheetSpec.bundleRegions
+            )
+            calculator.calculate()
+
+            val expansions = calculator.getExpansions()
+            if (expansions.isNotEmpty()) {
+                context.sheetExpansions[sheetSpec.sheetName] =
+                    FormulaAdjuster.SheetExpansionInfo(expansions, collectionSizes)
+                context.sheetCalculators[sheetSpec.sheetName] = calculator
+            }
+        }
     }
 
     override fun processSheet(
@@ -83,9 +129,11 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
         processSheet(sxssfSheet, sheetIndex, blueprint, data, imageLocations, context)
     }
 
-    @Suppress("UNUSED_PARAMETER")
     override fun afterProcessSheets(workbook: Workbook, context: RenderingContext) {
         val sxssfWorkbook = workbook as SXSSFWorkbook
+
+        // named range 정의 확장 (수식이 참조하는 named range를 repeat 확장에 맞춰 갱신)
+        expandNamedRanges(sxssfWorkbook.xssfWorkbook, context)
 
         // 수식 평가 및 calcChain 정리
         evaluateFormulasAndClearCalcChain(sxssfWorkbook)
@@ -97,6 +145,51 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
 
         // 파일 열 때 첫 번째 시트 A1 셀에 포커스
         sxssfWorkbook.setInitialView()
+    }
+
+    /**
+     * 수식이 참조하는 named range의 정의(refersToFormula)를 repeat 확장에 맞춰 갱신한다.
+     * 수식 문자열을 파싱하지 않고 정의만 재작성하므로 문자열 리터럴 오조정 리스크가 없다.
+     * 확장이 있는 시트가 없으면(단일 시트·미확장) 아무 동작도 하지 않는다.
+     */
+    private fun expandNamedRanges(workbook: XSSFWorkbook, context: RenderingContext) {
+        if (context.sheetCalculators.isEmpty()) return
+        val version = workbook.spreadsheetVersion
+        workbook.allNames.forEach { name ->
+            val refers = runCatching { name.refersToFormula }.getOrNull() ?: return@forEach
+            if (refers.contains("#REF!")) return@forEach
+            val expanded = computeExpandedNamedRange(refers, context.sheetCalculators, version) ?: return@forEach
+            runCatching { name.refersToFormula = expanded }
+        }
+    }
+
+    /**
+     * named range 정의를 확장한 새 참조 문자열을 계산한다.
+     * named range는 정의가 데이터 영역을 가리키므로, 수식 내 절대 참조와 달리 절대 표기여도 확장 대상으로 본다.
+     * @return 확장된 참조 문자열, 확장 대상이 아니면 null (3D·다중영역·#REF!·미겹침 등)
+     */
+    private fun computeExpandedNamedRange(
+        refersToFormula: String,
+        sheetCalculators: Map<String, PositionCalculator>,
+        version: SpreadsheetVersion
+    ): String? {
+        val areaRef = runCatching { AreaReference(refersToFormula, version) }.getOrNull() ?: return null
+        val first = areaRef.firstCell
+        val last = areaRef.lastCell
+        val sheetName = first.sheetName ?: return null
+        val calculator = sheetCalculators[sheetName] ?: return null
+
+        // 좌표 조정(끝 확대 + 시작·끝 독립 시프트, 관통·병렬 대응)은 수식과 공유하는 getExpandedRange가 담당한다.
+        // named range는 절대 표기여도 확장하며 $ 표기만 보존한다(수식은 절대 축을 고정하는 점이 다르다).
+        val e = calculator.getExpandedRange(first.row, first.col.toInt(), last.row, last.col.toInt())
+        if (e.firstRow == first.row && e.firstColumn == first.col.toInt() &&
+            e.lastRow == last.row && e.lastColumn == last.col.toInt()
+        ) {
+            return null  // 위치 변화 없음
+        }
+        val newFirst = CellReference(sheetName, e.firstRow, e.firstColumn, first.isRowAbsolute, first.isColAbsolute)
+        val newLast = CellReference(sheetName, e.lastRow, e.lastColumn, last.isRowAbsolute, last.isColAbsolute)
+        return AreaReference(newFirst, newLast, version).formatAsString()
     }
 
     // ZIP 정규화(엔트리 size 확정)·absPath 제거는 상위가 담당한다:
@@ -233,6 +326,11 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
         // 빈 컬렉션의 emptyRange 조건부 서식 적용
         context.sheetLayoutApplier.applyEmptyRangeConditionalFormattings(
             sheet, blueprint.repeatRegions, collectionSizes, calculator
+        )
+
+        // 데이터 유효성 확장 적용 (반복 영역과 겹치는 유효성의 sqref를 확장 범위로 넓힘)
+        context.sheetLayoutApplier.applyDataValidations(
+            sheet, blueprint.repeatRegions, data, maxRowOffset, collectionSizes, calculator
         )
 
         // 차트 범위 조정을 위한 repeat 확장 정보 수집 (ChartRestoreProcessor에서 사용)
@@ -578,6 +676,20 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
                     )
                 }
             }
+            reportRowAndCheckCancel(ctx.context)
+        }
+    }
+
+    /**
+     * 한 행을 작성한 뒤 호출한다: 협조적 취소 여부를 확인하고 진행률 콜백을 간격에 맞춰 발화한다.
+     * 훅이 없으면(동기 생성 경로) 아무 동작도 하지 않으므로 오버헤드가 없다.
+     */
+    private fun reportRowAndCheckCancel(context: RenderingContext) {
+        val hooks = context.hooks ?: return
+        if (hooks.checkCancelled()) throw GenerationCancelledException()
+        rowsWritten++
+        if (hooks.progressInterval > 0 && rowsWritten % hooks.progressInterval == 0) {
+            hooks.onProgress(rowsWritten)
         }
     }
 
@@ -597,6 +709,7 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
             val repeatHeight = writeRepeatCellsForRow(ctx, row, actualRow, state)
             val staticHeight = if (actualRow in ctx.staticActualRows) writeStaticCellsForRow(ctx, row, actualRow) else null
             maxOf(repeatHeight ?: 0, staticHeight ?: 0).takeIf { it > 0 }?.let { row.height = it }
+            reportRowAndCheckCancel(ctx.context)
         }
 
         state.checkRemainingItems()
@@ -1234,7 +1347,7 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
             ) ?: continue
 
             if (itemCount > 1) {
-                val (expanded, isSequential) = FormulaAdjuster.expandToRangeWithCalculator(result, expansion, itemCount)
+                val (expanded, isSequential) = FormulaAdjuster.expandToRangeWithCalculator(result, expansion, itemCount, calculator = ctx.calculator)
                 if (expanded != result) {
                     validateFormulaExpansion(
                         itemCount, isSequential, ctx.sheet.sheetName,
@@ -1243,6 +1356,13 @@ internal class StreamingRenderingStrategy : AbstractRenderingStrategy() {
                     result = expanded
                 }
             }
+        }
+
+        // 크로스시트 확장: 시트 접두사가 붙은 참조(다른 시트 및 자기 시트 명시)를 해당 시트의 확장에 맞춰 조정한다.
+        // 시트 구분자 '!'가 없으면 즉시 skip한다. 접두사 없는 자기 시트 참조는 위의 same-sheet 루프가 담당한다.
+        // (접두사 유무로 cross/same-sheet가 분리되므로 이중 처리는 없다.)
+        if ('!' in result && ctx.context.sheetExpansions.isNotEmpty()) {
+            result = FormulaAdjuster.expandToRangeWithCalculator(result, null, 1, ctx.context.sheetExpansions).formula
         }
 
         return result

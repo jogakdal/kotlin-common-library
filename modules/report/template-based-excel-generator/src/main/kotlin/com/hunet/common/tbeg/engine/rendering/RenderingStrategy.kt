@@ -1,6 +1,7 @@
 package com.hunet.common.tbeg.engine.rendering
 
 import com.hunet.common.tbeg.engine.core.CollectionSizes
+import com.hunet.common.tbeg.engine.pipeline.CooperationHooks
 import com.hunet.common.tbeg.engine.rendering.ChartRangeAdjuster.RepeatExpansionInfo
 
 /**
@@ -59,5 +60,11 @@ internal data class RenderingContext(
     /** 이미지 URL 다운로드 캐시 TTL (초). 0이면 호출 간 캐싱 안 함. */
     val imageUrlCacheTtlSeconds: Long = 0,
     /** 피벗 테이블 존재 여부. 없으면 자동 숫자 서식을 렌더링 시점에 적용해 후처리 sheet 재작성을 피한다. */
-    val hasPivot: Boolean = false
+    val hasPivot: Boolean = false,
+    /** 진행률 보고·협조적 취소 훅. 비동기 생성에서만 전달되며, 동기 경로는 null. */
+    val hooks: CooperationHooks? = null,
+    /** 크로스시트 수식 조정용: 확장이 있는 시트별 확장 정보 (beforeProcessSheets에서 사전 계산). */
+    val sheetExpansions: MutableMap<String, FormulaAdjuster.SheetExpansionInfo> = mutableMapOf(),
+    /** named range 위치 보정용: 시트별 PositionCalculator (bundle·중첩 반복 포함 최종 위치 계산). */
+    val sheetCalculators: MutableMap<String, PositionCalculator> = mutableMapOf()
 )
