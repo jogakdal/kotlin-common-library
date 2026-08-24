@@ -14,8 +14,8 @@ import java.lang.management.ManagementFactory
  *
  * 백그라운드 샘플링 스레드로 iteration 동안 힙 사용량(`getHeapMemoryUsage().used`)을
  * 짧은 간격(0.5ms)으로 관측하여 최대값(피크)을 보고한다.
- * `gc.alloc.rate.norm`(처리 중 누적 할당량)과 달리, **동시에 상주하는 최대 메모리**를 나타낸다.
- * 스트리밍(SXSSF)의 상주 메모리 억제 효과를 이 지표로 확인할 수 있다.
+ * `gc.alloc.rate.norm`(처리 중 누적 할당량)과 달리, **어느 한 시점의 최대 힙 사용량(피크 힙)**을 나타낸다.
+ * 스트리밍(SXSSF)의 피크 힙 억제 효과를 이 지표로 확인할 수 있다.
  */
 class PeakMemoryProfiler : InternalProfiler {
 
